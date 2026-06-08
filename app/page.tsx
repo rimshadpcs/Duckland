@@ -917,8 +917,9 @@ export default function Home() {
         <div className="hero-copy reveal">
           <h1>You&apos;ve studied for hours. You still can&apos;t explain it.</h1>
           <p>
-            Explain the concept to your AI duck. Feynduck finds exactly where your
-            understanding breaks — and fixes it before the exam does.
+            Feynduck combines the Feynman Technique and rubber ducking into an AI-powered
+            study loop. Explain what you studied, discover where your reasoning breaks,
+            and rebuild the explanation until it finally clicks.
           </p>
           <div className="hero-actions">
             <a className="button primary" href="/study">
