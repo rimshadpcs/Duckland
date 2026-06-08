@@ -917,9 +917,8 @@ export default function Home() {
         <div className="hero-copy reveal">
           <h1>You&apos;ve studied for hours. You still can&apos;t explain it.</h1>
           <p>
-            Feynduck combines the Feynman Technique and rubber ducking into an AI-powered
-            study loop. Explain what you studied, discover where your reasoning breaks,
-            and rebuild the explanation until it finally clicks.
+            Feynduck combines the Feynman Technique and rubber ducking: explain what you
+            studied, find the gap, and rebuild it until it clicks.
           </p>
           <div className="hero-actions">
             <a className="button primary" href="/study">
