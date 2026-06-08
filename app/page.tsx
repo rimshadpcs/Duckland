@@ -945,7 +945,7 @@ export default function Home() {
         <SectionHeader
           label="the method"
           title="Why Feynduck works."
-          copy="Feynman helps you explain. Rubber ducking helps you hear the gap. Feynduck helps you fix it."
+          copy="Feynman Technique helps you explain. Rubber ducking helps you hear the gap. Feynduck helps you fix it."
         />        <div className="method-card reveal" aria-label="Feynman Technique, Rubber Ducking, and Feynduck definitions">
           <article>
             <h3>feynman technique</h3>
