@@ -31,7 +31,7 @@ const steps = [
     icon: Upload,
   },
   {
-    title: "Explain it to your duck",
+    title: "Explain it to Feynduck",
     copy:
       "Pick a concept and explain it out loud — like you're telling a friend who's never heard of it. Don't worry about getting it perfect. That's the point.",
     icon: MessageCircleMore,
@@ -995,7 +995,7 @@ export default function Home() {
       <section className="section how" id="how">
         <SectionHeader
           label="how it works"
-          title="Explain it to your AI duck. Find out what you actually know."
+          title="Explain it to Feynduck. Find out what you actually know."
           copy="No passive rereading. No pretending a highlighted paragraph means you learned it."
         />        <div className="steps">
           {steps.map((step, index) => {
