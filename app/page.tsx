@@ -39,7 +39,7 @@ const steps = [
   {
     title: "Fix the gap together",
     copy:
-      "The duck tells you exactly where your explanation broke down or went wrong — where and why. Answer one follow-up question, then try again. That's the moment it actually clicks.",
+      "Feynduck tells you exactly where your explanation broke down or went wrong — where and why. Answer one follow-up question, then try again. That's the moment it actually clicks.",
     icon: Sparkles,
   },
 ];
