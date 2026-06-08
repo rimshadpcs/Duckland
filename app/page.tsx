@@ -327,7 +327,7 @@ function ProductPreview() {
   const panelKickers = [
     "Start here",
     "Explain out loud",
-    "Duck feedback",
+    "Feynduck",
     "Practice from gaps",
     "Track clarity",
   ];
