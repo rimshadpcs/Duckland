@@ -908,7 +908,7 @@ export default function Home() {
             {themeMode === "obsidian" ? <Sun size={17} /> : <Moon size={17} />}
           </button>
           <a className="nav-cta" href="/study">
-            Study with funny duck →
+            Study with Feynduck →
           </a>
         </div>
       </nav>
@@ -923,7 +923,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <a className="button primary" href="/study">
-              Study with funny duck →
+              Study with Feynduck →
             </a>
             <a className="button secondary" href="#how">
               See how it works
@@ -1152,7 +1152,7 @@ export default function Home() {
         <h2>Stop guessing whether you understand.</h2>
         <p>Explain it to Feynduck and find out before the exam does.</p>
         <a className="button primary" href="/study">
-          Study with funny duck →
+          Study with Feynduck →
         </a>
       </section>
 
