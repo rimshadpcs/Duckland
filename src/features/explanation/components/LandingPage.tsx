@@ -859,7 +859,7 @@ function PreviewWorkspace({
   );
 }
 
-export default function Home() {
+export function LandingPage() {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("annual");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") return "light";
