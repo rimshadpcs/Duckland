@@ -175,54 +175,66 @@ type ThemeMode = "light" | "obsidian";
 const pricingTiers = [
   {
     name: "Free",
-    monthlyPrice: 0,
-    annualPrice: 0,
+    monthlyPrice: "$0",
+    annualPrice: "$0",
+    monthlySuffix: "",
+    annualSuffix: "",
+    monthlyNote: "One session. No card. See what you actually understand.",
+    annualNote: "One session. No card. See what you actually understand.",
     intro: "Try one real Feynduck session",
     cta: "Start studying free",
     items: [
-      "1 guided explanation session",
-      "Upload 1 PDF, notes file, or pasted link",
-      "Practice 1 concept from your material",
-      "Basic gap feedback",
-      "1 follow-up question per session",
-      "Preview your first Clarity Score",
-      "Upgrade to keep practicing",
+      "One full explanation session with the duck",
+      "Upload a PDF, paste your notes, or drop a link",
+      "The duck finds where your reasoning breaks",
+      "See your top 2 gaps with plain-English explanations",
+      "One targeted follow-up question to help you fix it",
+      "Your first Clarity Score — see where you actually stand",
+      "Everything resets after your session. Upgrade to keep going.",
     ],
   },
   {
     name: "Student",
-    monthlyPrice: 12,
-    annualPrice: 96,
+    monthlyPrice: "$12",
+    annualPrice: "$96",
+    monthlySuffix: "/month",
+    annualSuffix: "/year",
+    monthlyNote: "or $96/year — that's $8/month",
+    annualNote: "Save 33% with annual billing",
     intro: "For students who study regularly",
     cta: "Start Student",
-    badge: "Student favorite",
+    badge: "✦ Most popular",
     featured: true,
     items: [
-      "Unlimited explanations",
-      "30 PDF uploads per month, up to 50 pages each",
-      "Full gap analysis — all gaps ranked",
-      "Unlimited follow-up questions",
-      "Gap-based flashcards",
-      "Clarity Score + session history",
-      "5 active exams",
-      "Topics extracted automatically from uploads",
+      "Unlimited explanation sessions — no daily caps",
+      "Up to 10 PDFs per month, 50 pages each",
+      "Every gap detected, ranked by how much it matters",
+      "Unlimited follow-up questions per session",
+      "Flashcards auto-generated from your actual gaps — not generic topic lists",
+      "Clarity Score tracked across every session so you can see real progress",
+      "Up to 5 active exams organised by subject",
+      "Topics extracted automatically when you upload — no manual setup",
     ],
   },
   {
     name: "Scholar",
-    monthlyPrice: 20,
-    annualPrice: 180,
-    intro: "For med school, law, research",
+    monthlyPrice: "$20",
+    annualPrice: "$180",
+    monthlySuffix: "/month",
+    annualSuffix: "/year",
+    monthlyNote: "or $180/year — that's $15/month",
+    annualNote: "Save 25% with annual billing",
+    intro: "For med school, law, and research-heavy degrees",
     cta: "Start Scholar",
-    badge: "Best value",
+    badge: "✦ Best value",
     items: [
       "Everything in Student",
-      "Unlimited PDF uploads, up to 100 pages each",
-      "Mastery Map across all exams",
-      "Unlimited active exams",
-      "Export gap reports and session notes",
-      "Priority processing",
-      "Early access to new features",
+      "Unlimited PDFs, up to 300 pages each — upload full textbooks and case bundles",
+      "Mastery Map showing exactly what you understand across every exam and topic",
+      "Unlimited active exams — no cap on how many subjects you're studying",
+      "Export your gap reports and session notes as a PDF to review offline",
+      "Priority processing — faster responses during peak hours",
+      "Early access to new features before anyone else",
     ],
   },
 ];
@@ -1074,32 +1086,37 @@ export default function Home() {
           copy="Try the explanation loop for free. Upgrade when you want unlimited practice, deeper gap feedback, and study history across subjects."
         />
 
-        <div className="pricing-toggle reveal">
-          <button
-            className={billingCycle === "monthly" ? "active" : ""}
-            onClick={() => setBillingCycle("monthly")}
-            type="button"
-          >
-            Monthly
-          </button>
-          <button
-            className={billingCycle === "annual" ? "active" : ""}
-            onClick={() => setBillingCycle("annual")}
-            type="button"
-          >
-            Annual
-          </button>
+        <div className="pricing-toggle-wrap reveal">
+          <div className="pricing-save-callout" aria-hidden="true">
+            <span>❤️ Save More</span>
+            <svg viewBox="0 0 76 56" focusable="false">
+              <path d="M68 3C64 28 48 44 8 49" />
+            </svg>
+          </div>
+          <div className="pricing-toggle">
+            <button
+              className={billingCycle === "monthly" ? "active" : ""}
+              onClick={() => setBillingCycle("monthly")}
+              type="button"
+            >
+              Monthly
+            </button>
+            <button
+              className={billingCycle === "annual" ? "active" : ""}
+              onClick={() => setBillingCycle("annual")}
+              type="button"
+            >
+              Annual
+            </button>
+          </div>
         </div>
 
         <div className="pricing-grid">
           {pricingTiers.map((plan) => {
             const isAnnual = billingCycle === "annual";
-            const price =
-              isAnnual && plan.annualPrice > 0
-                ? Math.floor(plan.annualPrice / 12)
-                : plan.monthlyPrice;
-
-            const savings = plan.monthlyPrice * 12 - plan.annualPrice;
+            const price = isAnnual ? plan.annualPrice : plan.monthlyPrice;
+            const priceSuffix = isAnnual ? plan.annualSuffix : plan.monthlySuffix;
+            const priceNote = isAnnual ? plan.annualNote : plan.monthlyNote;
 
             return (
               <article
@@ -1111,17 +1128,11 @@ export default function Home() {
                 <p className="price-intro">{plan.intro}</p>
 
                 <div className="price">
-                  ${price}
-                  <span>/ month</span>
+                  {price}
+                  {priceSuffix ? <span>{priceSuffix}</span> : null}
                 </div>
 
-                {plan.annualPrice > 0 && (
-                  <p className="price-savings">
-                    {isAnnual
-                      ? `billed $${plan.annualPrice}/year — save $${savings}`
-                      : `or $${plan.annualPrice}/year — save $${savings}`}
-                  </p>
-                )}
+                <p className="price-savings">{priceNote}</p>
 
                 <ul>
                   {plan.items.map((item) => (
