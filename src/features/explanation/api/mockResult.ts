@@ -1,11 +1,34 @@
 import type { ExplanationResult } from "../types";
+import type { ExplanationRequest } from "../types";
 
-export const mockExplanationResult: ExplanationResult = {
-  clarityScore: 62,
-  gapType: "missing_causal_link",
-  gapSummary: "You mentioned oxygen is needed, but did not explain how it helps regenerate NAD+.",
-  whyItMatters: "Without this link, the explanation sounds memorised instead of understood.",
-  socraticQuestion: "What happens to NADH if oxygen is unavailable?",
-  suggestedReExplanationPrompt:
-    "Try explaining the link between oxygen, the electron transport chain, NADH, and NAD+.",
-};
+function summariseTopic(text: string) {
+  return text
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 4)
+    .join(" ") || "your notes";
+}
+
+export function createMockExplanationResult(request: ExplanationRequest): ExplanationResult {
+  const sourceTopic = summariseTopic(request.notes);
+  const explanationTopic = summariseTopic(request.explanation);
+
+  return {
+    status: "ok",
+    sourceTopic,
+    explanationTopic,
+    clarityScore: 62,
+    gapType: "missing_mechanism",
+    gapSummary:
+      "You gave a plausible explanation, but the mock evaluator cannot identify the real missing reasoning link without OpenAI configured.",
+    whyItMatters:
+      "This local mock only proves the interface works. Configure OpenAI to get grounded feedback from your actual source material.",
+    socraticQuestion:
+      "What exact step from your notes connects your claim to the conclusion you reached?",
+    suggestedReExplanationPrompt:
+      "Try explaining the mechanism step by step, using only the source material on the left.",
+    chatMessage:
+      "Using mock feedback because OpenAI is not configured. To test the real Feynduck evaluator, add a valid OpenAI API key.",
+  };
+}

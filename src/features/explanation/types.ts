@@ -1,13 +1,19 @@
+import type { GapAnalysisResult } from "@src/features/gap-analysis";
+
 export type ExplanationRequest = {
   notes: string;
   explanation: string;
 };
 
-export type ExplanationResult = {
-  clarityScore: number;
-  gapType: "missing_causal_link" | "unclear_definition" | "unsupported_claim" | "incomplete_sequence";
-  gapSummary: string;
-  whyItMatters: string;
-  socraticQuestion: string;
-  suggestedReExplanationPrompt: string;
+export type ExplanationResult = GapAnalysisResult;
+
+export type StudyRoom = {
+  id: string;
+  title: string;
+  subject: string;
+  notes: string;
+  createdAt: number;
+  lastStudiedAt?: number;
+  clarityScore?: number | null;
+  weakSpotsCount?: number;
 };

@@ -1,17 +1,11 @@
-type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
-
-type PostHogLike = {
-  capture: (eventName: string, properties?: AnalyticsProperties) => void;
-};
-
-export function trackEvent(eventName: string, properties?: AnalyticsProperties) {
+export function trackEvent(eventName: string, properties?: Record<string, any>) {
   if (typeof window === "undefined") return;
 
-  const maybePostHog = (window as Window & { posthog?: PostHogLike }).posthog;
-
   try {
-    maybePostHog?.capture(eventName, properties);
-  } catch {
+    // @ts-ignore - posthog is injected via script tag
+    window.posthog?.capture(eventName, properties);
+  } catch (error) {
     // Analytics should never block the product experience.
+    console.debug("Analytics failed silently:", error);
   }
 }

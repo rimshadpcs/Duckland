@@ -1,0 +1,783 @@
+/* Sidebar Toggle Buttons */
+.panel-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.panel-toggle-btn:hover {
+  background: rgba(26, 22, 18, 0.08);
+  color: var(--ink);
+}
+
+.sidebar-open-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.sidebar-open-btn:hover {
+  background: #f5f0e8;
+}
+
+/* Ensure left panel content fades/hides cleanly when collapsed */
+.left-panel {
+  transition: opacity 0.2s ease, transform 0.3s ease;
+  overflow: hidden; /* Prevent text spilling when width shrinks */
+  white-space: nowrap; /* Keep content structure intact */
+}
+
+.left-panel.closed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Resize Handles */
+.resize-handle {
+  width: 4px;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 0;
+  bottom: 0;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle.active::after {
+  background: var(--amber);
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+  background: rgba(232, 160, 32, 0.1);
+}
+
+.empty-insights {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.empty-insights svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+  color: var(--amber);
+}
+
+.empty-insights h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.empty-insights p {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.app-error,
+.app-notice {
+  margin: 12px auto 0;
+  width: min(640px, calc(100% - 32px));
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.app-error {
+  border: 1px solid rgba(185, 28, 28, 0.22);
+  background: rgba(254, 226, 226, 0.72);
+  color: #991b1b;
+}
+
+.app-notice {
+  border: 1px solid rgba(232, 160, 32, 0.28);
+  background: rgba(245, 200, 66, 0.14);
+  color: var(--amber-dark);
+}
+
+/* Polished Insight Cards */
+.insight-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+}
+
+.insight-card.highlight {
+  background: #fffdf5;
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+.insight-card.strong {
+  border-left: 4px solid var(--amber);
+}
+
+/* Nav Active Pill */
+.app-nav-link {
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.app-nav-link.active {
+  background: #f5f0e8;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Composer Polishes */
+.composer-label-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* Study Material Left Panel Polishes */
+.metadata-pills {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.metadata-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(26, 22, 18, 0.05);
+  color: var(--muted);
+}
+
+.source-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.source-action-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--amber-dark);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.source-action-btn:hover {
+  text-decoration: underline;
+}
+
+/* Chat Message distinct styles */
+.message {
+  margin-bottom: 24px;
+}
+
+.message.student .message-content {
+  background: #f5f0e8;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border-top-left-radius: 4px; /* visually distinct */
+}
+
+.message.student .avatar {
+  background: #e8a020;
+  color: #fff;
+}
+
+.message.duck .message-content {
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 12px 16px;
+  border-radius: 16px;
+  border-top-left-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+/* Base styles for app-nav-left layout */
+.app-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Dashboard Dark Mode (NotebookLM Charcoal Feel) */
+html[data-theme="obsidian"] .app-workspace,
+html[data-theme="obsidian"] .dashboard-container {
+  background: #1b1d20;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .app-nav {
+  background: #191b1f;
+  border-bottom-color: #343840;
+}
+
+html[data-theme="obsidian"] .dashboard-panel {
+  border-right-color: #343840;
+}
+
+html[data-theme="obsidian"] .panel-header {
+  border-bottom-color: #343840;
+}
+
+html[data-theme="obsidian"] .panel-header h3 {
+  color: #948d84 !important;
+}
+
+/* Panel Backgrounds Unified */
+html[data-theme="obsidian"] .left-panel,
+html[data-theme="obsidian"] .center-panel,
+html[data-theme="obsidian"] .right-panel {
+  background: #202327;
+}
+
+html[data-theme="obsidian"] .app-nav-link {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .app-nav-link.active {
+  background: #272a2f;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .app-nav-link:hover {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .panel-toggle-btn {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .panel-toggle-btn:hover {
+  background: #2d3036;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .sidebar-open-btn {
+  background: #272a2f;
+  border-color: #41464f;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .sidebar-open-btn:hover {
+  background: #2d3036;
+}
+
+html[data-theme="obsidian"] .metadata-pill {
+  background: #272a2f;
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .notes-textarea-minimal,
+html[data-theme="obsidian"] .notes-preview-card {
+  background: #25282d;
+  border-color: #343840;
+  color: #c7c0b8;
+}
+
+html[data-theme="obsidian"] .notes-textarea-minimal::placeholder {
+  color: #6f6860;
+}
+
+html[data-theme="obsidian"] .composer-wrapper {
+  background: #25282d;
+  border-color: #41464f;
+}
+
+html[data-theme="obsidian"] .composer-wrapper:focus-within {
+  background: #25282d;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.15);
+}
+
+html[data-theme="obsidian"] .composer-textarea {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .composer-textarea::placeholder {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .composer-container {
+  background: linear-gradient(to top, #202327 80%, transparent);
+}
+
+html[data-theme="obsidian"] .composer-label-icon {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .message.student .message-content {
+  background: #2d3036;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .message.duck .message-content {
+  background: #272a2f;
+  border-color: #343840;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .avatar {
+  background: #272a2f;
+}
+
+html[data-theme="obsidian"] .convo-header h3,
+html[data-theme="obsidian"] .empty-insights h4,
+html[data-theme="obsidian"] .message-content h4 {
+  color: #948d84 !important;
+}
+
+html[data-theme="obsidian"] .message-text {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .insight-card {
+  background: #272a2f;
+  border-color: #343840;
+}
+
+html[data-theme="obsidian"] .insight-card.highlight {
+  background: #2d3036;
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+html[data-theme="obsidian"] .score-section {
+  background: #272a2f;
+  border-color: #343840;
+}
+
+html[data-theme="obsidian"] .insight-card h4,
+html[data-theme="obsidian"] .insight-card p {
+  color: #f4f1ea !important;
+}
+
+html[data-theme="obsidian"] .insight-card.highlight h4 {
+  color: #e8a020 !important;
+}
+
+html[data-theme="obsidian"] .insight-card.highlight p {
+  color: #f5c842 !important;
+}
+
+html[data-theme="obsidian"] .resize-handle::after {
+  background: transparent;
+}
+
+html[data-theme="obsidian"] .resize-handle:hover::after,
+html[data-theme="obsidian"] .resize-handle.active::after {
+  background: rgba(232, 160, 32, 0.4);
+}
+
+html[data-theme="obsidian"] .resize-handle:hover,
+html[data-theme="obsidian"] .resize-handle.active {
+  background: rgba(232, 160, 32, 0.1);
+}
+
+html[data-theme="obsidian"] .empty-insights svg {
+  color: rgba(232, 160, 32, 0.5);
+}
+
+html[data-theme="obsidian"] .app-error {
+  border-color: rgba(248, 113, 113, 0.24);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+}
+
+html[data-theme="obsidian"] .app-notice {
+  border-color: rgba(245, 200, 66, 0.24);
+  background: rgba(245, 200, 66, 0.1);
+  color: #f5c842;
+}
+
+html[data-theme="obsidian"] .dashboard-theme-btn {
+  background: #272a2f;
+  border-color: #343840;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .dashboard-theme-btn:hover {
+  background: #2d3036;
+}
+
+html[data-theme="obsidian"] h4 {
+  color: #948d84 !important;
+}
+
+html[data-theme="obsidian"] .app-start-btn {
+  background: #272a2f !important;
+  color: #e8a020 !important;
+  border: 1px solid #41464f !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="obsidian"] .app-start-btn:hover {
+  background: #2d3036 !important;
+  border-color: #e8a020 !important;
+}
+
+/* Study Rooms Dashboard Styles */
+.dashboard-rooms {
+  display: flex;
+  flex-direction: column;
+}
+
+.rooms-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 24px;
+}
+
+.rooms-header {
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  text-align: center;
+}
+
+.rooms-header h1 {
+  font-family: "DM Sans", sans-serif;
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+.rooms-header p {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.rooms-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.room-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.02);
+}
+
+.room-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(232, 160, 32, 0.08);
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+.create-card {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: rgba(245, 200, 66, 0.05);
+  border: 1px dashed rgba(232, 160, 32, 0.4);
+}
+
+.create-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--amber);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.create-card h3 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.create-card p {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.quick-card {
+  background: linear-gradient(135deg, #fff 0%, #fffdf5 100%);
+}
+
+.card-top h3 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.card-top p {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.room-subject {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--amber-dark);
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.room-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  display: block;
+  margin-top: 12px;
+}
+
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+}
+
+.card-cta {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--ink);
+  background: var(--duck);
+  padding: 6px 16px;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+.room-card:hover .card-cta {
+  background: var(--amber);
+}
+
+.room-status {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: rgba(26, 22, 18, 0.05);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 24px;
+  padding: 32px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.1);
+}
+
+.modal-content h3 {
+  font-size: 1.25rem;
+  margin: 0 0 24px;
+}
+
+.modal-body .input-group {
+  margin-bottom: 20px;
+}
+
+.modal-body label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+
+.modal-body input,
+.modal-body textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fafaf8;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.modal-body input:focus,
+.modal-body textarea:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.1);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.modal-btn-cancel {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modal-btn-cancel:hover {
+  background: rgba(26, 22, 18, 0.05);
+}
+
+.modal-btn-create {
+  padding: 10px 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--duck);
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modal-btn-create:hover {
+  background: var(--amber);
+}
+
+/* Dark Mode Overrides for Dashboard */
+html[data-theme="obsidian"] .room-card {
+  background: #202327;
+  border-color: #343840;
+}
+
+html[data-theme="obsidian"] .room-card:hover {
+  border-color: rgba(232, 160, 32, 0.4);
+}
+
+html[data-theme="obsidian"] .quick-card {
+  background: #272a2f;
+}
+
+html[data-theme="obsidian"] .create-card {
+  background: rgba(245, 200, 66, 0.05);
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+html[data-theme="obsidian"] .rooms-header h1 {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .room-card h3 {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .card-top p,
+html[data-theme="obsidian"] .room-meta {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .room-status {
+  background: #2d3036;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .card-cta {
+  background: #272a2f;
+  color: #e8a020;
+  border: 1px solid #41464f;
+}
+
+html[data-theme="obsidian"] .room-card:hover .card-cta {
+  background: #2d3036;
+  border-color: #e8a020;
+}
+
+html[data-theme="obsidian"] .modal-content {
+  background: #202327;
+}
+
+html[data-theme="obsidian"] .modal-content h3,
+html[data-theme="obsidian"] .modal-body label {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .modal-body input,
+html[data-theme="obsidian"] .modal-body textarea {
+  background: #25282d;
+  border-color: #343840;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .modal-body input:focus,
+html[data-theme="obsidian"] .modal-body textarea:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.15);
+}
+
+html[data-theme="obsidian"] .modal-btn-cancel {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .modal-btn-cancel:hover {
+  background: #2d3036;
+}
+
+html[data-theme="obsidian"] .modal-btn-create {
+  background: #e8a020;
+  color: #1b1d20;
+}

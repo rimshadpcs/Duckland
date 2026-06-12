@@ -1,2 +1,2 @@
-export type { ExplanationRequest, ExplanationResult } from "@/features/explanation";
-export type { GapAnalysisResult } from "@/features/gap-analysis";
+export type { ExplanationRequest, ExplanationResult } from "@src/features/explanation";
+export type { GapAnalysisResult } from "@src/features/gap-analysis";

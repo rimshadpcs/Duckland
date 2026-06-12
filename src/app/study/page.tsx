@@ -1,5 +1,5 @@
-import { StudyDemoPage } from "@/features/explanation";
+import { StudyRoomsDashboard } from "@src/features/explanation";
 
 export default function Page() {
-  return <StudyDemoPage />;
+  return <StudyRoomsDashboard />;
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./dashboard-polishes.css";
 
 export const metadata: Metadata = {
   title: "Feynduck | You've studied for hours. You still can't explain it.",

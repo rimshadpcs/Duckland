@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { evaluateExplanation } from "@/features/explanation";
-import { getOpenAIClient } from "@/lib/openai";
+import { EvaluationError, evaluateExplanation } from "@src/features/explanation";
+import { getOpenAIKeyStatus, isLocalDevelopment } from "@src/lib/openai";
 
 type ExplainBody = {
   notes?: unknown;
@@ -16,20 +16,60 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  if (typeof body.notes !== "string" || body.notes.trim().length === 0) {
-    return NextResponse.json({ error: "notes is required." }, { status: 400 });
+  // Validation: 400 if missing or too short (e.g., < 10 chars)
+  if (typeof body.notes !== "string" || body.notes.trim().length < 10) {
+    return NextResponse.json(
+      { error: "Notes are required and must be at least 10 characters long." },
+      { status: 400 },
+    );
   }
 
-  if (typeof body.explanation !== "string" || body.explanation.trim().length === 0) {
-    return NextResponse.json({ error: "explanation is required." }, { status: 400 });
+  if (typeof body.explanation !== "string" || body.explanation.trim().length < 10) {
+    return NextResponse.json(
+      { error: "Explanation is required and must be at least 10 characters long." },
+      { status: 400 },
+    );
   }
 
-  const openAIClient = getOpenAIClient();
+  const keyStatus = getOpenAIKeyStatus();
+  const allowMock = isLocalDevelopment() && keyStatus.state === "missing";
 
-  const result = await evaluateExplanation(
-    { notes: body.notes.trim(), explanation: body.explanation.trim() },
-    { hasOpenAIClient: Boolean(openAIClient) },
-  );
+  if (keyStatus.state === "placeholder" || keyStatus.state === "malformed") {
+    return NextResponse.json(
+      { error: "OpenAI API key is invalid. Set a real OPENAI_API_KEY on the server." },
+      { status: 401 },
+    );
+  }
 
-  return NextResponse.json(result);
+  if (keyStatus.state === "missing" && !allowMock) {
+    return NextResponse.json(
+      { error: "OpenAI is not configured. Set OPENAI_API_KEY on the server." },
+      { status: 500 },
+    );
+  }
+
+  try {
+    const evaluation = await evaluateExplanation(
+      { notes: body.notes.trim(), explanation: body.explanation.trim() },
+      { allowMock },
+    );
+
+    return NextResponse.json({
+      ...evaluation.result,
+      mockMode: evaluation.mockMode,
+      warning: evaluation.warning,
+    });
+  } catch (error) {
+    if (error instanceof EvaluationError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Feynduck could not evaluate this explanation right now." },
+      { status: 502 },
+    );
+  }
 }
