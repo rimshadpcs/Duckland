@@ -3565,6 +3565,57 @@ html[data-theme="obsidian"] .pricing-save-callout {
   color: var(--ink);
 }
 
+.current-focus-pill {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid #efcf72;
+  border-radius: 12px;
+  background: #fff7da;
+}
+
+.current-focus-pill span {
+  color: #8f7650;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.current-focus-pill strong {
+  color: #2f281c;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.concept-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 680px;
+  padding-left: 56px;
+}
+
+.concept-chip {
+  border: 1px solid #d9cbb8;
+  border-radius: 999px;
+  background: #f8efe1;
+  color: #5f554a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 750;
+  padding: 8px 12px;
+}
+
+.concept-chip:hover {
+  border-color: #efc35a;
+  color: #1f1b16;
+  background: #fff7da;
+}
+
 /* Sticky Composer */
 .composer-container {
   padding: 24px 56px 30px;

@@ -364,6 +364,26 @@ html[data-theme="obsidian"] .composer-mic-btn {
   color: #f5c842;
 }
 
+html[data-theme="obsidian"] .current-focus-pill,
+html[data-theme="obsidian"] .concept-chip {
+  background: #302b1c;
+  border-color: #6f5720;
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .current-focus-pill span {
+  color: #d0b36c;
+}
+
+html[data-theme="obsidian"] .current-focus-pill strong {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .concept-chip:hover {
+  background: #3a321f;
+  border-color: #f5c842;
+}
+
 html[data-theme="obsidian"] .message.student .message-content {
   background: #3a321f;
   border-color: #6f5720;

@@ -13,6 +13,13 @@ const initialRequest: ExplanationRequest = {
   explanation: "",
 };
 
+const conceptQuestionMessage: ConversationMessage = {
+  id: "concept-selection-question",
+  role: "assistant",
+  kind: "feedback",
+  content: "What concept from this material do you want to understand?",
+};
+
 type ExplainApiResponse = ExplanationResult & {
   mockMode?: boolean;
   warning?: string;
@@ -127,8 +134,14 @@ function getRenderableMessages(
   history: ConversationMessage[],
   result: ExplanationResult | null,
   isLoading: boolean,
+  hasNotes: boolean,
+  selectedConcept: string | null,
 ) {
   const messages = history.filter(message => message.kind === "loading" || message.content.trim());
+
+  if (hasNotes && !selectedConcept && messages.length === 0) {
+    return [conceptQuestionMessage];
+  }
 
   if (!result || isLoading) {
     return messages;
@@ -157,6 +170,31 @@ function getRenderableMessages(
   ];
 }
 
+function getConceptSuggestions(notes: string) {
+  const lower = notes.toLowerCase();
+
+  if (
+    lower.includes("insulin") ||
+    lower.includes("glut4") ||
+    lower.includes("glucose") ||
+    lower.includes("diabetes")
+  ) {
+    return [
+      "Insulin resistance",
+      "GLUT4 movement",
+      "Liver glucose production",
+      "Compensatory hyperinsulinaemia",
+      "Exercise and insulin sensitivity",
+    ];
+  }
+
+  if (lower.includes("cardiac output") || lower.includes("stroke volume") || lower.includes("heart rate")) {
+    return ["Cardiac output", "Stroke volume", "Heart-rate compensation"];
+  }
+
+  return ["Key mechanism", "Main definition", "Cause and effect"];
+}
+
 export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, subject: string) => void }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [room, setRoom] = useState<StudyRoom | null>(null);
@@ -168,6 +206,8 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   const [notice, setNotice] = useState<string | null>(null);
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
+  const [previousExplanations, setPreviousExplanations] = useState<string[]>([]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -267,6 +307,57 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     setRequest((current) => ({ ...current, [field]: value }));
   };
 
+  const selectConcept = (concept: string) => {
+    const nextConcept = concept.trim();
+    if (nextConcept.length < 2) {
+      setError("Please enter a concept or topic.");
+      return;
+    }
+
+    const selectionId = createMessageId("concept");
+    setSelectedConcept(nextConcept);
+    setResult(null);
+    setError(null);
+    setNotice(null);
+    setPreviousExplanations([]);
+    setHistory([
+      conceptQuestionMessage,
+      {
+        id: `${selectionId}-student`,
+        role: "user",
+        content: nextConcept,
+      },
+      {
+        id: `${selectionId}-assistant`,
+        role: "assistant",
+        kind: "feedback",
+        content: `Great — explain ${nextConcept} in your own words.`,
+      },
+    ]);
+    setRequest(prev => ({ ...prev, explanation: "" }));
+
+    if (onRoomLoaded) {
+      onRoomLoaded(room ? room.title : "Quick explain", nextConcept);
+    }
+  };
+
+  const handleChangeTopic = () => {
+    const shouldReset = window.confirm("Change topic? This will clear the current conversation and feedback, but keep your source material.");
+    if (!shouldReset) return;
+
+    setSelectedConcept(null);
+    setResult(null);
+    setError(null);
+    setNotice(null);
+    setPreviousExplanations([]);
+    setHistory([]);
+    setRequest(prev => ({ ...prev, explanation: "" }));
+
+    if (onRoomLoaded) {
+      onRoomLoaded(room ? room.title : "Quick explain", room ? room.subject : "");
+    }
+  };
+
   const handleSubmit = async () => {
     if (submitLockRef.current || isLoading || !request.explanation.trim()) return;
     
@@ -277,6 +368,12 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     }
 
     const currentExplanation = request.explanation.trim();
+
+    if (!selectedConcept) {
+      selectConcept(currentExplanation);
+      return;
+    }
+
     submitLockRef.current = true;
     const submissionId = createMessageId("submission");
     const studentMessage: ConversationMessage = {
@@ -307,7 +404,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: request.notes,
-          explanation: currentExplanation
+          selectedConcept,
+          explanation: currentExplanation,
+          previousExplanations,
         }),
       });
 
@@ -339,6 +438,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       ]);
       
       setRequest(prev => ({ ...prev, explanation: "" }));
+      setPreviousExplanations(prev => [...prev, currentExplanation]);
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : "Could not analyse this explanation.";
       setResult(null);
@@ -373,7 +473,21 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     );
   }
 
-  const conversationMessages = getRenderableMessages(history, result, isLoading);
+  const conversationMessages = getRenderableMessages(
+    history,
+    result,
+    isLoading,
+    !!request.notes,
+    selectedConcept,
+  );
+  const conceptSuggestions = getConceptSuggestions(request.notes);
+  const composerPlaceholder = !request.notes
+    ? "Add study material first..."
+    : !selectedConcept
+      ? "Enter a concept or topic..."
+      : result
+        ? `Re-explain ${selectedConcept}...`
+        : `Explain ${selectedConcept}...`;
 
   return (
     <div className={`dashboard-container ${!isSourcePanelOpen ? 'left-closed' : ''}`}>
@@ -400,6 +514,12 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             <div>
               <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--ink)' }}>{room ? room.title : "Quick explain"}</h4>
               <div className="source-meta">{room ? room.subject : "Study material added"}</div>
+              {selectedConcept && (
+                <div className="current-focus-pill">
+                  <span>Current focus</span>
+                  <strong>{selectedConcept}</strong>
+                </div>
+              )}
             </div>
           </div>
 
@@ -456,6 +576,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
               </div>
               <div className="source-actions">
                 <button className="source-action-btn" onClick={() => setIsEditingNotes(true)}>Edit source</button>
+                {selectedConcept && (
+                  <button className="source-action-btn" onClick={handleChangeTopic}>Change topic</button>
+                )}
               </div>
             </>
           )}
@@ -530,6 +653,20 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                   </div>
                 );
               })}
+              {request.notes && !selectedConcept && (
+                <div className="concept-suggestions" aria-label="Suggested concepts">
+                  {conceptSuggestions.map((concept) => (
+                    <button
+                      key={concept}
+                      type="button"
+                      className="concept-chip"
+                      onClick={() => selectConcept(concept)}
+                    >
+                      {concept}
+                    </button>
+                  ))}
+                </div>
+              )}
               {notice && <div className="app-notice">{notice}</div>}
               {error && <div className="app-error">{error}</div>}
             </>
@@ -539,7 +676,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         <div className="composer-container">
           <div className="composer-label-icon">
             <MessageSquareText size={14} />
-            <span>Your explanation</span>
+            <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
           </div>
           <div className={`composer-wrapper ${isLoading ? "loading" : ""}`}>
             <button
@@ -552,7 +689,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </button>
             <textarea
               className="composer-textarea"
-              placeholder={!request.notes ? "Add study material first..." : result ? "Try explaining it again..." : "Explain what you understand..."}
+              placeholder={composerPlaceholder}
               value={request.explanation}
               onChange={(e) => updateField("explanation", e.target.value)}
               onKeyDown={handleKeyDown}
@@ -587,7 +724,14 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       />
 
       {/* Right Panel: Insights */}
-      <GapResultPanel result={result} isLoading={isLoading} width={rightWidth} isDragging={isDraggingRight} hasNotes={!!request.notes} />
+      <GapResultPanel
+        result={result}
+        isLoading={isLoading}
+        width={rightWidth}
+        isDragging={isDraggingRight}
+        hasNotes={!!request.notes}
+        hasSelectedConcept={!!selectedConcept}
+      />
     </div>
   );
 }

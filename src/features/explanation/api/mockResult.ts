@@ -11,7 +11,7 @@ function summariseTopic(text: string) {
 }
 
 export function createMockExplanationResult(request: ExplanationRequest): ExplanationResult {
-  const sourceTopic = summariseTopic(request.notes);
+  const sourceTopic = request.selectedConcept || summariseTopic(request.notes);
   const explanationTopic = summariseTopic(request.explanation);
 
   return {
@@ -21,7 +21,7 @@ export function createMockExplanationResult(request: ExplanationRequest): Explan
     clarityScore: 62,
     gapType: "missing_mechanism",
     gapSummary:
-      "You gave a plausible explanation, but the mock evaluator cannot identify the real missing reasoning link without OpenAI configured.",
+      `You gave a plausible explanation of ${sourceTopic}, but the mock evaluator cannot identify the real missing reasoning link without OpenAI configured.`,
     whyItMatters:
       "This local mock only proves the interface works. Configure OpenAI to get grounded feedback from your actual source material.",
     socraticQuestion:

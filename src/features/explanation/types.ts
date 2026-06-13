@@ -3,6 +3,8 @@ import type { GapAnalysisResult } from "@src/features/gap-analysis";
 export type ExplanationRequest = {
   notes: string;
   explanation: string;
+  selectedConcept?: string;
+  previousExplanations?: string[];
 };
 
 export type ExplanationResult = GapAnalysisResult;

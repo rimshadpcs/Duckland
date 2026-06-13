@@ -173,7 +173,14 @@ export async function evaluateExplanation(
         },
         {
           role: "user",
-          content: `Notes: ${request.notes}\n\nExplanation: ${request.explanation}`,
+          content: [
+            `Selected concept: ${request.selectedConcept || "Not specified"}`,
+            `Notes: ${request.notes}`,
+            request.previousExplanations?.length
+              ? `Previous explanation attempts:\n${request.previousExplanations.join("\n\n")}`
+              : "",
+            `Explanation: ${request.explanation}`,
+          ].filter(Boolean).join("\n\n"),
         },
       ],
       response_format: { type: "json_object" },

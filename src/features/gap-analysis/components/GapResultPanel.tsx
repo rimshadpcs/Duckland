@@ -10,9 +10,10 @@ type GapResultPanelProps = {
   width?: number;
   isDragging?: boolean;
   hasNotes?: boolean;
+  hasSelectedConcept?: boolean;
 };
 
-export function GapResultPanel({ result, isLoading = false, width, isDragging = false, hasNotes = true }: GapResultPanelProps) {
+export function GapResultPanel({ result, isLoading = false, width, isDragging = false, hasNotes = true, hasSelectedConcept = true }: GapResultPanelProps) {
   const panelStyle = {
     width: width ? `${width}px` : undefined,
     transition: isDragging ? "none" : undefined,
@@ -31,6 +32,11 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
               <>
                 <h4>Waiting for study material</h4>
                 <p>Add notes on the left, then explain the concept to get feedback.</p>
+              </>
+            ) : !hasSelectedConcept ? (
+              <>
+                <h4>Choose a concept to begin</h4>
+                <p>Pick the concept Feynduck should evaluate before you explain.</p>
               </>
             ) : (
               <>

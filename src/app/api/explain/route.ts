@@ -5,6 +5,8 @@ import { getOpenAIKeyStatus, isLocalDevelopment } from "@src/lib/openai";
 type ExplainBody = {
   notes?: unknown;
   explanation?: unknown;
+  selectedConcept?: unknown;
+  previousExplanations?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -31,6 +33,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (typeof body.selectedConcept !== "string" || body.selectedConcept.trim().length < 2) {
+    return NextResponse.json(
+      { error: "Selected concept is required before evaluating an explanation." },
+      { status: 400 },
+    );
+  }
+
   const keyStatus = getOpenAIKeyStatus();
   const allowMock = isLocalDevelopment() && keyStatus.state === "missing";
 
@@ -50,7 +59,14 @@ export async function POST(request: Request) {
 
   try {
     const evaluation = await evaluateExplanation(
-      { notes: body.notes.trim(), explanation: body.explanation.trim() },
+      {
+        notes: body.notes.trim(),
+        selectedConcept: body.selectedConcept.trim(),
+        explanation: body.explanation.trim(),
+        previousExplanations: Array.isArray(body.previousExplanations)
+          ? body.previousExplanations.filter((item): item is string => typeof item === "string")
+          : undefined,
+      },
       { allowMock },
     );
 
