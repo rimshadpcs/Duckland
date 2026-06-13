@@ -233,6 +233,11 @@
   box-shadow: 0 4px 12px rgba(0,0,0,0.02);
 }
 
+.message.duck.question .message-content {
+  background: #fff8df;
+  border-color: #e5b936;
+}
+
 /* Base styles for app-nav-left layout */
 .app-nav-left {
   display: flex;
@@ -355,6 +360,11 @@ html[data-theme="obsidian"] .message.duck .message-content {
   background: #272a2f;
   border-color: #343840;
   color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .message.duck.question .message-content {
+  background: #302b1c;
+  border-color: #6f5720;
 }
 
 html[data-theme="obsidian"] .avatar {

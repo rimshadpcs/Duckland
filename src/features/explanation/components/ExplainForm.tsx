@@ -61,9 +61,15 @@ function getAssistantFeedback(result: ExplanationResult) {
   }
 
   const gapSummary = readResultField(result, ["gapSummary", "mainGap", "gap", "feedback"]);
+  const evaluationContext = [
+    gapSummary,
+    readResultField(result, ["socraticQuestion", "question", "followUpQuestion", "targetedQuestion"]),
+    readResultField(result, ["whyItMatters"]),
+    readResultField(result, ["suggestedReExplanationPrompt", "tryAgain"]),
+  ].join(" ");
 
-  if (mentionsCardiacFormulaGap(gapSummary)) {
-    return "You identified the compensation, but you did not explain how heart rate and stroke volume combine to determine cardiac output.";
+  if (mentionsCardiacFormulaGap(evaluationContext)) {
+    return "You identified the compensation, but you did not connect cardiac output to the formula: heart rate × stroke volume.";
   }
 
   return (
@@ -81,8 +87,17 @@ function getAssistantQuestion(result: ExplanationResult) {
     "targetedQuestion",
   ]);
 
-  if (mentionsCardiacFormulaGap(`${question} ${readResultField(result, ["gapSummary", "mainGap"])}`)) {
-    return "How does the formula 'cardiac output = heart rate × stroke volume' explain why increasing heart rate can compensate for a lower stroke volume?";
+  if (
+    mentionsCardiacFormulaGap(
+      [
+        question,
+        readResultField(result, ["gapSummary", "mainGap"]),
+        readResultField(result, ["whyItMatters"]),
+        readResultField(result, ["suggestedReExplanationPrompt", "tryAgain"]),
+      ].join(" "),
+    )
+  ) {
+    return "If stroke volume falls, what must happen to heart rate for cardiac output to remain stable?";
   }
 
   return question;
@@ -239,7 +254,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       id: `${submissionId}-typing`,
       role: "assistant",
       kind: "loading",
-      content: "Thinking...",
+      content: "Thinking about your explanation...",
     };
 
     setHistory(prev => [
@@ -441,16 +456,20 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </div>
           ) : (
             <>
-              {history.map((msg) => {
-                const content = msg.content?.trim();
-                if (!content && msg.kind !== "loading") {
-                  return null;
-                }
-
+              {history.filter(msg => msg.content?.trim() || msg.kind === "loading").map((msg) => {
+                const content = msg.content?.trim() || "Thinking about your explanation...";
                 const visualRole = msg.role === "assistant" ? "duck" : "student";
 
                 return (
-                  <div key={msg.id} className={`message ${visualRole} ${msg.kind === "loading" ? "typing" : ""}`}>
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "message",
+                      visualRole,
+                      msg.kind === "loading" && "typing",
+                      msg.kind === "question" && "question",
+                    )}
+                  >
                     <div className="avatar">
                       {msg.role === "assistant" ? (
                         <img src="/feynduckhead.png" alt="Duck" />
