@@ -494,7 +494,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             <>
               {conversationMessages.map((msg) => {
                 const content = msg.content?.trim() || "Thinking about your explanation...";
-                const visualRole = msg.role === "assistant" ? "duck" : "student";
+                const visualRole = msg.role === "assistant" ? "assistant" : "student";
 
                 return (
                   <div

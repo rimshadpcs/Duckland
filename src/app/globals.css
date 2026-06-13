@@ -3511,7 +3511,8 @@ html[data-theme="obsidian"] .pricing-save-callout {
   max-width: 800px;
 }
 
-.message.duck {
+.message.duck,
+.message.assistant {
   align-self: flex-start;
 }
 
