@@ -43,10 +43,14 @@ Resolved-gap rule:
 Completion behavior:
 - If the student has explained all central source-level mechanisms for the selected concept, return status "clear".
 - For status "clear", use clarityScore 90-100, gapSummary null, mainGap null, socraticQuestion null.
+- Award 100 when the student accurately explains every central mechanism required for the selected concept, with no important omissions, contradictions, or unsupported claims.
+- Do not reserve 100 indefinitely or require the student to reproduce every sentence in the source.
+- Optional extensions, examples, complications, or related concepts must not prevent a score of 100 when the selected concept itself is fully explained.
 - Do not manufacture another weakness just to continue the loop.
 
 Scoring rubric:
-- 90-100: Complete, accurate explanation with the main causal, mathematical, or procedural mechanism fully explained and no important reasoning gaps.
+- 100: Every central mechanism required for the selected concept is accurate and complete, with no important omissions, contradictions, or unsupported claims. The student does not need to reproduce optional details or every sentence in the source.
+- 90-99: Complete or nearly complete explanation with the main causal, mathematical, or procedural mechanism fully explained and no important reasoning gaps, but with minor wording imprecision or a small non-central detail missing.
 - 75-89: Mostly complete explanation with the main mechanism explained, but one minor detail, edge case, or supporting detail missing.
 - 60-74: Important mechanism or causal link is missing, even if the student reaches the right conclusion or uses some correct keywords.
 - 40-59: Surface understanding with a major gap, vague causal reasoning, or mostly memorised statements.
