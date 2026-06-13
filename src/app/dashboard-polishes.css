@@ -209,35 +209,37 @@
 
 /* Chat Message distinct styles */
 .message {
-  margin-bottom: 24px;
+  margin-bottom: 2px;
 }
 
 .message.student .message-content {
-  background: #f5f0e8;
-  padding: 12px 16px;
-  border-radius: 16px;
-  border-top-left-radius: 4px; /* visually distinct */
+  background: #fff0b8;
+  border: 1.5px solid #f1c95d;
+  padding: 16px 20px;
+  border-radius: 20px;
+  color: #1f1b16;
+  box-shadow: 0 14px 30px rgba(133, 96, 22, 0.08);
 }
 
 .message.student .avatar {
-  background: #e8a020;
-  color: #fff;
+  background: #f7e8b9;
+  color: #8a5a00;
 }
 
 .message.duck .message-content,
 .message.assistant .message-content {
-  background: #fff;
-  border: 1px solid var(--line);
-  padding: 12px 16px;
-  border-radius: 16px;
-  border-top-left-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  background: #f4eadc;
+  border: 1.5px solid #d7cbb9;
+  padding: 16px 20px;
+  border-radius: 20px;
+  color: #5f554a;
+  box-shadow: 0 12px 28px rgba(91, 70, 38, 0.06);
 }
 
 .message.duck.question .message-content,
 .message.assistant.question .message-content {
-  background: #fff8df;
-  border-color: #e5b936;
+  background: #f5ead2;
+  border-color: #d9c6a7;
 }
 
 /* Base styles for app-nav-left layout */
@@ -353,8 +355,18 @@ html[data-theme="obsidian"] .composer-label-icon {
   color: #948d84;
 }
 
+html[data-theme="obsidian"] .conversation-kicker {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .composer-mic-btn {
+  background: #302b1c;
+  color: #f5c842;
+}
+
 html[data-theme="obsidian"] .message.student .message-content {
-  background: #2d3036;
+  background: #3a321f;
+  border-color: #6f5720;
   color: #f4f1ea;
 }
 

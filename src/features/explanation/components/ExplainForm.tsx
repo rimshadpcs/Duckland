@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { GapResultPanel } from "@src/features/gap-analysis";
-import { ArrowUp, Loader2, MessageSquareText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowUp, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@src/lib/utils";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import { getStudyRoomById, updateStudyRoom } from "@src/lib/storage/studyRoomsStorage";
@@ -492,9 +492,19 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </div>
           ) : (
             <>
+              <div className="conversation-kicker">Conversation</div>
               {conversationMessages.map((msg) => {
                 const content = msg.content?.trim() || "Thinking about your explanation...";
                 const visualRole = msg.role === "assistant" ? "assistant" : "student";
+                const avatar = (
+                  <div className="avatar">
+                    {msg.role === "assistant" ? (
+                      <img src="/feynduckhead.png" alt="Duck" />
+                    ) : (
+                      <span style={{ fontSize: "12px", fontWeight: "bold" }}>You</span>
+                    )}
+                  </div>
+                );
 
                 return (
                   <div
@@ -506,13 +516,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                       msg.kind === "question" && "question",
                     )}
                   >
-                    <div className="avatar">
-                      {msg.role === "assistant" ? (
-                        <img src="/feynduckhead.png" alt="Duck" />
-                      ) : (
-                        <span style={{ fontSize: "12px", fontWeight: "bold" }}>You</span>
-                      )}
-                    </div>
+                    {msg.role === "assistant" ? avatar : null}
                     <div className="message-content">
                       <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
                         {msg.kind === "loading" ? (
@@ -522,6 +526,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                         )}
                       </div>
                     </div>
+                    {msg.role === "user" ? avatar : null}
                   </div>
                 );
               })}
@@ -537,6 +542,14 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             <span>Your explanation</span>
           </div>
           <div className={`composer-wrapper ${isLoading ? "loading" : ""}`}>
+            <button
+              className="composer-mic-btn"
+              type="button"
+              aria-label="Explain by voice"
+              disabled={!request.notes}
+            >
+              <Mic size={20} />
+            </button>
             <textarea
               className="composer-textarea"
               placeholder={!request.notes ? "Add study material first..." : result ? "Try explaining it again..." : "Explain what you understand..."}
