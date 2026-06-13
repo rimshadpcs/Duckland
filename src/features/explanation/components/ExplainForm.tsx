@@ -20,9 +20,9 @@ type ExplainApiResponse = ExplanationResult & {
 
 type ConversationMessage = {
   id: string;
-  role: "duck" | "student";
-  text: string;
-  state?: "typing";
+  role: "user" | "assistant";
+  content: string;
+  kind?: "feedback" | "question" | "error" | "loading";
 };
 
 function createMessageId(prefix: string) {
@@ -33,38 +33,77 @@ function createMessageId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function readResultField(result: ExplanationResult, fieldNames: string[]) {
+  const resultRecord = result as unknown as Record<string, unknown>;
+
+  for (const fieldName of fieldNames) {
+    const value = resultRecord[fieldName];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function mentionsCardiacFormulaGap(value: string) {
+  return (
+    /cardiac output/i.test(value) &&
+    /heart rate/i.test(value) &&
+    /stroke volume/i.test(value)
+  );
+}
+
 function getAssistantFeedback(result: ExplanationResult) {
   if (result.status === "topic_mismatch") {
-    return result.chatMessage || result.gapSummary;
+    return readResultField(result, ["chatMessage", "gapSummary", "mainGap"]);
   }
 
-  const gapSummary = result.gapSummary?.trim();
-  const mentionsCardiacFormula =
-    /cardiac output/i.test(gapSummary || "") &&
-    /heart rate/i.test(gapSummary || "") &&
-    /stroke volume/i.test(gapSummary || "");
+  const gapSummary = readResultField(result, ["gapSummary", "mainGap", "gap", "feedback"]);
 
-  if (mentionsCardiacFormula) {
-    return "You identified the compensation, but skipped the formula linking heart rate and stroke volume to cardiac output.";
+  if (mentionsCardiacFormulaGap(gapSummary)) {
+    return "You identified the compensation, but you did not explain how heart rate and stroke volume combine to determine cardiac output.";
   }
 
-  return gapSummary || result.chatMessage || "You are close, but there is still one missing reasoning step.";
+  return (
+    gapSummary ||
+    readResultField(result, ["chatMessage"]) ||
+    "You are close, but there is still one missing reasoning step."
+  );
+}
+
+function getAssistantQuestion(result: ExplanationResult) {
+  const question = readResultField(result, [
+    "socraticQuestion",
+    "question",
+    "followUpQuestion",
+    "targetedQuestion",
+  ]);
+
+  if (mentionsCardiacFormulaGap(`${question} ${readResultField(result, ["gapSummary", "mainGap"])}`)) {
+    return "How does the formula 'cardiac output = heart rate × stroke volume' explain why increasing heart rate can compensate for a lower stroke volume?";
+  }
+
+  return question;
 }
 
 function getAssistantMessages(result: ExplanationResult, submissionId: string): ConversationMessage[] {
   const feedback = getAssistantFeedback(result);
-  const question = result.socraticQuestion?.trim();
+  const question = getAssistantQuestion(result);
 
   return [
     feedback && {
       id: `${submissionId}-duck-feedback`,
-      role: "duck" as const,
-      text: feedback,
+      role: "assistant" as const,
+      kind: "feedback" as const,
+      content: feedback,
     },
     question && {
       id: `${submissionId}-duck-question`,
-      role: "duck" as const,
-      text: question,
+      role: "assistant" as const,
+      kind: "question" as const,
+      content: question,
     },
   ].filter(Boolean) as ConversationMessage[];
 }
@@ -193,14 +232,14 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     const submissionId = createMessageId("submission");
     const studentMessage: ConversationMessage = {
       id: `${submissionId}-student`,
-      role: "student",
-      text: currentExplanation,
+      role: "user",
+      content: currentExplanation,
     };
     const typingMessage: ConversationMessage = {
       id: `${submissionId}-typing`,
-      role: "duck",
-      text: "Feynduck is checking your reasoning...",
-      state: "typing",
+      role: "assistant",
+      kind: "loading",
+      content: "Thinking...",
     };
 
     setHistory(prev => [
@@ -402,26 +441,35 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </div>
           ) : (
             <>
-              {history.filter(msg => msg.state === "typing" || msg.text.trim()).map((msg) => (
-                <div key={msg.id} className={`message ${msg.role} ${msg.state === "typing" ? "typing" : ""}`}>
-                  <div className="avatar">
-                    {msg.role === "duck" ? (
-                      <img src="/feynduckhead.png" alt="Duck" />
-                    ) : (
-                      <span style={{ fontSize: "12px", fontWeight: "bold" }}>You</span>
-                    )}
-                  </div>
-                  <div className="message-content">
-                    <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
-                      {msg.state === "typing" ? (
-                        <span aria-live="polite">{msg.text}</span>
+              {history.map((msg) => {
+                const content = msg.content?.trim();
+                if (!content && msg.kind !== "loading") {
+                  return null;
+                }
+
+                const visualRole = msg.role === "assistant" ? "duck" : "student";
+
+                return (
+                  <div key={msg.id} className={`message ${visualRole} ${msg.kind === "loading" ? "typing" : ""}`}>
+                    <div className="avatar">
+                      {msg.role === "assistant" ? (
+                        <img src="/feynduckhead.png" alt="Duck" />
                       ) : (
-                        msg.text
+                        <span style={{ fontSize: "12px", fontWeight: "bold" }}>You</span>
                       )}
                     </div>
+                    <div className="message-content">
+                      <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
+                        {msg.kind === "loading" ? (
+                          <span aria-live="polite">{content}</span>
+                        ) : (
+                          content
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {notice && <div className="app-notice">{notice}</div>}
               {error && <div className="app-error">{error}</div>}
             </>
