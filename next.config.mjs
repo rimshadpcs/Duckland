@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  devIndicators: false,
+  experimental: {
+    devtoolSegmentExplorer: false,
+  },
+};
 
 export default nextConfig;
 
