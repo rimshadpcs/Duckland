@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { EvaluationError, evaluateExplanation } from "@src/features/explanation";
+import { EvaluationError, evaluateExplanation } from "@src/features/explanation/api/evaluateExplanation";
 import { getOpenAIKeyStatus, isLocalDevelopment } from "@src/lib/openai";
 
 type ExplainBody = {
