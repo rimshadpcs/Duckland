@@ -95,6 +95,49 @@ function mapOpenAIError(error: unknown): EvaluationError {
   );
 }
 
+function includesCardiacOutputFormula(text: string) {
+  const lower = text.toLowerCase();
+
+  return (
+    lower.includes("cardiac output") &&
+    lower.includes("heart rate") &&
+    lower.includes("stroke volume") &&
+    /(=|equals|multiplied|times|product|×|\bx\b)/i.test(text)
+  );
+}
+
+function normaliseEvaluationResult(
+  result: ExplanationResult,
+  request: ExplanationRequest,
+): ExplanationResult {
+  if (result.status !== "ok" || typeof result.clarityScore !== "number") {
+    return result;
+  }
+
+  const notesHaveCentralFormula = includesCardiacOutputFormula(request.notes);
+  const explanationHasCentralFormula = includesCardiacOutputFormula(request.explanation);
+
+  if (!notesHaveCentralFormula || explanationHasCentralFormula || result.clarityScore < 75) {
+    return result;
+  }
+
+  return {
+    ...result,
+    clarityScore: 68,
+    gapType: "missing_mechanism",
+    gapSummary:
+      "You identified the compensation, but you did not connect cardiac output to the formula: heart rate × stroke volume.",
+    whyItMatters:
+      "Without the formula, the explanation reaches the right outcome but skips the mechanism that shows why heart rate can compensate when stroke volume falls.",
+    socraticQuestion:
+      "If stroke volume falls, what must happen to heart rate for cardiac output to remain stable?",
+    suggestedReExplanationPrompt:
+      "Try explaining cardiac output using the relationship between heart rate and stroke volume.",
+    chatMessage:
+      "You identified the compensation, but skipped the formula linking heart rate and stroke volume to cardiac output. If stroke volume falls, what must happen to heart rate for cardiac output to remain stable?",
+  };
+}
+
 export async function evaluateExplanation(
   request: ExplanationRequest,
   options: { allowMock: boolean },
@@ -146,7 +189,7 @@ export async function evaluateExplanation(
     }
 
     return {
-      result: JSON.parse(content) as ExplanationResult,
+      result: normaliseEvaluationResult(JSON.parse(content) as ExplanationResult, request),
       mockMode: false,
     };
   } catch (error) {

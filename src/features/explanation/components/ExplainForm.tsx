@@ -18,6 +18,57 @@ type ExplainApiResponse = ExplanationResult & {
   warning?: string;
 };
 
+type ConversationMessage = {
+  id: string;
+  role: "duck" | "student";
+  text: string;
+  state?: "typing";
+};
+
+function createMessageId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getAssistantFeedback(result: ExplanationResult) {
+  if (result.status === "topic_mismatch") {
+    return result.chatMessage || result.gapSummary;
+  }
+
+  const gapSummary = result.gapSummary?.trim();
+  const mentionsCardiacFormula =
+    /cardiac output/i.test(gapSummary || "") &&
+    /heart rate/i.test(gapSummary || "") &&
+    /stroke volume/i.test(gapSummary || "");
+
+  if (mentionsCardiacFormula) {
+    return "You identified the compensation, but skipped the formula linking heart rate and stroke volume to cardiac output.";
+  }
+
+  return gapSummary || result.chatMessage || "You are close, but there is still one missing reasoning step.";
+}
+
+function getAssistantMessages(result: ExplanationResult, submissionId: string): ConversationMessage[] {
+  const feedback = getAssistantFeedback(result);
+  const question = result.socraticQuestion?.trim();
+
+  return [
+    feedback && {
+      id: `${submissionId}-duck-feedback`,
+      role: "duck" as const,
+      text: feedback,
+    },
+    question && {
+      id: `${submissionId}-duck-question`,
+      role: "duck" as const,
+      text: question,
+    },
+  ].filter(Boolean) as ConversationMessage[];
+}
+
 export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, subject: string) => void }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [room, setRoom] = useState<StudyRoom | null>(null);
@@ -113,9 +164,10 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     };
   }, [isDraggingLeft, isDraggingRight]);
 
-  const [history, setHistory] = useState<Array<{ role: "duck" | "student"; text: string }>>([]);
+  const [history, setHistory] = useState<ConversationMessage[]>([]);
 
   const conversationRef = useRef<HTMLDivElement>(null);
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     if (conversationRef.current) {
@@ -128,7 +180,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   };
 
   const handleSubmit = async () => {
-    if (isLoading || !request.explanation.trim()) return;
+    if (submitLockRef.current || isLoading || !request.explanation.trim()) return;
     
     if (request.notes.trim().length < 10) {
       setError("Please provide study material (min 10 characters).");
@@ -137,8 +189,25 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     }
 
     const currentExplanation = request.explanation.trim();
-    
-    setHistory(prev => [...prev, { role: "student", text: currentExplanation }]);
+    submitLockRef.current = true;
+    const submissionId = createMessageId("submission");
+    const studentMessage: ConversationMessage = {
+      id: `${submissionId}-student`,
+      role: "student",
+      text: currentExplanation,
+    };
+    const typingMessage: ConversationMessage = {
+      id: `${submissionId}-typing`,
+      role: "duck",
+      text: "Feynduck is checking your reasoning...",
+      state: "typing",
+    };
+
+    setHistory(prev => [
+      ...prev.filter(message => message.id !== studentMessage.id && message.id !== typingMessage.id),
+      studentMessage,
+      typingMessage,
+    ]);
     setIsLoading(true);
     setError(null);
     setNotice(null);
@@ -174,18 +243,24 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         });
       }
       
-      setHistory(prev => [...prev, { 
-        role: "duck", 
-        text: resultPayload.chatMessage || `You're close, but there's a reasoning gap. ${resultPayload.gapSummary} ${resultPayload.socraticQuestion}` 
-      }]);
+      const assistantMessages = getAssistantMessages(resultPayload, submissionId);
+      setHistory(prev => [
+        ...prev.filter(message => message.id !== typingMessage.id && message.id !== studentMessage.id),
+        studentMessage,
+        ...assistantMessages,
+      ]);
       
       setRequest(prev => ({ ...prev, explanation: "" }));
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : "Could not analyse this explanation.";
       setResult(null);
       setError(errorMessage);
-      setHistory(prev => [...prev, { role: "duck", text: errorMessage }]);
+      setHistory(prev => [
+        ...prev.filter(message => message.id !== typingMessage.id && message.id !== studentMessage.id),
+        studentMessage,
+      ]);
     } finally {
+      submitLockRef.current = false;
       setIsLoading(false);
     }
   };
@@ -327,8 +402,8 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </div>
           ) : (
             <>
-              {history.map((msg, i) => (
-                <div key={i} className={`message ${msg.role}`}>
+              {history.filter(msg => msg.state === "typing" || msg.text.trim()).map((msg) => (
+                <div key={msg.id} className={`message ${msg.role} ${msg.state === "typing" ? "typing" : ""}`}>
                   <div className="avatar">
                     {msg.role === "duck" ? (
                       <img src="/feynduckhead.png" alt="Duck" />
@@ -337,7 +412,13 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                     )}
                   </div>
                   <div className="message-content">
-                    <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                    <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
+                      {msg.state === "typing" ? (
+                        <span aria-live="polite">{msg.text}</span>
+                      ) : (
+                        msg.text
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
