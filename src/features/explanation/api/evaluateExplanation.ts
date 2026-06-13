@@ -200,7 +200,7 @@ function normaliseEvaluationResult(
     if (isInsulinResistance && latestExplainsGlut4 && latestExplainsLiver && latestExplainsCompensation) {
       return {
         ...result,
-        clarityScore: 100,
+        clarityScore: typeof result.clarityScore === "number" ? Math.max(result.clarityScore, 92) : 92,
         gapSummary: null,
         mainGap: null,
         socraticQuestion: null,
@@ -235,7 +235,7 @@ function normaliseEvaluationResult(
     return {
       ...result,
       status: "clear",
-      clarityScore: 100,
+      clarityScore: Math.max(result.clarityScore, 92),
       gapSummary: null,
       mainGap: null,
       socraticQuestion: null,
