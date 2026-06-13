@@ -123,6 +123,40 @@ function getAssistantMessages(result: ExplanationResult, submissionId: string): 
   ].filter(Boolean) as ConversationMessage[];
 }
 
+function getRenderableMessages(
+  history: ConversationMessage[],
+  result: ExplanationResult | null,
+  isLoading: boolean,
+) {
+  const messages = history.filter(message => message.kind === "loading" || message.content.trim());
+
+  if (!result || isLoading) {
+    return messages;
+  }
+
+  const hasFeedback = messages.some(
+    message => message.role === "assistant" && message.kind === "feedback" && message.content.trim(),
+  );
+  const hasQuestion = messages.some(
+    message => message.role === "assistant" && message.kind === "question" && message.content.trim(),
+  );
+
+  if (hasFeedback && hasQuestion) {
+    return messages;
+  }
+
+  const fallbackMessages = getAssistantMessages(result, "result-fallback");
+
+  return [
+    ...messages.filter(message => message.kind !== "loading"),
+    ...fallbackMessages.filter(message => {
+      if (message.kind === "feedback") return !hasFeedback;
+      if (message.kind === "question") return !hasQuestion;
+      return false;
+    }),
+  ];
+}
+
 export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, subject: string) => void }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [room, setRoom] = useState<StudyRoom | null>(null);
@@ -227,7 +261,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     if (conversationRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
-  }, [history]);
+  }, [history, result]);
 
   const updateField = (field: keyof ExplanationRequest, value: string) => {
     setRequest((current) => ({ ...current, [field]: value }));
@@ -338,6 +372,8 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       </div>
     );
   }
+
+  const conversationMessages = getRenderableMessages(history, result, isLoading);
 
   return (
     <div className={`dashboard-container ${!isSourcePanelOpen ? 'left-closed' : ''}`}>
@@ -456,7 +492,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             </div>
           ) : (
             <>
-              {history.filter(msg => msg.content?.trim() || msg.kind === "loading").map((msg) => {
+              {conversationMessages.map((msg) => {
                 const content = msg.content?.trim() || "Thinking about your explanation...";
                 const visualRole = msg.role === "assistant" ? "duck" : "student";
 
