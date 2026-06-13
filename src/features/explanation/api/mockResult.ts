@@ -15,7 +15,7 @@ export function createMockExplanationResult(request: ExplanationRequest): Explan
   const explanationTopic = summariseTopic(request.explanation);
 
   return {
-    status: "ok",
+    status: "gap_found",
     sourceTopic,
     explanationTopic,
     clarityScore: 62,

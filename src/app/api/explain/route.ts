@@ -7,6 +7,9 @@ type ExplainBody = {
   explanation?: unknown;
   selectedConcept?: unknown;
   previousExplanations?: unknown;
+  previousMainGaps?: unknown;
+  previousSocraticQuestions?: unknown;
+  resolvedGaps?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -65,6 +68,15 @@ export async function POST(request: Request) {
         explanation: body.explanation.trim(),
         previousExplanations: Array.isArray(body.previousExplanations)
           ? body.previousExplanations.filter((item): item is string => typeof item === "string")
+          : undefined,
+        previousMainGaps: Array.isArray(body.previousMainGaps)
+          ? body.previousMainGaps.filter((item): item is string => typeof item === "string")
+          : undefined,
+        previousSocraticQuestions: Array.isArray(body.previousSocraticQuestions)
+          ? body.previousSocraticQuestions.filter((item): item is string => typeof item === "string")
+          : undefined,
+        resolvedGaps: Array.isArray(body.resolvedGaps)
+          ? body.resolvedGaps.filter((item): item is string => typeof item === "string")
           : undefined,
       },
       { allowMock },

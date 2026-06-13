@@ -18,6 +18,8 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
     width: width ? `${width}px` : undefined,
     transition: isDragging ? "none" : undefined,
   };
+  const isClear = result?.status === "clear";
+  const mainGap = result?.mainGap ?? result?.gapSummary;
 
   if (!result && !isLoading) {
     return (
@@ -62,15 +64,27 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
             <span className="score-value">{result?.status === "topic_mismatch" ? "—" : (result ? result.clarityScore : "--")}</span>
           </div>
 
+          {isClear ? (
+            <div className="insight-card strong" style={{ borderColor: '#22c55e' }}>
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#15803d', margin: '0 0 8px' }}>
+                Clear
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--ink)', lineHeight: 1.5 }}>
+                {result.chatMessage || "You clearly explained the key mechanism."}
+              </p>
+            </div>
+          ) : (
           <div className={`insight-card strong ${isLoading ? "loading-pulse" : ""}`} style={{ borderColor: result?.status === "topic_mismatch" ? '#eab308' : undefined }}>
             <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: result?.status === "topic_mismatch" ? '#eab308' : 'var(--amber-dark)', margin: '0 0 8px' }}>
               {result?.status === "topic_mismatch" ? "Topic mismatch" : "Main Gap"}
             </h4>
             <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--ink)', lineHeight: 1.5 }}>
-              {isLoading ? "Analyzing reasoning..." : result?.gapSummary}
+              {isLoading ? "Analyzing reasoning..." : mainGap}
             </p>
           </div>
+          )}
 
+          {!isClear && result?.socraticQuestion && (
           <div className={`insight-card highlight ${isLoading ? "loading-pulse" : ""}`}>
             <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#8a5a0a', margin: '0 0 8px' }}>
               <AlertCircle size={14} /> Socratic Question
@@ -79,8 +93,9 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
               {isLoading ? "..." : result?.socraticQuestion}
             </p>
           </div>
+          )}
 
-          {result?.status !== "topic_mismatch" && (
+          {result?.status !== "topic_mismatch" && !isClear && (
             <div className={`insight-card ${isLoading ? "loading-pulse" : ""}`}>
               <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', margin: '0 0 8px' }}>
                 Why it matters
@@ -91,6 +106,7 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
             </div>
           )}
 
+          {!isClear && (
           <div className={`insight-card ${isLoading ? "loading-pulse" : ""}`}>
             <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', margin: '0 0 8px' }}>
               Try again
@@ -99,6 +115,7 @@ export function GapResultPanel({ result, isLoading = false, width, isDragging = 
               {isLoading ? "..." : result?.suggestedReExplanationPrompt}
             </p>
           </div>
+          )}
         </div>
       </div>
     </aside>

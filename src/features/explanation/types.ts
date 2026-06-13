@@ -5,6 +5,9 @@ export type ExplanationRequest = {
   explanation: string;
   selectedConcept?: string;
   previousExplanations?: string[];
+  previousMainGaps?: string[];
+  previousSocraticQuestions?: string[];
+  resolvedGaps?: string[];
 };
 
 export type ExplanationResult = GapAnalysisResult;

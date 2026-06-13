@@ -63,6 +63,13 @@ function mentionsCardiacFormulaGap(value: string) {
 }
 
 function getAssistantFeedback(result: ExplanationResult) {
+  if (result.status === "clear") {
+    return (
+      result.chatMessage ||
+      "You've now explained the central mechanism clearly. That explanation is clear."
+    );
+  }
+
   if (result.status === "topic_mismatch") {
     return readResultField(result, ["chatMessage", "gapSummary", "mainGap"]);
   }
@@ -87,6 +94,10 @@ function getAssistantFeedback(result: ExplanationResult) {
 }
 
 function getAssistantQuestion(result: ExplanationResult) {
+  if (result.status === "clear") {
+    return "";
+  }
+
   const question = readResultField(result, [
     "socraticQuestion",
     "question",
@@ -208,6 +219,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [previousExplanations, setPreviousExplanations] = useState<string[]>([]);
+  const [previousMainGaps, setPreviousMainGaps] = useState<string[]>([]);
+  const [previousSocraticQuestions, setPreviousSocraticQuestions] = useState<string[]>([]);
+  const [resolvedGaps, setResolvedGaps] = useState<string[]>([]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -320,6 +334,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     setError(null);
     setNotice(null);
     setPreviousExplanations([]);
+    setPreviousMainGaps([]);
+    setPreviousSocraticQuestions([]);
+    setResolvedGaps([]);
     setHistory([
       conceptQuestionMessage,
       {
@@ -350,6 +367,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     setError(null);
     setNotice(null);
     setPreviousExplanations([]);
+    setPreviousMainGaps([]);
+    setPreviousSocraticQuestions([]);
+    setResolvedGaps([]);
     setHistory([]);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
@@ -407,6 +427,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
           selectedConcept,
           explanation: currentExplanation,
           previousExplanations,
+          previousMainGaps,
+          previousSocraticQuestions,
+          resolvedGaps,
         }),
       });
 
@@ -439,6 +462,17 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       
       setRequest(prev => ({ ...prev, explanation: "" }));
       setPreviousExplanations(prev => [...prev, currentExplanation]);
+      const nextMainGap = readResultField(resultPayload, ["mainGap", "gapSummary"]);
+      const nextQuestion = readResultField(resultPayload, ["socraticQuestion"]);
+      if (resultPayload.status !== "clear" && resultPayload.status !== "topic_mismatch" && nextMainGap) {
+        setPreviousMainGaps(prev => [...prev, nextMainGap]);
+      }
+      if (resultPayload.status !== "clear" && resultPayload.status !== "topic_mismatch" && nextQuestion) {
+        setPreviousSocraticQuestions(prev => [...prev, nextQuestion]);
+      }
+      if (resultPayload.resolvedGaps?.length) {
+        setResolvedGaps(prev => Array.from(new Set([...prev, ...resultPayload.resolvedGaps!])));
+      }
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : "Could not analyse this explanation.";
       setResult(null);
