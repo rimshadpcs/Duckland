@@ -2,6 +2,7 @@ import type { ExplanationRequest, ExplanationResult } from "../types";
 import { createMockExplanationResult } from "./mockResult";
 import { getOpenAIClient, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
 import { gapEvaluationPrompt } from "../prompts/gapEvaluationPrompt";
+import { evaluateInsulinResistanceCoverage, isInsulinResistanceSource } from "./insulinCoverage.mjs";
 
 export type EvaluationErrorCode =
   | "openai_not_configured"
@@ -144,12 +145,62 @@ function explainsCompensation(text: string) {
   return lower.includes("pancreas") || lower.includes("compensat") || lower.includes("more insulin") || lower.includes("hyperinsulin");
 }
 
+function applyInsulinResistanceCoverage(
+  result: ExplanationResult,
+  request: ExplanationRequest,
+): ExplanationResult | null {
+  if (!isInsulinResistanceSource(request.notes, request.selectedConcept)) {
+    return null;
+  }
+
+  const coverage = evaluateInsulinResistanceCoverage(request.notes, request.explanation);
+  const isClear = coverage.status === "clear";
+  const status: ExplanationResult["status"] = isClear ? "clear" : "gap_found";
+  const mainGap = coverage.mainGap;
+  const socraticQuestion = coverage.socraticQuestion;
+
+  return {
+    ...result,
+    status,
+    clarityScore: coverage.clarityScore,
+    gapType: "missing_mechanism",
+    gapSummary: mainGap,
+    mainGap,
+    whyItMatters: isClear
+      ? "Your latest explanation covers the central source-grounded mechanisms for the selected concept."
+      : "This matters because Feynduck scores the latest explanation by the source-level mechanism, not by earlier attempts or keyword overlap.",
+    socraticQuestion,
+    suggestedReExplanationPrompt: isClear
+      ? "You can now try explaining the concept again from memory, keeping the full causal chain intact."
+      : "Try rebuilding the explanation around the missing source-level step.",
+    chatMessage: isClear
+      ? "This explanation is clear: your latest answer covers the central insulin-resistance mechanism from the source."
+      : `${mainGap} ${socraticQuestion || ""}`.trim(),
+    scoreReason: coverage.scoreReason,
+    coveredClaims: coverage.coveredClaims,
+    missingClaims: coverage.missingClaims,
+    resolvedGaps: Array.from(new Set([
+      ...(result.resolvedGaps || []),
+      ...coverage.resolvedGaps,
+    ])),
+  };
+}
+
 function normaliseEvaluationResult(
   result: ExplanationResult,
   request: ExplanationRequest,
 ): ExplanationResult {
   if (result.status === "ok") {
     result = { ...result, status: "gap_found" };
+  }
+
+  if (result.status === "topic_mismatch") {
+    return result;
+  }
+
+  const insulinCoverageResult = applyInsulinResistanceCoverage(result, request);
+  if (insulinCoverageResult) {
+    return insulinCoverageResult;
   }
 
   const isInsulinResistance =

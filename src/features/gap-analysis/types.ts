@@ -10,5 +10,8 @@ export type GapAnalysisResult = {
   socraticQuestion: string | null;
   suggestedReExplanationPrompt: string;
   chatMessage: string;
+  scoreReason?: string;
+  coveredClaims?: string[];
+  missingClaims?: string[];
   resolvedGaps?: string[];
 };

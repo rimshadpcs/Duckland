@@ -30,5 +30,9 @@ export function createMockExplanationResult(request: ExplanationRequest): Explan
       "Try explaining the mechanism step by step, using only the source material on the left.",
     chatMessage:
       "Using mock feedback because OpenAI is not configured. To test the real Feynduck evaluator, add a valid OpenAI API key.",
+    scoreReason:
+      "Mock mode does not perform source-grounded claim coverage scoring.",
+    coveredClaims: [],
+    missingClaims: [],
   };
 }

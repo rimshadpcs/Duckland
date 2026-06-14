@@ -32,6 +32,11 @@ type ConversationMessage = {
   kind?: "feedback" | "question" | "error" | "loading";
 };
 
+type ConceptSuggestion = {
+  title: string;
+  description?: string;
+};
+
 function createMessageId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -181,36 +186,12 @@ function getRenderableMessages(
   ];
 }
 
-function getConceptSuggestions(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (
-    lower.includes("insulin") ||
-    lower.includes("glut4") ||
-    lower.includes("glucose") ||
-    lower.includes("diabetes")
-  ) {
-    return [
-      "Insulin resistance",
-      "GLUT4 movement",
-      "Liver glucose production",
-      "Compensatory hyperinsulinaemia",
-      "Exercise and insulin sensitivity",
-    ];
-  }
-
-  if (lower.includes("cardiac output") || lower.includes("stroke volume") || lower.includes("heart rate")) {
-    return ["Cardiac output", "Stroke volume", "Heart-rate compensation"];
-  }
-
-  return ["Key mechanism", "Main definition", "Cause and effect"];
-}
-
 export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, subject: string) => void }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [room, setRoom] = useState<StudyRoom | null>(null);
   const [roomStatus, setRoomStatus] = useState<"loading" | "found" | "not_found" | "quick">("loading");
   const [request, setRequest] = useState<ExplanationRequest>(initialRequest);
+  const [savedSourceMaterial, setSavedSourceMaterial] = useState("");
   const [result, setResult] = useState<ExplanationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +203,55 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   const [previousMainGaps, setPreviousMainGaps] = useState<string[]>([]);
   const [previousSocraticQuestions, setPreviousSocraticQuestions] = useState<string[]>([]);
   const [resolvedGaps, setResolvedGaps] = useState<string[]>([]);
+  const [conceptSuggestions, setConceptSuggestions] = useState<ConceptSuggestion[]>([]);
+  const [conceptsLoading, setConceptsLoading] = useState(false);
+  const [conceptsError, setConceptsError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchConceptSuggestions = async (sourceMaterial: string) => {
+    if (sourceMaterial.trim().length < 10) {
+      setConceptSuggestions([]);
+      setConceptsError(null);
+      setConceptsLoading(false);
+      return;
+    }
+
+    setConceptsLoading(true);
+    setConceptsError(null);
+
+    try {
+      const response = await fetch("/api/concepts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceMaterial }),
+      });
+
+      const payload = (await response.json()) as {
+        concepts?: ConceptSuggestion[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "I couldn't generate suggestions, but you can still enter a concept below.");
+      }
+
+      setConceptSuggestions(
+        Array.isArray(payload.concepts)
+          ? payload.concepts.filter((concept) => concept.title?.trim()).slice(0, 6)
+          : [],
+      );
+    } catch (caught) {
+      setConceptSuggestions([]);
+      setConceptsError(
+        caught instanceof Error
+          ? caught.message
+          : "I couldn't generate suggestions, but you can still enter a concept below.",
+      );
+    } finally {
+      setConceptsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -232,7 +262,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       if (found) {
         setRoom(found);
         setRequest(prev => ({ ...prev, notes: found.notes || "" }));
+        setSavedSourceMaterial(found.notes || "");
         setRoomStatus("found");
+        if (found.notes) void fetchConceptSuggestions(found.notes);
         if (onRoomLoaded) onRoomLoaded(found.title, found.subject);
       } else {
         setRoomStatus("not_found");
@@ -243,15 +275,65 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     }
   }, []);
 
+  const resetEvaluationSession = () => {
+    setSelectedConcept(null);
+    setResult(null);
+    setError(null);
+    setNotice(null);
+    setPreviousExplanations([]);
+    setPreviousMainGaps([]);
+    setPreviousSocraticQuestions([]);
+    setResolvedGaps([]);
+    setConceptSuggestions([]);
+    setConceptsError(null);
+    setConceptsLoading(false);
+    setHistory([]);
+    setRequest(prev => ({ ...prev, explanation: "" }));
+  };
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 2600);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSaveNotes = () => {
+    const sourceMaterial = request.notes.trim();
     setIsEditingNotes(false);
+    resetEvaluationSession();
+    setSavedSourceMaterial(sourceMaterial);
     if (roomId && room) {
       const updatedRoom = updateStudyRoom(roomId, {
-        notes: request.notes,
+        notes: sourceMaterial,
+        clarityScore: null,
+        weakSpotsCount: 0,
         lastStudiedAt: Date.now(),
       });
-      setRoom(updatedRoom ?? { ...room, notes: request.notes });
+      setRoom(updatedRoom ?? { ...room, notes: sourceMaterial });
     }
+    setRequest(prev => ({ ...prev, notes: sourceMaterial }));
+    void fetchConceptSuggestions(sourceMaterial);
+    if (onRoomLoaded) {
+      onRoomLoaded(room ? room.title : "Quick explain", room ? room.subject : "");
+    }
+  };
+
+  const handleCancelNotesEdit = () => {
+    setRequest(prev => ({ ...prev, notes: savedSourceMaterial }));
+    setIsEditingNotes(false);
   };
 
   // Resize State
@@ -309,6 +391,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   const [history, setHistory] = useState<ConversationMessage[]>([]);
 
   const conversationRef = useRef<HTMLDivElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const submitLockRef = useRef(false);
 
   useEffect(() => {
@@ -316,6 +399,15 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
   }, [history, result]);
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 140 ? "auto" : "hidden";
+  }, [request.explanation]);
 
   const updateField = (field: keyof ExplanationRequest, value: string) => {
     setRequest((current) => ({ ...current, [field]: value }));
@@ -358,6 +450,14 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     }
   };
 
+  const focusCustomConceptInput = () => {
+    setRequest(prev => ({ ...prev, explanation: "" }));
+    showToast("Type your concept in the chat box below.");
+    window.setTimeout(() => {
+      composerTextareaRef.current?.focus();
+    }, 0);
+  };
+
   const handleChangeTopic = () => {
     const shouldReset = window.confirm("Change topic? This will clear the current conversation and feedback, but keep your source material.");
     if (!shouldReset) return;
@@ -381,7 +481,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   const handleSubmit = async () => {
     if (submitLockRef.current || isLoading || !request.explanation.trim()) return;
     
-    if (request.notes.trim().length < 10) {
+    if (savedSourceMaterial.trim().length < 10) {
       setError("Please provide study material (min 10 characters).");
       setIsSourcePanelOpen(true);
       return;
@@ -423,7 +523,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          notes: request.notes,
+          notes: savedSourceMaterial,
           selectedConcept,
           explanation: currentExplanation,
           previousExplanations,
@@ -507,15 +607,15 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     );
   }
 
+  const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
   const conversationMessages = getRenderableMessages(
     history,
     result,
     isLoading,
-    !!request.notes,
+    hasSavedMaterial,
     selectedConcept,
   );
-  const conceptSuggestions = getConceptSuggestions(request.notes);
-  const composerPlaceholder = !request.notes
+  const composerPlaceholder = !hasSavedMaterial
     ? "Add study material first..."
     : !selectedConcept
       ? "Enter a concept or topic..."
@@ -563,7 +663,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
               <p style={{ marginBottom: '24px' }}>Add source material for Feynduck to use as the source.</p>
               <button 
                 className="app-start-btn" 
-                style={{ background: 'var(--amber)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+                style={{ background: 'var(--duck)', color: '#1a1612', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
                 onClick={() => setIsEditingNotes(true)}
               >
                 Add material
@@ -581,17 +681,15 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                 style={{ width: '100%', minWidth: '220px', marginBottom: '16px' }}
               />
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button 
-                  className="source-action-btn" 
-                  onClick={() => setIsEditingNotes(false)}
-                  style={{ color: 'var(--muted)' }}
+                <button
+                  className="source-action-btn"
+                  onClick={handleCancelNotesEdit}
                 >
                   Cancel
                 </button>
-                <button 
-                  className="source-action-btn" 
+                <button
+                  className="source-action-btn source-action-btn-primary"
                   onClick={handleSaveNotes}
-                  style={{ color: 'var(--amber-dark)' }}
                 >
                   Save material
                 </button>
@@ -642,10 +740,16 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         )}
         
         <div className="conversation-area" ref={conversationRef}>
-          {!request.notes ? (
+          {!hasSavedMaterial ? (
             <div className="empty-insights" style={{ height: '100%' }}>
-              <h4 style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>Add study material to begin</h4>
-              <p>Feynduck needs your material before it can check your explanation.</p>
+              <h4 style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>
+                {isEditingNotes ? "Save material to begin" : "Add study material to begin"}
+              </h4>
+              <p>
+                {isEditingNotes
+                  ? "Save your source material first, then Feynduck will suggest concepts from it."
+                  : "Feynduck needs your material before it can check your explanation."}
+              </p>
             </div>
           ) : (
             <>
@@ -687,20 +791,39 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
                   </div>
                 );
               })}
-              {request.notes && !selectedConcept && (
+              {hasSavedMaterial && !selectedConcept && (
                 <div className="concept-suggestions" aria-label="Suggested concepts">
-                  {conceptSuggestions.map((concept) => (
+                  {conceptsLoading && (
+                    <div className="concept-loading" aria-live="polite">
+                      <Loader2 className="icon-spin" size={16} />
+                      <span>Finding concepts in your material...</span>
+                    </div>
+                  )}
+                  {!conceptsLoading && conceptsError && (
+                    <div className="concept-error">{conceptsError}</div>
+                  )}
+                  {!conceptsLoading && conceptSuggestions.map((concept) => (
                     <button
-                      key={concept}
+                      key={concept.title}
                       type="button"
                       className="concept-chip"
-                      onClick={() => selectConcept(concept)}
+                      onClick={() => selectConcept(concept.title)}
+                      title={concept.description}
                     >
-                      {concept}
+                      {concept.title}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="concept-chip"
+                    onClick={focusCustomConceptInput}
+                    disabled={conceptsLoading}
+                  >
+                    Other
+                  </button>
                 </div>
               )}
+              {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
               {notice && <div className="app-notice">{notice}</div>}
               {error && <div className="app-error">{error}</div>}
             </>
@@ -713,35 +836,38 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
             <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
           </div>
           <div className={`composer-wrapper ${isLoading ? "loading" : ""}`}>
-            <button
-              className="composer-mic-btn"
-              type="button"
-              aria-label="Explain by voice"
-              disabled={!request.notes}
-            >
-              <Mic size={20} />
-            </button>
             <textarea
+              ref={composerTextareaRef}
               className="composer-textarea"
               placeholder={composerPlaceholder}
               value={request.explanation}
               onChange={(e) => updateField("explanation", e.target.value)}
               onKeyDown={handleKeyDown}
               rows={2}
-              disabled={!request.notes}
+              disabled={!hasSavedMaterial}
             />
-            <button
-              className="composer-send-btn"
-              onClick={handleSubmit}
-              disabled={isLoading || !request.explanation.trim() || !request.notes}
-              aria-label="Send explanation"
-            >
-              {isLoading ? (
-                <Loader2 className="icon-spin" size={20} />
-              ) : (
-                <ArrowUp size={20} />
-              )}
-            </button>
+            <div className="composer-actions">
+              <button
+                className="composer-mic-btn"
+                type="button"
+                aria-label="Explain by voice"
+                disabled={!hasSavedMaterial}
+              >
+                <Mic size={22} />
+              </button>
+              <button
+                className="composer-send-btn"
+                onClick={handleSubmit}
+                disabled={isLoading || !request.explanation.trim() || !hasSavedMaterial}
+                aria-label="Send explanation"
+              >
+                {isLoading ? (
+                  <Loader2 className="icon-spin" size={20} />
+                ) : (
+                  <ArrowUp size={20} />
+                )}
+              </button>
+            </div>
           </div>
           <p className="composer-hint">
             <span className="kb-shortcut">Cmd + Enter to send</span>
@@ -763,8 +889,12 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         isLoading={isLoading}
         width={rightWidth}
         isDragging={isDraggingRight}
-        hasNotes={!!request.notes}
+        hasNotes={hasSavedMaterial}
         hasSelectedConcept={!!selectedConcept}
+        sourceMaterial={hasSavedMaterial ? savedSourceMaterial : ""}
+        selectedConcept={selectedConcept}
+        explanationAttempts={previousExplanations}
+        sessionId={roomId || "quick"}
       />
     </div>
   );

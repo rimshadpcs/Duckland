@@ -21,7 +21,7 @@ export function LandingPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const items = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
+    const items = Array.from(document.querySelectorAll<HTMLElement>(".landing-page .reveal"));
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -34,8 +34,41 @@ export function LandingPage() {
       { threshold: 0.16 },
     );
 
-    items.forEach((item) => observer.observe(item));
+    items.forEach((item, index) => {
+      item.style.setProperty("--reveal-order", String(index % 5));
+      observer.observe(item);
+    });
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const main = document.querySelector<HTMLElement>(".landing-page");
+    if (!main) return;
+
+    let animationFrame = 0;
+    const updateScrollProgress = () => {
+      animationFrame = 0;
+      const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+      const progress = Math.min(window.scrollY / scrollable, 1);
+      main.style.setProperty("--landing-scroll", progress.toFixed(4));
+    };
+
+    const requestUpdate = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(updateScrollProgress);
+    };
+
+    updateScrollProgress();
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    window.addEventListener("resize", requestUpdate);
+
+    return () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      window.removeEventListener("scroll", requestUpdate);
+      window.removeEventListener("resize", requestUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -57,7 +90,7 @@ export function LandingPage() {
   };
 
   return (
-    <main>
+    <main className="landing-page">
       <Navbar themeMode={themeMode} toggleTheme={toggleTheme} />
       <HeroSection themeMode={themeMode} />
       <QualityProofSection />
