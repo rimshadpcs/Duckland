@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { AuthForm } from "@src/features/auth/components/AuthForm";
 import { getAuthenticatedUser } from "@src/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 function getSafeNext(value?: string | string[]) {
   const next = Array.isArray(value) ? value[0] : value;
   if (!next || !next.startsWith("/") || next.startsWith("//")) {

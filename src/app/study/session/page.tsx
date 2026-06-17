@@ -3,6 +3,8 @@ import { requireOnboardedUser } from "@src/lib/auth";
 import { getRoomSource } from "@src/lib/repositories/sources";
 import { getStudyRoom } from "@src/lib/repositories/study-rooms";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page({
   searchParams,
 }: {

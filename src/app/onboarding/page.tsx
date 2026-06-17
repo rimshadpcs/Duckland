@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { OnboardingFlow } from "@src/features/auth/components/OnboardingFlow";
 import { requireAuthenticatedUser } from "@src/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 function getSafeNext(value?: string | string[]) {
   const next = Array.isArray(value) ? value[0] : value;
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
