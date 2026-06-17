@@ -16,7 +16,7 @@ import { QualityProofSection } from "./QualityProofSection";
 
 type ThemeMode = "light" | "obsidian";
 
-export function LandingPage({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
+export function LandingPage() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [mounted, setMounted] = useState(false);
 
@@ -88,7 +88,7 @@ export function LandingPage({ isAuthenticated = false }: { isAuthenticated?: boo
   const toggleTheme = () => {
     setThemeMode((current) => (current === "obsidian" ? "light" : "obsidian"));
   };
-  const studyHref = isAuthenticated ? "/study" : "/start";
+  const studyHref = "/duck-watch";
 
   return (
     <main className="landing-page">
