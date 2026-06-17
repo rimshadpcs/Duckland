@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@src/components/ui";
 import { Sun, Moon } from "lucide-react";
+import type { AuthenticatedUser } from "@src/lib/auth";
 
 export function AppNavbar({
   themeMode,
@@ -10,6 +12,7 @@ export function AppNavbar({
   isSession = false,
   roomTitle,
   roomSubject,
+  authUser,
 }: {
   themeMode?: "light" | "obsidian";
   toggleTheme?: () => void;
@@ -17,7 +20,25 @@ export function AppNavbar({
   isSession?: boolean;
   roomTitle?: string;
   roomSubject?: string;
+  authUser?: AuthenticatedUser;
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  const handleSignOut = async () => {
+    setSignOutError(null);
+    try {
+      const response = await fetch("/auth/signout", { method: "POST" });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Could not sign out. Please try again.");
+      }
+      window.location.href = "/login";
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : "Could not sign out. Please try again.");
+    }
+  };
+
   return (
     <nav className="app-nav">
       <div className="app-nav-left">
@@ -46,16 +67,34 @@ export function AppNavbar({
       )}
 
       <div className="app-nav-right">
-        {isSession ? (
+        {isSession && (
           <a href="/study" style={{ textDecoration: 'none' }}>
             <Button variant="secondary" className="app-start-btn">
               Back to rooms
             </Button>
           </a>
-        ) : (
-          <Button variant="secondary" className="app-start-btn" onClick={() => window.location.href = '/study/session'}>
-            Start explaining
-          </Button>
+        )}
+        {authUser && (
+          <div className="account-menu">
+            <button
+              className="account-menu-trigger"
+              type="button"
+              onClick={() => setIsMenuOpen((current) => !current)}
+              aria-expanded={isMenuOpen}
+            >
+              <span>{authUser.label}</span>
+            </button>
+            {isMenuOpen && (
+              <div className="account-menu-popover">
+                <div>
+                  <strong>{authUser.displayName || authUser.email || "Account"}</strong>
+                  {authUser.displayName && authUser.email ? <span>{authUser.email}</span> : null}
+                </div>
+                <button type="button" onClick={handleSignOut}>Sign out</button>
+                {signOutError ? <p>{signOutError}</p> : null}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </nav>

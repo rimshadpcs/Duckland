@@ -3,10 +3,23 @@
 import { useState, useEffect } from "react";
 import { AppNavbar } from "./AppNavbar";
 import { ExplainForm } from "./ExplainForm";
+import type { AuthenticatedUser } from "@src/lib/auth";
+import type { SourceRow } from "@src/lib/repositories/sources";
+import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
 
 type ThemeMode = "light" | "obsidian";
 
-export function StudyDemoPage() {
+export function StudyDemoPage({
+  authUser,
+  initialRoom,
+  initialSource,
+  requestedRoomId,
+}: {
+  authUser?: AuthenticatedUser;
+  initialRoom?: StudyRoomRow | null;
+  initialSource?: SourceRow | null;
+  requestedRoomId?: string | null;
+}) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [mounted, setMounted] = useState(false);
   const [roomTitle, setRoomTitle] = useState<string | undefined>();
@@ -38,13 +51,14 @@ export function StudyDemoPage() {
         toggleTheme={toggleTheme} 
         mounted={mounted} 
         isSession={true}
-        roomTitle={roomTitle}
-        roomSubject={roomSubject}
+        roomTitle={roomTitle || initialRoom?.title}
+        roomSubject={roomSubject || initialRoom?.selected_concept || initialRoom?.description || undefined}
+        authUser={authUser}
       />
       <ExplainForm onRoomLoaded={(title, subject) => {
         setRoomTitle(title);
         setRoomSubject(subject);
-      }} />
+      }} initialRoom={initialRoom} initialSource={initialSource} requestedRoomId={requestedRoomId} />
     </div>
   );
 }

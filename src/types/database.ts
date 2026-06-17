@@ -1,0 +1,197 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          display_name: string | null;
+          full_name: string | null;
+          avatar_url: string | null;
+          education_stage: string | null;
+          education_country: string | null;
+          year_of_study: string | null;
+          qualification_type: string | null;
+          subjects: Json;
+          subject_area: string | null;
+          course_name: string | null;
+          institution_name: string | null;
+          institution_country: string | null;
+          onboarding_completed: boolean;
+          onboarding_completed_at: string | null;
+          onboarding_step: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email?: string | null;
+          display_name?: string | null;
+          full_name?: string | null;
+          avatar_url?: string | null;
+          education_stage?: string | null;
+          education_country?: string | null;
+          year_of_study?: string | null;
+          qualification_type?: string | null;
+          subjects?: Json;
+          subject_area?: string | null;
+          course_name?: string | null;
+          institution_name?: string | null;
+          institution_country?: string | null;
+          onboarding_completed?: boolean;
+          onboarding_completed_at?: string | null;
+          onboarding_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string | null;
+          display_name?: string | null;
+          full_name?: string | null;
+          avatar_url?: string | null;
+          education_stage?: string | null;
+          education_country?: string | null;
+          year_of_study?: string | null;
+          qualification_type?: string | null;
+          subjects?: Json;
+          subject_area?: string | null;
+          course_name?: string | null;
+          institution_name?: string | null;
+          institution_country?: string | null;
+          onboarding_completed?: boolean;
+          onboarding_completed_at?: string | null;
+          onboarding_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      study_rooms: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          subject: string | null;
+          source_material: string | null;
+          clarity_score: number | null;
+          selected_concept: string | null;
+          latest_clarity_score: number | null;
+          status: string;
+          weak_spots_count: number;
+          created_at: string;
+          updated_at: string;
+          last_studied_at: string | null;
+          last_activity_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          subject?: string | null;
+          source_material?: string | null;
+          clarity_score?: number | null;
+          selected_concept?: string | null;
+          latest_clarity_score?: number | null;
+          status?: string;
+          weak_spots_count?: number;
+          created_at?: string;
+          updated_at?: string;
+          last_studied_at?: string | null;
+          last_activity_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          title?: string;
+          description?: string | null;
+          subject?: string | null;
+          source_material?: string | null;
+          clarity_score?: number | null;
+          selected_concept?: string | null;
+          latest_clarity_score?: number | null;
+          status?: string;
+          weak_spots_count?: number;
+          created_at?: string;
+          updated_at?: string;
+          last_studied_at?: string | null;
+          last_activity_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "study_rooms_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sources: {
+        Row: {
+          id: string;
+          room_id: string;
+          user_id: string;
+          source_type: string;
+          title: string | null;
+          content: string;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          room_id: string;
+          user_id: string;
+          source_type?: string;
+          title?: string | null;
+          content: string;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          room_id?: string;
+          user_id?: string;
+          source_type?: string;
+          title?: string | null;
+          content?: string;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sources_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "study_rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sources_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};

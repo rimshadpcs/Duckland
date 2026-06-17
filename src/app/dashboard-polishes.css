@@ -646,6 +646,122 @@ html[data-theme="obsidian"] .source-action-btn-primary:hover {
   color: #1a1612;
 }
 
+html[data-theme="obsidian"] .auth-page {
+  background: #1f1f1d;
+}
+
+html[data-theme="obsidian"] .onboarding-page {
+  background:
+    radial-gradient(circle at 50% 8%, rgba(245, 200, 66, 0.08), transparent 32%),
+    #1f1f1d;
+}
+
+html[data-theme="obsidian"] .auth-card,
+html[data-theme="obsidian"] .onboarding-card,
+html[data-theme="obsidian"] .account-menu-popover {
+  background: #2a2a27;
+  border-color: #44423d;
+  box-shadow: none;
+}
+
+html[data-theme="obsidian"] .auth-brand,
+html[data-theme="obsidian"] .onboarding-logo,
+html[data-theme="obsidian"] .auth-back-link,
+html[data-theme="obsidian"] .auth-copy h1,
+html[data-theme="obsidian"] .auth-form label,
+html[data-theme="obsidian"] .account-menu-popover {
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .onboarding-stage {
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .onboarding-card-top,
+html[data-theme="obsidian"] .onboarding-step-count,
+html[data-theme="obsidian"] .onboarding-bubble p,
+html[data-theme="obsidian"] .onboarding-option small,
+html[data-theme="obsidian"] .onboarding-result small,
+html[data-theme="obsidian"] .onboarding-result.muted,
+html[data-theme="obsidian"] .onboarding-ready p {
+  color: #b4b1aa;
+}
+
+html[data-theme="obsidian"] .onboarding-bubble,
+html[data-theme="obsidian"] .onboarding-bubble::before,
+html[data-theme="obsidian"] .onboarding-option,
+html[data-theme="obsidian"] .onboarding-chip,
+html[data-theme="obsidian"] .onboarding-result,
+html[data-theme="obsidian"] .onboarding-ready dl div {
+  background: #242421;
+  border-color: #44423d;
+}
+
+html[data-theme="obsidian"] .onboarding-bubble h1,
+html[data-theme="obsidian"] .onboarding-compact-heading h1,
+html[data-theme="obsidian"] .onboarding-option span,
+html[data-theme="obsidian"] .onboarding-ready h2,
+html[data-theme="obsidian"] .onboarding-ready dd,
+html[data-theme="obsidian"] .onboarding-field input,
+html[data-theme="obsidian"] .onboarding-field textarea,
+html[data-theme="obsidian"] .onboarding-field select,
+html[data-theme="obsidian"] .onboarding-search input,
+html[data-theme="obsidian"] .onboarding-back,
+html[data-theme="obsidian"] .onboarding-secondary {
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .onboarding-field input,
+html[data-theme="obsidian"] .onboarding-field textarea,
+html[data-theme="obsidian"] .onboarding-field select,
+html[data-theme="obsidian"] .onboarding-search,
+html[data-theme="obsidian"] .onboarding-back,
+html[data-theme="obsidian"] .onboarding-back.floating,
+html[data-theme="obsidian"] .onboarding-secondary {
+  background: #1f1f1d;
+  border-color: #44423d;
+}
+
+html[data-theme="obsidian"] .onboarding-option.selected,
+html[data-theme="obsidian"] .onboarding-chip.selected,
+html[data-theme="obsidian"] .onboarding-compact-card.selected,
+html[data-theme="obsidian"] .onboarding-pill.selected,
+html[data-theme="obsidian"] .onboarding-subject.selected {
+  background: rgba(245, 200, 66, 0.16);
+  border-color: #d6a91f;
+}
+
+html[data-theme="obsidian"] .onboarding-compact-card,
+html[data-theme="obsidian"] .onboarding-pill,
+html[data-theme="obsidian"] .onboarding-subject,
+html[data-theme="obsidian"] .onboarding-nested-options {
+  background: #242421;
+  border-color: #44423d;
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .onboarding-progress {
+  background: #38362f;
+}
+
+html[data-theme="obsidian"] .auth-form input {
+  background: #242421;
+  border-color: #44423d;
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .auth-secondary-link {
+  background: #242421;
+  border-color: #44423d;
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .account-menu-trigger {
+  background: #2a2a27;
+  border-color: #44423d;
+  color: #f4f4f2;
+}
+
 html[data-theme="obsidian"] h4 {
   color: #948d84 !important;
 }
@@ -709,7 +825,7 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   flex-direction: column;
   justify-content: space-between;
   min-height: 220px;
-  cursor: pointer;
+  cursor: default;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   box-shadow: 0 4px 16px rgba(0,0,0,0.02);
 }
@@ -726,6 +842,7 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   text-align: center;
   background: rgba(245, 200, 66, 0.05);
   border: 1px dashed rgba(232, 160, 32, 0.4);
+  cursor: pointer;
 }
 
 .create-icon {
@@ -789,10 +906,12 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-top: 24px;
 }
 
 .card-cta {
+  border: 0;
   font-size: 0.85rem;
   font-weight: 800;
   color: var(--ink);
@@ -800,10 +919,62 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   padding: 6px 16px;
   border-radius: 999px;
   transition: background 0.2s;
+  cursor: pointer;
 }
 
-.room-card:hover .card-cta {
+.card-cta:hover {
   background: var(--amber);
+}
+
+.card-cta.danger {
+  background: transparent;
+  border: 1px solid rgba(185, 28, 28, 0.22);
+  color: #991b1b;
+}
+
+.room-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rooms-notice,
+.rooms-error {
+  width: min(1200px, 100%);
+  margin: 0 auto 18px;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  font-weight: 750;
+  padding: 12px 14px;
+}
+
+.rooms-notice {
+  border: 1px solid rgba(232, 160, 32, 0.26);
+  background: rgba(245, 200, 66, 0.1);
+  color: var(--amber-dark);
+}
+
+.rooms-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(185, 28, 28, 0.2);
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.rooms-error button {
+  border: 0;
+  border-radius: 999px;
+  background: #991b1b;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 850;
+  padding: 6px 12px;
 }
 
 .room-status {
@@ -949,9 +1120,27 @@ html[data-theme="obsidian"] .card-cta {
   border: 1px solid #41464f;
 }
 
-html[data-theme="obsidian"] .room-card:hover .card-cta {
+html[data-theme="obsidian"] .card-cta:hover {
   background: #2d3036;
   border-color: #e8a020;
+}
+
+html[data-theme="obsidian"] .card-cta.danger {
+  background: #272a2f;
+  border-color: rgba(248, 113, 113, 0.28);
+  color: #fca5a5;
+}
+
+html[data-theme="obsidian"] .rooms-notice {
+  background: rgba(245, 200, 66, 0.08);
+  border-color: rgba(232, 160, 32, 0.25);
+  color: #e8a020;
+}
+
+html[data-theme="obsidian"] .rooms-error {
+  background: rgba(127, 29, 29, 0.18);
+  border-color: rgba(248, 113, 113, 0.24);
+  color: #fca5a5;
 }
 
 html[data-theme="obsidian"] .modal-content {

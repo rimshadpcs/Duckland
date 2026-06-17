@@ -16,7 +16,7 @@ import { QualityProofSection } from "./QualityProofSection";
 
 type ThemeMode = "light" | "obsidian";
 
-export function LandingPage() {
+export function LandingPage({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [mounted, setMounted] = useState(false);
 
@@ -88,11 +88,12 @@ export function LandingPage() {
   const toggleTheme = () => {
     setThemeMode((current) => (current === "obsidian" ? "light" : "obsidian"));
   };
+  const studyHref = isAuthenticated ? "/study" : "/start";
 
   return (
     <main className="landing-page">
-      <Navbar themeMode={themeMode} toggleTheme={toggleTheme} />
-      <HeroSection themeMode={themeMode} />
+      <Navbar themeMode={themeMode} toggleTheme={toggleTheme} studyHref={studyHref} />
+      <HeroSection themeMode={themeMode} studyHref={studyHref} />
       <QualityProofSection />
       <HowItWorksSection />
       <ProductPreview />
@@ -101,7 +102,7 @@ export function LandingPage() {
       <AudienceSection />
       <PricingSection />
       <FAQSection />
-      <FinalCTASection />
+      <FinalCTASection studyHref={studyHref} />
       <Footer themeMode={themeMode} toggleTheme={toggleTheme} />
     </main>
   );

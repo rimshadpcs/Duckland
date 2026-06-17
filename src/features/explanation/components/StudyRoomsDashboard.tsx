@@ -1,78 +1,168 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, useTransition } from "react";
+import {
+  createStudyRoomAction,
+  deleteStudyRoomAction,
+  renameStudyRoomAction,
+} from "@src/app/study/actions";
 import { AppNavbar } from "./AppNavbar";
 import { useThemeMode } from "@src/lib/useThemeMode";
-import { getStudyRooms, saveStudyRooms } from "@src/lib/storage/studyRoomsStorage";
-import type { StudyRoom } from "../types";
+import { getStudyRooms as getLegacyStudyRooms } from "@src/lib/storage/studyRoomsStorage";
+import type { AuthenticatedUser } from "@src/lib/auth";
+import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
 
-export function StudyRoomsDashboard() {
+function formatDate(value: string) {
+  return value.slice(0, 10);
+}
+
+function formatStatus(room: StudyRoomRow) {
+  if (room.status === "clear") return "Clear";
+  if (room.status === "in_progress") return "In progress";
+  return "Not started";
+}
+
+export function StudyRoomsDashboard({
+  authUser,
+  initialRooms,
+  loadError,
+}: {
+  authUser?: AuthenticatedUser;
+  initialRooms: StudyRoomRow[];
+  loadError?: string | null;
+}) {
   const { themeMode, toggleTheme, mounted } = useThemeMode();
-  const [rooms, setRooms] = useState<StudyRoom[]>([]);
+  const [rooms, setRooms] = useState<StudyRoomRow[]>(initialRooms);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newRoomTitle, setNewRoomTitle] = useState("");
-  const [newRoomSubject, setNewRoomSubject] = useState("");
-  const [newRoomNotes, setNewRoomNotes] = useState("");
+  const [newRoomDescription, setNewRoomDescription] = useState("");
+  const [error, setError] = useState<string | null>(loadError || null);
+  const [hasLegacyRooms, setHasLegacyRooms] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    setRooms(getStudyRooms());
+    setHasLegacyRooms(getLegacyStudyRooms().length > 0);
   }, []);
 
   const handleCreateRoom = () => {
-    const newRoom: StudyRoom = {
-      id: Math.random().toString(36).substring(2, 11),
-      title: newRoomTitle || "Untitled Room",
-      subject: newRoomSubject || "General",
-      notes: newRoomNotes,
-      createdAt: Date.now(),
-    };
-    const updated = [newRoom, ...rooms];
-    setRooms(updated);
-    saveStudyRooms(updated);
-    setIsModalOpen(false);
-    
-    // Redirect to the new room session
-    window.location.href = `/study/session?roomId=${newRoom.id}`;
+    const title = newRoomTitle.trim();
+    if (!title) {
+      setError("Enter a room name.");
+      return;
+    }
+
+    setError(null);
+    startTransition(async () => {
+      const result = await createStudyRoomAction({
+        title,
+        description: newRoomDescription,
+      });
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      window.location.href = `/study/session?roomId=${result.data.id}`;
+    });
+  };
+
+  const handleRenameRoom = (room: StudyRoomRow) => {
+    const nextTitle = window.prompt("Rename study room", room.title)?.trim();
+    if (!nextTitle || nextTitle === room.title) return;
+
+    startTransition(async () => {
+      const previousRooms = rooms;
+      setRooms((current) => current.map((item) => (item.id === room.id ? { ...item, title: nextTitle } : item)));
+      const result = await renameStudyRoomAction(room.id, nextTitle);
+      if (!result.ok) {
+        setRooms(previousRooms);
+        setError(result.error);
+      }
+    });
+  };
+
+  const handleDeleteRoom = (room: StudyRoomRow) => {
+    const confirmed = window.confirm(`Delete "${room.title}"? Its source material will be deleted too.`);
+    if (!confirmed) return;
+
+    startTransition(async () => {
+      const result = await deleteStudyRoomAction(room.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setRooms((current) => current.filter((item) => item.id !== room.id));
+    });
   };
 
   return (
     <div className="app-workspace dashboard-rooms">
-      <AppNavbar themeMode={themeMode} toggleTheme={toggleTheme} mounted={mounted} isSession={false} />
+      <AppNavbar themeMode={themeMode} toggleTheme={toggleTheme} mounted={mounted} isSession={false} authUser={authUser} />
       <main className="rooms-main">
         <header className="rooms-header">
           <h1>Your study rooms</h1>
           <p>Create a room for each exam, topic, or paper you want to explain clearly.</p>
         </header>
 
+        {hasLegacyRooms ? (
+          <div className="rooms-notice">
+            You have study rooms saved on this device. Local room import will be available soon.
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rooms-error">
+            <span>{error || "We couldn't load your study rooms."}</span>
+            <button type="button" onClick={() => window.location.reload()}>Retry</button>
+          </div>
+        ) : null}
+
         <div className="rooms-grid">
           <div className="room-card create-card" onClick={() => setIsModalOpen(true)}>
             <div className="create-icon">+</div>
             <h3>Create study room</h3>
-            <p>Add study material, explain concepts, and find the gaps before the exam does.</p>
+            <p>Add material and start explaining what you understand.</p>
           </div>
 
-          <div className="room-card quick-card" onClick={() => window.location.href = '/study/session'}>
-            <div className="card-top">
-              <h3>Quick explain</h3>
-              <p>Add study material and test one explanation without setting up a room.</p>
-            </div>
-            <div className="card-bottom">
-              <span className="card-cta">Start</span>
-            </div>
-          </div>
-
-          {rooms.map(room => (
-            <div key={room.id} className="room-card local-room" onClick={() => window.location.href = `/study/session?roomId=${room.id}`}>
+          {rooms.length === 0 ? (
+            <div className="room-card empty-room-card">
               <div className="card-top">
-                <span className="room-subject">{room.subject}</span>
+                <h3>Create your first study room</h3>
+                <p>Add material and start explaining what you understand.</p>
+              </div>
+            </div>
+          ) : null}
+
+          {rooms.map((room) => (
+            <div key={room.id} className="room-card local-room">
+              <div className="card-top">
+                <span className="room-subject">{room.selected_concept || room.description || "Study room"}</span>
                 <h3>{room.title}</h3>
-                <span className="room-meta">{room.notes ? "Material added" : "No material yet"}</span>
+                <span className="room-meta">Last activity {formatDate(room.last_activity_at)}</span>
+                <span className="room-meta">Created {formatDate(room.created_at)}</span>
               </div>
               <div className="card-bottom">
                 <span className="room-status">
-                  {room.clarityScore ? `Clarity ${room.clarityScore}%` : "Not tested yet"}
+                  {room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room)}
                 </span>
-                <span className="card-cta">Open &rarr;</span>
+                <div className="room-card-actions">
+                  <button type="button" className="card-cta" onClick={() => handleRenameRoom(room)} disabled={isPending}>
+                    Rename
+                  </button>
+                  <button type="button" className="card-cta danger" onClick={() => handleDeleteRoom(room)} disabled={isPending}>
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="card-cta"
+                    onClick={() => {
+                      window.location.href = `/study/session?roomId=${room.id}`;
+                    }}
+                  >
+                    Open &rarr;
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -86,35 +176,30 @@ export function StudyRoomsDashboard() {
             <div className="modal-body">
               <div className="input-group">
                 <label>Room name</label>
-                <input 
-                  type="text" 
-                  placeholder="Biology Midterm" 
-                  value={newRoomTitle} 
-                  onChange={(e) => setNewRoomTitle(e.target.value)} 
+                <input
+                  type="text"
+                  placeholder="Kidney physiology"
+                  value={newRoomTitle}
+                  onChange={(e) => setNewRoomTitle(e.target.value)}
                 />
               </div>
               <div className="input-group">
-                <label>Subject</label>
-                <input 
-                  type="text" 
-                  placeholder="Biology, Law, Economics..." 
-                  value={newRoomSubject} 
-                  onChange={(e) => setNewRoomSubject(e.target.value)} 
-                />
-              </div>
-              <div className="input-group">
-                <label>Optional source material</label>
-                <textarea 
-                  placeholder="Add study material now, or add it later..." 
-                  value={newRoomNotes} 
-                  onChange={(e) => setNewRoomNotes(e.target.value)} 
-                  rows={4}
+                <label>Optional description</label>
+                <input
+                  type="text"
+                  placeholder="Human anatomy, finals, lecture 4..."
+                  value={newRoomDescription}
+                  onChange={(e) => setNewRoomDescription(e.target.value)}
                 />
               </div>
             </div>
             <div className="modal-actions">
-              <button className="modal-btn-cancel" onClick={() => setIsModalOpen(false)}>Cancel</button>
-              <button className="modal-btn-create" onClick={handleCreateRoom}>Create room</button>
+              <button className="modal-btn-cancel" onClick={() => setIsModalOpen(false)} disabled={isPending}>
+                Cancel
+              </button>
+              <button className="modal-btn-create" onClick={handleCreateRoom} disabled={isPending}>
+                {isPending ? "Creating..." : "Create room"}
+              </button>
             </div>
           </div>
         </div>

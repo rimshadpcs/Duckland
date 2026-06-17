@@ -1,7 +1,9 @@
 export function HeroSection({
   themeMode,
+  studyHref = "/start",
 }: {
   themeMode: "light" | "obsidian";
+  studyHref?: string;
 }) {
   return (
     <section className="hero" id="top">
@@ -12,7 +14,7 @@ export function HeroSection({
           explain what you understand, and find the missing link before the exam does.
         </p>
         <div className="hero-actions">
-          <a className="button primary" href="/study">
+          <a className="button primary" href={studyHref}>
             Start studying
           </a>
           <a className="button secondary" href="#how">

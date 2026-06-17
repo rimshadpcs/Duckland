@@ -4,9 +4,11 @@ import { Moon, Sun } from "lucide-react";
 export function Navbar({
   themeMode,
   toggleTheme,
+  studyHref = "/start",
 }: {
   themeMode: "light" | "obsidian";
   toggleTheme: () => void;
+  studyHref?: string;
 }) {
   return (
     <nav className="nav">
@@ -33,7 +35,7 @@ export function Navbar({
         >
           {themeMode === "obsidian" ? <Sun size={17} /> : <Moon size={17} />}
         </button>
-        <a className="nav-cta" href="/study">
+        <a className="nav-cta" href={studyHref}>
           Study with Feynduck →
         </a>
       </div>

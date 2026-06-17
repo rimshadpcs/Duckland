@@ -3,10 +3,12 @@
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { GapResultPanel } from "@src/features/gap-analysis";
 import { ArrowUp, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { saveRoomSourceAction, updateRoomSelectedConceptAction } from "@src/app/study/actions";
 import { cn } from "@src/lib/utils";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
-import { getStudyRoomById, updateStudyRoom } from "@src/lib/storage/studyRoomsStorage";
-import type { ExplanationRequest, ExplanationResult, StudyRoom } from "../types";
+import type { SourceRow } from "@src/lib/repositories/sources";
+import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import type { ExplanationRequest, ExplanationResult } from "../types";
 
 const initialRequest: ExplanationRequest = {
   notes: "",
@@ -186,10 +188,23 @@ function getRenderableMessages(
   ];
 }
 
-export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, subject: string) => void }) {
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [room, setRoom] = useState<StudyRoom | null>(null);
-  const [roomStatus, setRoomStatus] = useState<"loading" | "found" | "not_found" | "quick">("loading");
+export function ExplainForm({
+  onRoomLoaded,
+  initialRoom,
+  initialSource,
+  requestedRoomId,
+}: {
+  onRoomLoaded?: (title: string, subject: string) => void;
+  initialRoom?: StudyRoomRow | null;
+  initialSource?: SourceRow | null;
+  requestedRoomId?: string | null;
+}) {
+  const [roomId] = useState<string | null>(initialRoom?.id || null);
+  const [room, setRoom] = useState<StudyRoomRow | null>(initialRoom || null);
+  const [source, setSource] = useState<SourceRow | null>(initialSource || null);
+  const [roomStatus] = useState<"found" | "not_found" | "quick">(
+    initialRoom ? "found" : requestedRoomId ? "not_found" : "quick",
+  );
   const [request, setRequest] = useState<ExplanationRequest>(initialRequest);
   const [savedSourceMaterial, setSavedSourceMaterial] = useState("");
   const [result, setResult] = useState<ExplanationResult | null>(null);
@@ -254,24 +269,13 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
   };
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const id = searchParams.get("roomId");
-    if (id) {
-      setRoomId(id);
-      const found = getStudyRoomById(id);
-      if (found) {
-        setRoom(found);
-        setRequest(prev => ({ ...prev, notes: found.notes || "" }));
-        setSavedSourceMaterial(found.notes || "");
-        setRoomStatus("found");
-        if (found.notes) void fetchConceptSuggestions(found.notes);
-        if (onRoomLoaded) onRoomLoaded(found.title, found.subject);
-      } else {
-        setRoomStatus("not_found");
-      }
-    } else {
-      setRoomStatus("quick");
-      if (onRoomLoaded) onRoomLoaded("Quick explain", "");
+    const sourceMaterial = initialSource?.content || "";
+    setRequest((prev) => ({ ...prev, notes: sourceMaterial }));
+    setSavedSourceMaterial(sourceMaterial);
+    setSelectedConcept(initialRoom?.selected_concept || null);
+    if (sourceMaterial) void fetchConceptSuggestions(sourceMaterial);
+    if (onRoomLoaded) {
+      onRoomLoaded(initialRoom?.title || "Quick explain", initialRoom?.selected_concept || initialRoom?.description || "");
     }
   }, []);
 
@@ -310,24 +314,62 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     };
   }, []);
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     const sourceMaterial = request.notes.trim();
+    if (sourceMaterial.length < 10) {
+      setError("Source material must be at least 10 characters.");
+      return;
+    }
+
+    if (!roomId || !room) {
+      setError("Create or open a study room before saving material.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
     setIsEditingNotes(false);
     resetEvaluationSession();
-    setSavedSourceMaterial(sourceMaterial);
-    if (roomId && room) {
-      const updatedRoom = updateStudyRoom(roomId, {
-        notes: sourceMaterial,
-        clarityScore: null,
-        weakSpotsCount: 0,
-        lastStudiedAt: Date.now(),
-      });
-      setRoom(updatedRoom ?? { ...room, notes: sourceMaterial });
+
+    const result = await saveRoomSourceAction({
+      roomId,
+      roomTitle: room.title,
+      content: sourceMaterial,
+    });
+
+    if (!result.ok) {
+      setError(result.error);
+      setIsEditingNotes(true);
+      return;
     }
+
+    setSource((current) => ({
+      id: result.data.sourceId,
+      room_id: roomId,
+      user_id: current?.user_id || room.user_id,
+      source_type: "pasted_text",
+      title: result.data.title,
+      content: sourceMaterial,
+      metadata: current?.metadata || {},
+      created_at: current?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    setSavedSourceMaterial(sourceMaterial);
+    setRoom((current) =>
+      current
+        ? {
+            ...current,
+            title: result.data.roomTitle || current.title,
+            status: "in_progress",
+            last_activity_at: new Date().toISOString(),
+          }
+        : current,
+    );
     setRequest(prev => ({ ...prev, notes: sourceMaterial }));
+    setNotice("Material saved");
     void fetchConceptSuggestions(sourceMaterial);
     if (onRoomLoaded) {
-      onRoomLoaded(room ? room.title : "Quick explain", room ? room.subject : "");
+      onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
     }
   };
 
@@ -422,6 +464,9 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
 
     const selectionId = createMessageId("concept");
     setSelectedConcept(nextConcept);
+    if (roomId) {
+      void updateRoomSelectedConceptAction(roomId, nextConcept);
+    }
     setResult(null);
     setError(null);
     setNotice(null);
@@ -474,7 +519,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
     setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (onRoomLoaded) {
-      onRoomLoaded(room ? room.title : "Quick explain", room ? room.subject : "");
+      onRoomLoaded(room ? room.title : "Quick explain", room?.description || "");
     }
   };
 
@@ -546,13 +591,6 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
         setNotice(resultPayload.warning);
       }
       
-      if (roomId && resultPayload.status !== "topic_mismatch") {
-        updateStudyRoom(roomId, {
-          clarityScore: resultPayload.clarityScore ?? room?.clarityScore,
-          lastStudiedAt: Date.now(),
-        });
-      }
-      
       const assistantMessages = getAssistantMessages(resultPayload, submissionId);
       setHistory(prev => [
         ...prev.filter(message => message.id !== typingMessage.id && message.id !== studentMessage.id),
@@ -593,10 +631,6 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
       handleSubmit();
     }
   };
-
-  if (roomStatus === "loading") {
-    return null;
-  }
 
   if (roomStatus === "not_found") {
     return (
@@ -647,7 +681,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
             <div>
               <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--ink)' }}>{room ? room.title : "Quick explain"}</h4>
-              <div className="source-meta">{room ? room.subject : "Study material added"}</div>
+              <div className="source-meta">{hasSavedMaterial ? "Study material added" : room?.description || "No material yet"}</div>
               {selectedConcept && (
                 <div className="current-focus-pill">
                   <span>Current focus</span>
@@ -698,7 +732,7 @@ export function ExplainForm({ onRoomLoaded }: { onRoomLoaded?: (title: string, s
           ) : (
             <>
               <div className="metadata-pills">
-                <span className="metadata-pill">Source material</span>
+                <span className="metadata-pill">{source?.title || "Source material"}</span>
               </div>
 
               <div style={{ marginTop: '24px', position: 'relative' }}>
