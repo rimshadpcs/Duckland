@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@src/types/database";
 
+const APP_DOMAIN = "app.feynduck.com";
+
 function getSupabaseMiddlewareEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -17,18 +19,21 @@ function getSupabaseMiddlewareEnv() {
 
 function getEffectivePathname(request: NextRequest) {
   const hostname = request.headers.get("host");
-  const appDomain = "app.feynduck.com";
+  const pathname = request.nextUrl.pathname;
 
-  if (hostname === appDomain) {
-    return `/study${request.nextUrl.pathname === "/" ? "" : request.nextUrl.pathname}`;
+  if (hostname === APP_DOMAIN) {
+    if (pathname === "/") return "/study";
+    if (pathname === "/session" || pathname.startsWith("/session/")) return `/study${pathname}`;
+    if (pathname === "/study" || pathname.startsWith("/study/")) return pathname;
+    return pathname;
   }
 
-  return request.nextUrl.pathname;
+  return pathname;
 }
 
 function createRedirect(request: NextRequest, pathname: string, next?: string, cookiesFrom?: NextResponse) {
   const url = request.nextUrl.clone();
-  url.pathname = pathname;
+  url.pathname = request.headers.get("host") === APP_DOMAIN && pathname === "/study" ? "/" : pathname;
   url.search = "";
   if (next) {
     url.searchParams.set("next", next);
@@ -81,7 +86,7 @@ export async function updateSupabaseSession(request: NextRequest) {
   }
 
   const hostname = request.headers.get("host");
-  if (hostname === "app.feynduck.com") {
+  if (hostname === APP_DOMAIN) {
     const rewriteUrl = request.nextUrl.clone();
     rewriteUrl.pathname = effectivePathname;
     const rewriteResponse = NextResponse.rewrite(rewriteUrl);
