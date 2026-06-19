@@ -15,12 +15,17 @@ import { MoreVertical } from "lucide-react";
 const PINNED_ROOMS_KEY = "feynduck-pinned-room-ids";
 const MAX_PINNED_ROOMS = 4;
 
-function formatDate(value: string) {
+function formatDate(value?: string | null) {
+  if (!value) return "Not recorded";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function formatStatus(room: StudyRoomWithSourceCount) {
@@ -150,7 +155,8 @@ export function StudyRoomsDashboard({
 
   const renderRoomCard = (room: StudyRoomWithSourceCount) => {
     const statusText = room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room);
-    const sourceLabel = `${room.source_count} ${room.source_count === 1 ? "source" : "sources"}`;
+    const sourceCount = Number.isFinite(room.source_count) ? room.source_count : 0;
+    const sourceLabel = `${sourceCount} ${sourceCount === 1 ? "source" : "sources"}`;
     const isPinned = pinnedRoomIds.includes(room.id);
 
     return (
