@@ -13,39 +13,36 @@ export type AuthenticatedUser = {
 };
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
-  let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
-
   try {
-    supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const email = profile?.email || user.email || null;
+    const displayName = profile?.display_name || null;
+
+    return {
+      id: user.id,
+      email,
+      displayName,
+      label: displayName || email || "Account",
+      profile,
+    };
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[Supabase] auth skipped because client could not be created", error);
+      console.warn("[Supabase] auth lookup failed", error);
     }
     return null;
   }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const email = profile?.email || user.email || null;
-  const displayName = profile?.display_name || null;
-
-  return {
-    id: user.id,
-    email,
-    displayName,
-    label: displayName || email || "Account",
-    profile,
-  };
 }
 
 export async function requireAuthenticatedUser(next = "/study") {

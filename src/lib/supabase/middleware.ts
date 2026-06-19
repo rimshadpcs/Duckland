@@ -87,9 +87,25 @@ export async function updateSupabaseSession(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+
+  try {
+    const {
+      data: { user: authenticatedUser },
+    } = await supabase.auth.getUser();
+    user = authenticatedUser;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Supabase] middleware auth lookup failed", error);
+    }
+
+    if (isProtectedRoute) {
+      const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+      return createRedirect(request, "/login", next, response);
+    }
+
+    return response;
+  }
 
   if (isProtectedRoute && !user) {
     const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
