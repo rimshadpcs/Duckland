@@ -19,6 +19,13 @@ function getErrorMessage(prefix: string, error: { message?: string } | null) {
   return `${prefix}${error?.message ? `: ${error.message}` : "."}`;
 }
 
+function withSourceCount(room: StudyRoomRow, sourceCount = 0): StudyRoomWithSourceCount {
+  return {
+    ...room,
+    source_count: sourceCount,
+  };
+}
+
 export async function createStudyRoom(input: CreateStudyRoomInput) {
   const title = cleanTitle(input.title);
   if (!title) throw new Error("Room title is required.");
@@ -59,14 +66,21 @@ export async function getStudyRooms() {
     .eq("user_id", user.id)
     .order("last_activity_at", { ascending: false });
 
-  if (error) throw new Error(getErrorMessage("Could not load study rooms", error));
+  if (error) {
+    const fallback = await supabase
+      .from("study_rooms")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("last_activity_at", { ascending: false });
+
+    if (fallback.error) throw new Error(getErrorMessage("Could not load study rooms", fallback.error));
+    return fallback.data.map((room) => withSourceCount(room, 0));
+  }
+
   return data.map((room) => {
     const sources = room.sources as { count: number }[] | null | undefined;
     const { sources: _sources, ...studyRoom } = room;
-    return {
-      ...studyRoom,
-      source_count: sources?.[0]?.count ?? 0,
-    } as StudyRoomWithSourceCount;
+    return withSourceCount(studyRoom as StudyRoomRow, sources?.[0]?.count ?? 0);
   });
 }
 
