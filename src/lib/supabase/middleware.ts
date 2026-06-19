@@ -47,7 +47,26 @@ function createRedirect(request: NextRequest, pathname: string, next?: string, c
 
 export async function updateSupabaseSession(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const { url, publishableKey } = getSupabaseMiddlewareEnv();
+  const effectivePathname = getEffectivePathname(request);
+  const isProtectedRoute = effectivePathname === "/study" || effectivePathname.startsWith("/study/");
+  const isAuthRoute = effectivePathname === "/login" || effectivePathname === "/signup";
+  let env: ReturnType<typeof getSupabaseMiddlewareEnv>;
+
+  try {
+    env = getSupabaseMiddlewareEnv();
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Supabase] middleware skipped because env is missing", error);
+    }
+
+    if (isProtectedRoute) {
+      return createRedirect(request, "/login", `${request.nextUrl.pathname}${request.nextUrl.search}`, response);
+    }
+
+    return response;
+  }
+
+  const { url, publishableKey } = env;
 
   const supabase = createServerClient<Database>(url, publishableKey, {
     cookies: {
@@ -71,10 +90,6 @@ export async function updateSupabaseSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const effectivePathname = getEffectivePathname(request);
-  const isProtectedRoute = effectivePathname === "/study" || effectivePathname.startsWith("/study/");
-  const isAuthRoute = effectivePathname === "/login" || effectivePathname === "/signup";
 
   if (isProtectedRoute && !user) {
     const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;

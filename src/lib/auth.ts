@@ -13,7 +13,17 @@ export type AuthenticatedUser = {
 };
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
-  const supabase = await createSupabaseServerClient();
+  let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+  try {
+    supabase = await createSupabaseServerClient();
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Supabase] auth skipped because client could not be created", error);
+    }
+    return null;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
