@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Lightbulb, Loader2, RotateCcw } from "lucide-react";
 import type { GapAnalysisResult } from "../types";
+import type { Json } from "@src/types/database";
 
 type StudyPanelTab = "insights" | "quiz" | "flashcards";
 
@@ -25,6 +26,18 @@ type Flashcard = {
 
 type FlashcardReviewState = "understood" | "needs_review";
 
+type StudyToolsSnapshot = {
+  activeTab?: StudyPanelTab;
+  quizQuestions?: QuizQuestion[];
+  quizIndex?: number;
+  selectedAnswerIndex?: number | null;
+  checkedAnswerIndex?: number | null;
+  flashcards?: Flashcard[];
+  cardIndex?: number;
+  isCardRevealed?: boolean;
+  flashcardReviewState?: Record<string, FlashcardReviewState>;
+};
+
 type GapResultPanelProps = {
   result: GapAnalysisResult | null;
   isLoading?: boolean;
@@ -36,6 +49,8 @@ type GapResultPanelProps = {
   selectedConcept?: string | null;
   explanationAttempts?: string[];
   sessionId?: string;
+  initialStudyToolsState?: Json | null;
+  onStudyToolsStateChange?: (state: Json | null) => void;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -58,6 +73,27 @@ function getLatestEvaluation(result: GapAnalysisResult | null) {
     mainGap: result.mainGap ?? result.gapSummary ?? null,
     socraticQuestion: result.socraticQuestion,
     resolvedGaps: result.resolvedGaps,
+  };
+}
+
+function parseStudyToolsSnapshot(value: unknown): StudyToolsSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as StudyToolsSnapshot;
+
+  return {
+    activeTab: snapshot.activeTab === "insights" || snapshot.activeTab === "quiz" || snapshot.activeTab === "flashcards"
+      ? snapshot.activeTab
+      : undefined,
+    quizQuestions: Array.isArray(snapshot.quizQuestions) ? snapshot.quizQuestions : [],
+    quizIndex: typeof snapshot.quizIndex === "number" ? snapshot.quizIndex : 0,
+    selectedAnswerIndex: typeof snapshot.selectedAnswerIndex === "number" ? snapshot.selectedAnswerIndex : null,
+    checkedAnswerIndex: typeof snapshot.checkedAnswerIndex === "number" ? snapshot.checkedAnswerIndex : null,
+    flashcards: Array.isArray(snapshot.flashcards) ? snapshot.flashcards : [],
+    cardIndex: typeof snapshot.cardIndex === "number" ? snapshot.cardIndex : 0,
+    isCardRevealed: Boolean(snapshot.isCardRevealed),
+    flashcardReviewState: snapshot.flashcardReviewState && typeof snapshot.flashcardReviewState === "object"
+      ? snapshot.flashcardReviewState
+      : {},
   };
 }
 
@@ -198,6 +234,8 @@ export function GapResultPanel({
   selectedConcept = null,
   explanationAttempts = [],
   sessionId = "quick",
+  initialStudyToolsState = null,
+  onStudyToolsStateChange,
 }: GapResultPanelProps) {
   const panelStyle = {
     width: width ? `${width}px` : undefined,
@@ -218,6 +256,7 @@ export function GapResultPanel({
   const [cardIndex, setCardIndex] = useState(0);
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [flashcardReviewState, setFlashcardReviewState] = useState<Record<string, FlashcardReviewState>>({});
+  const hasHydratedStudyToolsRef = useRef(false);
 
   const latestEvaluation = useMemo(() => getLatestEvaluation(result), [result]);
   const hasCompletedExplanation = Boolean(result && selectedConcept && sourceMaterial);
@@ -242,7 +281,32 @@ export function GapResultPanel({
   }, [selectedConcept, sourceMaterial]);
 
   useEffect(() => {
+    if (hasHydratedStudyToolsRef.current) return;
+    hasHydratedStudyToolsRef.current = true;
+
     try {
+      const initialSnapshot = parseStudyToolsSnapshot(initialStudyToolsState);
+      if (initialSnapshot) {
+        if (initialSnapshot.activeTab) setActiveTab(initialSnapshot.activeTab);
+        setQuizQuestions(initialSnapshot.quizQuestions || []);
+        setQuizIndex(
+          initialSnapshot.quizQuestions?.length
+            ? Math.min(initialSnapshot.quizIndex || 0, initialSnapshot.quizQuestions.length - 1)
+            : 0,
+        );
+        setSelectedAnswerIndex(initialSnapshot.selectedAnswerIndex ?? null);
+        setCheckedAnswerIndex(initialSnapshot.checkedAnswerIndex ?? null);
+        setFlashcards(initialSnapshot.flashcards || []);
+        setCardIndex(
+          initialSnapshot.flashcards?.length
+            ? Math.min(initialSnapshot.cardIndex || 0, initialSnapshot.flashcards.length - 1)
+            : 0,
+        );
+        setIsCardRevealed(Boolean(initialSnapshot.isCardRevealed));
+        setFlashcardReviewState(initialSnapshot.flashcardReviewState || {});
+        return;
+      }
+
       const storedQuiz = window.localStorage.getItem(quizStorageKey);
       if (storedQuiz) {
         const parsed = JSON.parse(storedQuiz) as {
@@ -272,7 +336,38 @@ export function GapResultPanel({
       window.localStorage.removeItem(quizStorageKey);
       window.localStorage.removeItem(flashcardsStorageKey);
     }
-  }, [quizStorageKey, flashcardsStorageKey]);
+  }, [quizStorageKey, flashcardsStorageKey, initialStudyToolsState]);
+
+  useEffect(() => {
+    const hasStudyTools = quizQuestions.length > 0 || flashcards.length > 0;
+    if (!hasStudyTools) {
+      onStudyToolsStateChange?.(null);
+      return;
+    }
+
+    onStudyToolsStateChange?.({
+      activeTab,
+      quizQuestions,
+      quizIndex,
+      selectedAnswerIndex,
+      checkedAnswerIndex,
+      flashcards,
+      cardIndex,
+      isCardRevealed,
+      flashcardReviewState,
+    } as Json);
+  }, [
+    activeTab,
+    quizQuestions,
+    quizIndex,
+    selectedAnswerIndex,
+    checkedAnswerIndex,
+    flashcards,
+    cardIndex,
+    isCardRevealed,
+    flashcardReviewState,
+    onStudyToolsStateChange,
+  ]);
 
   useEffect(() => {
     if (!quizQuestions.length) return;

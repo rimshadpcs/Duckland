@@ -8,7 +8,9 @@ import {
   updateRoomSelectedConcept,
   updateRoomSourceState,
 } from "@src/lib/repositories/study-rooms";
+import { deleteStudyRoomSession, saveStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
 import { saveRoomSource } from "@src/lib/repositories/sources";
+import type { Json } from "@src/types/database";
 
 export type StudyActionResult<T = null> =
   | { ok: true; data: T }
@@ -109,5 +111,23 @@ export async function saveRoomSourceAction(input: {
     };
   } catch (error) {
     return { ok: false, error: getMessage(error, "Could not save source material.") };
+  }
+}
+
+export async function saveRoomSessionStateAction(roomId: string, state: Json): Promise<StudyActionResult> {
+  try {
+    await saveStudyRoomSession(roomId, state);
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not save room session.") };
+  }
+}
+
+export async function clearRoomSessionStateAction(roomId: string): Promise<StudyActionResult> {
+  try {
+    await deleteStudyRoomSession(roomId);
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not clear room session.") };
   }
 }

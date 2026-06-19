@@ -8,15 +8,22 @@ import {
 } from "@src/app/study/actions";
 import { AppNavbar } from "./AppNavbar";
 import { useThemeMode } from "@src/lib/useThemeMode";
-import { getStudyRooms as getLegacyStudyRooms } from "@src/lib/storage/studyRoomsStorage";
 import type { AuthenticatedUser } from "@src/lib/auth";
-import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import type { StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
+import { MoreVertical } from "lucide-react";
+
+const PINNED_ROOMS_KEY = "feynduck-pinned-room-ids";
+const MAX_PINNED_ROOMS = 4;
 
 function formatDate(value: string) {
-  return value.slice(0, 10);
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
-function formatStatus(room: StudyRoomRow) {
+function formatStatus(room: StudyRoomWithSourceCount) {
   if (room.status === "clear") return "Clear";
   if (room.status === "in_progress") return "In progress";
   return "Not started";
@@ -28,20 +35,34 @@ export function StudyRoomsDashboard({
   loadError,
 }: {
   authUser?: AuthenticatedUser;
-  initialRooms: StudyRoomRow[];
+  initialRooms: StudyRoomWithSourceCount[];
   loadError?: string | null;
 }) {
   const { themeMode, toggleTheme, mounted } = useThemeMode();
-  const [rooms, setRooms] = useState<StudyRoomRow[]>(initialRooms);
+  const [rooms, setRooms] = useState<StudyRoomWithSourceCount[]>(initialRooms);
+  const [pinnedRoomIds, setPinnedRoomIds] = useState<string[]>([]);
+  const [openMenuRoomId, setOpenMenuRoomId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newRoomTitle, setNewRoomTitle] = useState("");
   const [newRoomDescription, setNewRoomDescription] = useState("");
   const [error, setError] = useState<string | null>(loadError || null);
-  const [hasLegacyRooms, setHasLegacyRooms] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    setHasLegacyRooms(getLegacyStudyRooms().length > 0);
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PINNED_ROOMS_KEY) || "[]");
+      if (Array.isArray(parsed)) {
+        setPinnedRoomIds(parsed.filter((id): id is string => typeof id === "string").slice(0, MAX_PINNED_ROOMS));
+      }
+    } catch {
+      setPinnedRoomIds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const closeMenu = () => setOpenMenuRoomId(null);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
   }, []);
 
   const handleCreateRoom = () => {
@@ -67,7 +88,32 @@ export function StudyRoomsDashboard({
     });
   };
 
-  const handleRenameRoom = (room: StudyRoomRow) => {
+  const openRoom = (roomId: string) => {
+    window.location.href = `/study/session?roomId=${roomId}`;
+  };
+
+  const updatePinnedRooms = (nextPinnedRoomIds: string[]) => {
+    setPinnedRoomIds(nextPinnedRoomIds);
+    localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(nextPinnedRoomIds));
+  };
+
+  const handleTogglePin = (room: StudyRoomWithSourceCount) => {
+    setError(null);
+    const isPinned = pinnedRoomIds.includes(room.id);
+    if (isPinned) {
+      updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
+      return;
+    }
+
+    if (pinnedRoomIds.length >= MAX_PINNED_ROOMS) {
+      setError("You can pin up to 4 study rooms.");
+      return;
+    }
+
+    updatePinnedRooms([room.id, ...pinnedRoomIds]);
+  };
+
+  const handleRenameRoom = (room: StudyRoomWithSourceCount) => {
     const nextTitle = window.prompt("Rename study room", room.title)?.trim();
     if (!nextTitle || nextTitle === room.title) return;
 
@@ -82,7 +128,7 @@ export function StudyRoomsDashboard({
     });
   };
 
-  const handleDeleteRoom = (room: StudyRoomRow) => {
+  const handleDeleteRoom = (room: StudyRoomWithSourceCount) => {
     const confirmed = window.confirm(`Delete "${room.title}"? Its source material will be deleted too.`);
     if (!confirmed) return;
 
@@ -93,7 +139,79 @@ export function StudyRoomsDashboard({
         return;
       }
       setRooms((current) => current.filter((item) => item.id !== room.id));
+      updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
     });
+  };
+
+  const pinnedRooms = pinnedRoomIds
+    .map((id) => rooms.find((room) => room.id === id))
+    .filter((room): room is StudyRoomWithSourceCount => Boolean(room));
+  const unpinnedRooms = rooms.filter((room) => !pinnedRoomIds.includes(room.id));
+
+  const renderRoomCard = (room: StudyRoomWithSourceCount) => {
+    const statusText = room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room);
+    const sourceLabel = `${room.source_count} ${room.source_count === 1 ? "source" : "sources"}`;
+    const isPinned = pinnedRoomIds.includes(room.id);
+
+    return (
+      <article
+        key={room.id}
+        className={`room-card local-room room-card-link ${isPinned ? "pinned-room-card" : ""}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => openRoom(room.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openRoom(room.id);
+          }
+        }}
+      >
+        <div className="room-card-menu">
+          <button
+            type="button"
+            className="room-menu-trigger"
+            aria-label={`Open options for ${room.title}`}
+            aria-expanded={openMenuRoomId === room.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpenMenuRoomId((current) => (current === room.id ? null : room.id));
+            }}
+          >
+            <MoreVertical size={18} />
+          </button>
+          {openMenuRoomId === room.id ? (
+            <div className="room-menu-popover" onClick={(event) => event.stopPropagation()}>
+              <button type="button" onClick={() => handleTogglePin(room)}>
+                {isPinned ? "Unpin" : "Pin to top"}
+              </button>
+              <button type="button" onClick={() => handleRenameRoom(room)} disabled={isPending}>
+                Edit name
+              </button>
+              <button type="button" className="danger" onClick={() => handleDeleteRoom(room)} disabled={isPending}>
+                Delete
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <div className="card-top">
+          <span className="room-subject">{room.selected_concept || room.description || "Study room"}</span>
+          <h3>{room.title}</h3>
+          <p className="room-card-summary">{sourceLabel}</p>
+          <div className="room-date-list">
+            <span className="room-meta">Last activity {formatDate(room.last_activity_at)}</span>
+            <span className="room-meta">Created {formatDate(room.created_at)}</span>
+          </div>
+        </div>
+        <div className="card-bottom">
+          <span className={`room-status ${room.status === "in_progress" ? "in-progress" : ""}`}>
+            <span aria-hidden="true" />
+            {statusText}
+          </span>
+          <span className="room-card-arrow" aria-hidden="true">→</span>
+        </div>
+      </article>
+    );
   };
 
   return (
@@ -104,12 +222,6 @@ export function StudyRoomsDashboard({
           <h1>Your study rooms</h1>
           <p>Create a room for each exam, topic, or paper you want to explain clearly.</p>
         </header>
-
-        {hasLegacyRooms ? (
-          <div className="rooms-notice">
-            You have study rooms saved on this device. Local room import will be available soon.
-          </div>
-        ) : null}
 
         {error ? (
           <div className="rooms-error">
@@ -134,38 +246,20 @@ export function StudyRoomsDashboard({
             </div>
           ) : null}
 
-          {rooms.map((room) => (
-            <div key={room.id} className="room-card local-room">
-              <div className="card-top">
-                <span className="room-subject">{room.selected_concept || room.description || "Study room"}</span>
-                <h3>{room.title}</h3>
-                <span className="room-meta">Last activity {formatDate(room.last_activity_at)}</span>
-                <span className="room-meta">Created {formatDate(room.created_at)}</span>
-              </div>
-              <div className="card-bottom">
-                <span className="room-status">
-                  {room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room)}
-                </span>
-                <div className="room-card-actions">
-                  <button type="button" className="card-cta" onClick={() => handleRenameRoom(room)} disabled={isPending}>
-                    Rename
-                  </button>
-                  <button type="button" className="card-cta danger" onClick={() => handleDeleteRoom(room)} disabled={isPending}>
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    className="card-cta"
-                    onClick={() => {
-                      window.location.href = `/study/session?roomId=${room.id}`;
-                    }}
-                  >
-                    Open &rarr;
-                  </button>
-                </div>
-              </div>
+          {pinnedRooms.length ? (
+            <div className="rooms-section-heading">
+              <span>Pinned</span>
+              <small>{pinnedRooms.length}/{MAX_PINNED_ROOMS}</small>
             </div>
-          ))}
+          ) : null}
+          {pinnedRooms.map(renderRoomCard)}
+
+          {pinnedRooms.length && unpinnedRooms.length ? (
+            <div className="rooms-section-heading all-rooms-heading">
+              <span>All rooms</span>
+            </div>
+          ) : null}
+          {unpinnedRooms.map(renderRoomCard)}
         </div>
       </main>
 

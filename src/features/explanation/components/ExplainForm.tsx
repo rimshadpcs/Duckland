@@ -3,11 +3,17 @@
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { GapResultPanel } from "@src/features/gap-analysis";
 import { ArrowUp, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { saveRoomSourceAction, updateRoomSelectedConceptAction } from "@src/app/study/actions";
+import {
+  clearRoomSessionStateAction,
+  saveRoomSessionStateAction,
+  saveRoomSourceAction,
+  updateRoomSelectedConceptAction,
+} from "@src/app/study/actions";
 import { cn } from "@src/lib/utils";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import type { Json } from "@src/types/database";
 import type { ExplanationRequest, ExplanationResult } from "../types";
 
 const initialRequest: ExplanationRequest = {
@@ -38,6 +44,102 @@ type ConceptSuggestion = {
   title: string;
   description?: string;
 };
+
+type PersistedSessionSnapshot = {
+  selectedConcept: string | null;
+  result: ExplanationResult | null;
+  history: ConversationMessage[];
+  previousExplanations: string[];
+  previousMainGaps: string[];
+  previousSocraticQuestions: string[];
+  resolvedGaps: string[];
+  studyTools?: Json | null;
+  sourceUpdatedAt?: string | null;
+};
+
+function getSessionStorageKey(roomId: string | null) {
+  return `feynduck-session-${roomId || "quick"}`;
+}
+
+function readPersistedSession(key: string): PersistedSessionSnapshot | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedSessionSnapshot>;
+
+    return {
+      selectedConcept: typeof parsed.selectedConcept === "string" ? parsed.selectedConcept : null,
+      result: parsed.result && typeof parsed.result === "object" ? parsed.result as ExplanationResult : null,
+      history: Array.isArray(parsed.history)
+        ? parsed.history.filter((message): message is ConversationMessage => (
+            message &&
+            typeof message === "object" &&
+            (message.role === "user" || message.role === "assistant") &&
+            typeof message.content === "string" &&
+            typeof message.id === "string"
+          ))
+        : [],
+      previousExplanations: Array.isArray(parsed.previousExplanations)
+        ? parsed.previousExplanations.filter((value): value is string => typeof value === "string")
+        : [],
+      previousMainGaps: Array.isArray(parsed.previousMainGaps)
+        ? parsed.previousMainGaps.filter((value): value is string => typeof value === "string")
+        : [],
+      previousSocraticQuestions: Array.isArray(parsed.previousSocraticQuestions)
+        ? parsed.previousSocraticQuestions.filter((value): value is string => typeof value === "string")
+        : [],
+      resolvedGaps: Array.isArray(parsed.resolvedGaps)
+        ? parsed.resolvedGaps.filter((value): value is string => typeof value === "string")
+        : [],
+      studyTools: parsed.studyTools as Json | null | undefined,
+      sourceUpdatedAt: typeof parsed.sourceUpdatedAt === "string" ? parsed.sourceUpdatedAt : null,
+    };
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function parsePersistedSession(value: unknown): PersistedSessionSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Partial<PersistedSessionSnapshot>;
+
+  return {
+    selectedConcept: typeof parsed.selectedConcept === "string" ? parsed.selectedConcept : null,
+    result: parsed.result && typeof parsed.result === "object" ? parsed.result as ExplanationResult : null,
+    history: Array.isArray(parsed.history)
+      ? parsed.history.filter((message): message is ConversationMessage => (
+          message &&
+          typeof message === "object" &&
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string" &&
+          typeof message.id === "string"
+        ))
+      : [],
+    previousExplanations: Array.isArray(parsed.previousExplanations)
+      ? parsed.previousExplanations.filter((item): item is string => typeof item === "string")
+      : [],
+    previousMainGaps: Array.isArray(parsed.previousMainGaps)
+      ? parsed.previousMainGaps.filter((item): item is string => typeof item === "string")
+      : [],
+    previousSocraticQuestions: Array.isArray(parsed.previousSocraticQuestions)
+      ? parsed.previousSocraticQuestions.filter((item): item is string => typeof item === "string")
+      : [],
+    resolvedGaps: Array.isArray(parsed.resolvedGaps)
+      ? parsed.resolvedGaps.filter((item): item is string => typeof item === "string")
+      : [],
+    studyTools: parsed.studyTools as Json | null | undefined,
+    sourceUpdatedAt: typeof parsed.sourceUpdatedAt === "string" ? parsed.sourceUpdatedAt : null,
+  };
+}
+
+function savePersistedSession(key: string, snapshot: PersistedSessionSnapshot) {
+  window.localStorage.setItem(key, JSON.stringify(snapshot));
+}
+
+function clearPersistedSession(key: string) {
+  window.localStorage.removeItem(key);
+}
 
 function createMessageId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -192,11 +294,13 @@ export function ExplainForm({
   onRoomLoaded,
   initialRoom,
   initialSource,
+  initialSessionState,
   requestedRoomId,
 }: {
   onRoomLoaded?: (title: string, subject: string) => void;
   initialRoom?: StudyRoomRow | null;
   initialSource?: SourceRow | null;
+  initialSessionState?: Json | null;
   requestedRoomId?: string | null;
 }) {
   const [roomId] = useState<string | null>(initialRoom?.id || null);
@@ -205,6 +309,7 @@ export function ExplainForm({
   const [roomStatus] = useState<"found" | "not_found" | "quick">(
     initialRoom ? "found" : requestedRoomId ? "not_found" : "quick",
   );
+  const sessionStorageKey = getSessionStorageKey(initialRoom?.id || null);
   const [request, setRequest] = useState<ExplanationRequest>(initialRequest);
   const [savedSourceMaterial, setSavedSourceMaterial] = useState("");
   const [result, setResult] = useState<ExplanationResult | null>(null);
@@ -222,7 +327,10 @@ export function ExplainForm({
   const [conceptsLoading, setConceptsLoading] = useState(false);
   const [conceptsError, setConceptsError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [studyToolsState, setStudyToolsState] = useState<Json | null>(null);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchConceptSuggestions = async (sourceMaterial: string) => {
     if (sourceMaterial.trim().length < 10) {
@@ -280,6 +388,8 @@ export function ExplainForm({
   }, []);
 
   const resetEvaluationSession = () => {
+    clearPersistedSession(sessionStorageKey);
+    if (roomId) void clearRoomSessionStateAction(roomId);
     setSelectedConcept(null);
     setResult(null);
     setError(null);
@@ -291,6 +401,7 @@ export function ExplainForm({
     setConceptSuggestions([]);
     setConceptsError(null);
     setConceptsLoading(false);
+    setStudyToolsState(null);
     setHistory([]);
     setRequest(prev => ({ ...prev, explanation: "" }));
   };
@@ -310,6 +421,9 @@ export function ExplainForm({
     return () => {
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
+      }
+      if (serverSaveTimeoutRef.current) {
+        clearTimeout(serverSaveTimeoutRef.current);
       }
     };
   }, []);
@@ -437,6 +551,82 @@ export function ExplainForm({
   const submitLockRef = useRef(false);
 
   useEffect(() => {
+    const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey);
+    if (persistedSession && (!initialSource?.updated_at || persistedSession.sourceUpdatedAt === initialSource.updated_at)) {
+      setSelectedConcept(persistedSession.selectedConcept);
+      setResult(persistedSession.result);
+      setHistory(persistedSession.history);
+      setPreviousExplanations(persistedSession.previousExplanations);
+      setPreviousMainGaps(persistedSession.previousMainGaps);
+      setPreviousSocraticQuestions(persistedSession.previousSocraticQuestions);
+      setResolvedGaps(persistedSession.resolvedGaps);
+      setStudyToolsState(persistedSession.studyTools || null);
+
+      if (onRoomLoaded && persistedSession.selectedConcept) {
+        onRoomLoaded(initialRoom?.title || "Quick explain", persistedSession.selectedConcept);
+      }
+    }
+
+    setSessionHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+
+    const hasSessionState =
+      Boolean(selectedConcept) ||
+      Boolean(result) ||
+      Boolean(studyToolsState) ||
+      history.length > 0 ||
+      previousExplanations.length > 0 ||
+      previousMainGaps.length > 0 ||
+      previousSocraticQuestions.length > 0 ||
+      resolvedGaps.length > 0;
+
+    if (!hasSessionState) {
+      clearPersistedSession(sessionStorageKey);
+      if (roomId) void clearRoomSessionStateAction(roomId);
+      return;
+    }
+
+    const snapshot: PersistedSessionSnapshot = {
+      selectedConcept,
+      result,
+      history: history.filter((message) => message.kind !== "loading"),
+      previousExplanations,
+      previousMainGaps,
+      previousSocraticQuestions,
+      resolvedGaps,
+      studyTools: studyToolsState,
+      sourceUpdatedAt: source?.updated_at || initialSource?.updated_at || null,
+    };
+
+    savePersistedSession(sessionStorageKey, snapshot);
+
+    if (roomId) {
+      if (serverSaveTimeoutRef.current) {
+        clearTimeout(serverSaveTimeoutRef.current);
+      }
+      serverSaveTimeoutRef.current = setTimeout(() => {
+        void saveRoomSessionStateAction(roomId, snapshot as unknown as Json);
+      }, 650);
+    }
+  }, [
+    sessionHydrated,
+    sessionStorageKey,
+    selectedConcept,
+    result,
+    history,
+    previousExplanations,
+    previousMainGaps,
+    previousSocraticQuestions,
+    resolvedGaps,
+    studyToolsState,
+    source?.updated_at,
+    initialSource?.updated_at,
+  ]);
+
+  useEffect(() => {
     if (conversationRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
@@ -515,6 +705,7 @@ export function ExplainForm({
     setPreviousMainGaps([]);
     setPreviousSocraticQuestions([]);
     setResolvedGaps([]);
+    setStudyToolsState(null);
     setHistory([]);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
@@ -929,6 +1120,8 @@ export function ExplainForm({
         selectedConcept={selectedConcept}
         explanationAttempts={previousExplanations}
         sessionId={roomId || "quick"}
+        initialStudyToolsState={studyToolsState}
+        onStudyToolsStateChange={setStudyToolsState}
       />
     </div>
   );

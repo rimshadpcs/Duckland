@@ -816,6 +816,29 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   gap: 24px;
 }
 
+.rooms-section-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 -8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rooms-section-heading small {
+  color: var(--amber-dark);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.all-rooms-heading {
+  margin-top: 12px;
+}
+
 .room-card {
   background: #fff;
   border: 1px solid var(--line);
@@ -830,10 +853,30 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   box-shadow: 0 4px 16px rgba(0,0,0,0.02);
 }
 
+.room-card-link {
+  position: relative;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .room-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(232, 160, 32, 0.08);
   border-color: rgba(232, 160, 32, 0.3);
+}
+
+.room-card-link:focus-visible {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 4px rgba(245, 200, 66, 0.22), 0 10px 28px rgba(232, 160, 32, 0.1);
+}
+
+.pinned-room-card {
+  background: linear-gradient(135deg, #fffdf7 0%, #fff8df 100%);
+  border-color: rgba(232, 160, 32, 0.28);
 }
 
 .create-card {
@@ -874,7 +917,11 @@ html[data-theme="obsidian"] .app-start-btn:hover {
 }
 
 .card-top h3 {
-  font-size: 1.1rem;
+  max-width: calc(100% - 44px);
+  font-family: "DM Sans", sans-serif;
+  font-size: 1.28rem;
+  font-weight: 800;
+  line-height: 1.18;
   margin: 0 0 8px;
 }
 
@@ -895,11 +942,23 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   margin-bottom: 8px;
 }
 
+.room-card-summary {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 750;
+  margin: 12px 0 0;
+}
+
 .room-meta {
   font-size: 0.75rem;
   color: var(--muted);
   display: block;
-  margin-top: 12px;
+}
+
+.room-date-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
 }
 
 .card-bottom {
@@ -908,6 +967,88 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   align-items: center;
   gap: 12px;
   margin-top: 24px;
+}
+
+.room-card-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(245, 200, 66, 0.18);
+  color: #8a6200;
+  font-weight: 900;
+  line-height: 1;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.room-card-link:hover .room-card-arrow {
+  transform: translateX(3px);
+  background: rgba(245, 200, 66, 0.32);
+}
+
+.room-card-menu {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  z-index: 4;
+}
+
+.room-menu-trigger {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.room-menu-trigger:hover,
+.room-menu-trigger[aria-expanded="true"] {
+  background: rgba(26, 22, 18, 0.06);
+  color: var(--ink);
+}
+
+.room-menu-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf8;
+  box-shadow: 0 18px 40px rgba(26, 22, 18, 0.14);
+  padding: 7px;
+}
+
+.room-menu-popover button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.room-menu-popover button:hover {
+  background: rgba(245, 200, 66, 0.16);
+}
+
+.room-menu-popover button.danger {
+  color: #991b1b;
+}
+
+.room-menu-popover button.danger:hover {
+  background: #fef2f2;
 }
 
 .card-cta {
@@ -978,12 +1119,25 @@ html[data-theme="obsidian"] .app-start-btn:hover {
 }
 
 .room-status {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--ink);
-  background: rgba(26, 22, 18, 0.05);
-  padding: 4px 10px;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  color: #7a5a08;
+  background: rgba(245, 200, 66, 0.14);
+  border: 1px solid rgba(232, 160, 32, 0.18);
+  padding: 7px 11px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+.room-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #e8a020;
+  box-shadow: 0 0 0 3px rgba(245, 200, 66, 0.22);
 }
 
 /* Modal */
@@ -1087,6 +1241,16 @@ html[data-theme="obsidian"] .room-card:hover {
   border-color: rgba(232, 160, 32, 0.4);
 }
 
+html[data-theme="obsidian"] .pinned-room-card {
+  background: linear-gradient(135deg, #24251f 0%, #2a281f 100%);
+  border-color: rgba(232, 160, 32, 0.36);
+}
+
+html[data-theme="obsidian"] .room-card-link:focus-visible {
+  border-color: #e8a020;
+  box-shadow: 0 0 0 4px rgba(232, 160, 32, 0.18), 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
 html[data-theme="obsidian"] .quick-card {
   background: #272a2f;
 }
@@ -1100,18 +1264,69 @@ html[data-theme="obsidian"] .rooms-header h1 {
   color: #f4f1ea;
 }
 
+html[data-theme="obsidian"] .rooms-section-heading {
+  color: #948d84;
+}
+
+html[data-theme="obsidian"] .rooms-section-heading small {
+  color: #f5d36a;
+}
+
 html[data-theme="obsidian"] .room-card h3 {
   color: #f4f1ea;
 }
 
 html[data-theme="obsidian"] .card-top p,
+html[data-theme="obsidian"] .room-card-summary,
 html[data-theme="obsidian"] .room-meta {
   color: #948d84;
 }
 
 html[data-theme="obsidian"] .room-status {
-  background: #2d3036;
+  background: rgba(245, 200, 66, 0.12);
+  border-color: rgba(232, 160, 32, 0.24);
+  color: #f5d36a;
+}
+
+html[data-theme="obsidian"] .room-card-arrow {
+  background: rgba(245, 200, 66, 0.14);
+  color: #f5d36a;
+}
+
+html[data-theme="obsidian"] .room-card-link:hover .room-card-arrow {
+  background: rgba(245, 200, 66, 0.22);
+}
+
+html[data-theme="obsidian"] .room-menu-trigger {
+  color: #b8b1a6;
+}
+
+html[data-theme="obsidian"] .room-menu-trigger:hover,
+html[data-theme="obsidian"] .room-menu-trigger[aria-expanded="true"] {
+  background: rgba(245, 200, 66, 0.12);
   color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .room-menu-popover {
+  background: #2a2a27;
+  border-color: #44423d;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+}
+
+html[data-theme="obsidian"] .room-menu-popover button {
+  color: #f4f1ea;
+}
+
+html[data-theme="obsidian"] .room-menu-popover button:hover {
+  background: rgba(245, 200, 66, 0.12);
+}
+
+html[data-theme="obsidian"] .room-menu-popover button.danger {
+  color: #fca5a5;
+}
+
+html[data-theme="obsidian"] .room-menu-popover button.danger:hover {
+  background: rgba(185, 28, 28, 0.14);
 }
 
 html[data-theme="obsidian"] .card-cta {

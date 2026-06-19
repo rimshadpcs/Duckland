@@ -188,6 +188,48 @@ export type Database = {
           },
         ];
       };
+      study_room_sessions: {
+        Row: {
+          id: string;
+          room_id: string;
+          user_id: string;
+          state: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          room_id: string;
+          user_id: string;
+          state?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          room_id?: string;
+          user_id?: string;
+          state?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "study_room_sessions_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "study_rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "study_room_sessions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

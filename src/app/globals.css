@@ -5087,6 +5087,10 @@ html[data-theme="obsidian"] .pricing-save-callout {
   position: relative;
 }
 
+.app-overflow-menu {
+  flex: 0 0 auto;
+}
+
 .account-menu-trigger {
   max-width: 190px;
   min-height: 36px;
@@ -5104,6 +5108,16 @@ html[data-theme="obsidian"] .pricing-save-callout {
   white-space: nowrap;
 }
 
+.icon-menu-trigger {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  max-width: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .account-menu-popover {
   position: absolute;
   right: 0;
@@ -5116,6 +5130,11 @@ html[data-theme="obsidian"] .pricing-save-callout {
   box-shadow: 0 20px 45px rgba(26, 22, 18, 0.14);
   color: var(--ink);
   padding: 12px;
+}
+
+.app-left-menu-popover {
+  left: 0;
+  right: auto;
 }
 
 .account-menu-popover div {

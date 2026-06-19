@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@src/components/ui";
-import { Sun, Moon } from "lucide-react";
+import { MoreVertical, Sun, Moon } from "lucide-react";
 import type { AuthenticatedUser } from "@src/lib/auth";
 
 export function AppNavbar({
@@ -42,6 +42,29 @@ export function AppNavbar({
   return (
     <nav className="app-nav">
       <div className="app-nav-left">
+        {authUser && (
+          <div className="account-menu app-overflow-menu">
+            <button
+              className="account-menu-trigger icon-menu-trigger"
+              type="button"
+              onClick={() => setIsMenuOpen((current) => !current)}
+              aria-label="Open account menu"
+              aria-expanded={isMenuOpen}
+            >
+              <MoreVertical size={18} />
+            </button>
+            {isMenuOpen && (
+              <div className="account-menu-popover app-left-menu-popover">
+                <div>
+                  <strong>{authUser.displayName || authUser.email || "Account"}</strong>
+                  {authUser.displayName && authUser.email ? <span>{authUser.email}</span> : null}
+                </div>
+                <button type="button" onClick={handleSignOut}>Sign out</button>
+                {signOutError ? <p>{signOutError}</p> : null}
+              </div>
+            )}
+          </div>
+        )}
         <div className="app-logo">
           <img src="/feynduckhead.png" alt="" />
           <span>Feynduck</span>
@@ -73,28 +96,6 @@ export function AppNavbar({
               Back to rooms
             </Button>
           </a>
-        )}
-        {authUser && (
-          <div className="account-menu">
-            <button
-              className="account-menu-trigger"
-              type="button"
-              onClick={() => setIsMenuOpen((current) => !current)}
-              aria-expanded={isMenuOpen}
-            >
-              <span>{authUser.label}</span>
-            </button>
-            {isMenuOpen && (
-              <div className="account-menu-popover">
-                <div>
-                  <strong>{authUser.displayName || authUser.email || "Account"}</strong>
-                  {authUser.displayName && authUser.email ? <span>{authUser.email}</span> : null}
-                </div>
-                <button type="button" onClick={handleSignOut}>Sign out</button>
-                {signOutError ? <p>{signOutError}</p> : null}
-              </div>
-            )}
-          </div>
         )}
       </div>
     </nav>

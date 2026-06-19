@@ -1,6 +1,7 @@
 import { StudyDemoPage } from "@src/features/explanation";
 import { requireOnboardedUser } from "@src/lib/auth";
 import { getRoomSource } from "@src/lib/repositories/sources";
+import { getStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
 import { getStudyRoom } from "@src/lib/repositories/study-rooms";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,15 @@ export default async function Page({
   const roomId = roomIdParam?.trim() || null;
   const room = roomId ? await getStudyRoom(roomId) : null;
   const source = room ? await getRoomSource(room.id) : null;
+  const session = room ? await getStudyRoomSession(room.id) : null;
 
-  return <StudyDemoPage authUser={user} initialRoom={room} initialSource={source} requestedRoomId={roomId} />;
+  return (
+    <StudyDemoPage
+      authUser={user}
+      initialRoom={room}
+      initialSource={source}
+      initialSessionState={session?.state || null}
+      requestedRoomId={roomId}
+    />
+  );
 }

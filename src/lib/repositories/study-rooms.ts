@@ -2,6 +2,9 @@ import { createSupabaseServerClient } from "@src/lib/supabase/server";
 import type { Database } from "@src/types/database";
 
 export type StudyRoomRow = Database["public"]["Tables"]["study_rooms"]["Row"];
+export type StudyRoomWithSourceCount = StudyRoomRow & {
+  source_count: number;
+};
 
 export type CreateStudyRoomInput = {
   title: string;
@@ -52,12 +55,19 @@ export async function getStudyRooms() {
 
   const { data, error } = await supabase
     .from("study_rooms")
-    .select("*")
+    .select("*, sources(count)")
     .eq("user_id", user.id)
     .order("last_activity_at", { ascending: false });
 
   if (error) throw new Error(getErrorMessage("Could not load study rooms", error));
-  return data;
+  return data.map((room) => {
+    const sources = room.sources as { count: number }[] | null | undefined;
+    const { sources: _sources, ...studyRoom } = room;
+    return {
+      ...studyRoom,
+      source_count: sources?.[0]?.count ?? 0,
+    } as StudyRoomWithSourceCount;
+  });
 }
 
 export async function getStudyRoom(roomId: string) {

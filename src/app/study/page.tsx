@@ -1,12 +1,12 @@
 import { StudyRoomsDashboard } from "@src/features/explanation";
 import { requireOnboardedUser } from "@src/lib/auth";
-import { getStudyRooms, type StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import { getStudyRooms, type StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const user = await requireOnboardedUser("/study");
-  let rooms: StudyRoomRow[] = [];
+  let rooms: StudyRoomWithSourceCount[] = [];
   let loadError: string | null = null;
 
   try {

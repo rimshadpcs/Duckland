@@ -6,6 +6,7 @@ import { ExplainForm } from "./ExplainForm";
 import type { AuthenticatedUser } from "@src/lib/auth";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import type { Json } from "@src/types/database";
 
 type ThemeMode = "light" | "obsidian";
 
@@ -13,11 +14,13 @@ export function StudyDemoPage({
   authUser,
   initialRoom,
   initialSource,
+  initialSessionState,
   requestedRoomId,
 }: {
   authUser?: AuthenticatedUser;
   initialRoom?: StudyRoomRow | null;
   initialSource?: SourceRow | null;
+  initialSessionState?: Json | null;
   requestedRoomId?: string | null;
 }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
@@ -58,7 +61,7 @@ export function StudyDemoPage({
       <ExplainForm onRoomLoaded={(title, subject) => {
         setRoomTitle(title);
         setRoomSubject(subject);
-      }} initialRoom={initialRoom} initialSource={initialSource} requestedRoomId={requestedRoomId} />
+      }} initialRoom={initialRoom} initialSource={initialSource} initialSessionState={initialSessionState} requestedRoomId={requestedRoomId} />
     </div>
   );
 }
