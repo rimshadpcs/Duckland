@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getAuthenticatedUser } from "@src/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 function getSafeNext(value?: string | string[]) {
   const next = Array.isArray(value) ? value[0] : value;
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+  if (!next || next === "/" || !next.startsWith("/") || next.startsWith("//")) {
     return "/study";
   }
   return next;
@@ -19,11 +17,6 @@ export default async function StartPage({
 }) {
   const params = await searchParams;
   const next = getSafeNext(params?.next);
-  const user = await getAuthenticatedUser();
-
-  if (user) {
-    redirect(user.profile?.onboarding_completed ? "/study" : "/onboarding");
-  }
 
   return (
     <main className="auth-page">

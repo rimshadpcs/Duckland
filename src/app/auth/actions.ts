@@ -20,7 +20,7 @@ function isValidEmail(value: string) {
 }
 
 function getSafeNext(value: string, fallback = "/study") {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+  if (!value || value === "/" || !value.startsWith("/") || value.startsWith("//")) {
     return fallback;
   }
 
