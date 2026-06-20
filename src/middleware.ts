@@ -1,25 +1,29 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { updateSupabaseSession } from "@src/lib/supabase/middleware";
+
+const APP_DOMAIN = "app.feynduck.com";
 
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host");
   const pathname = request.nextUrl.pathname;
-  const needsAuthMiddleware =
-    hostname === "app.feynduck.com" ||
-    pathname === "/study" ||
-    pathname.startsWith("/study/") ||
-    pathname === "/login" ||
-    pathname === "/signup" ||
-    pathname === "/start" ||
-    pathname === "/onboarding" ||
-    pathname.startsWith("/auth/");
 
-  if (!needsAuthMiddleware) {
+  if (hostname !== APP_DOMAIN) {
     return NextResponse.next();
   }
 
-  return updateSupabaseSession(request);
+  if (pathname === "/") {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = "/study";
+    return NextResponse.rewrite(rewriteUrl);
+  }
+
+  if (pathname === "/session" || pathname.startsWith("/session/")) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = `/study${pathname}`;
+    return NextResponse.rewrite(rewriteUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
