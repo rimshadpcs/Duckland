@@ -34,7 +34,14 @@ export function clampPanelWidth(side: PanelSide, width: number) {
 
 export function getPanelWidth(side: PanelSide) {
   const config = PANEL_CONFIG[side];
-  const raw = window.localStorage.getItem(config.key);
+  let raw: string | null = null;
+
+  try {
+    raw = window.localStorage.getItem(config.key);
+  } catch {
+    warnStorage(`Could not read ${side} panel width from localStorage.`);
+    return config.defaultWidth;
+  }
 
   if (!raw) return config.defaultWidth;
 
@@ -49,8 +56,12 @@ export function getPanelWidth(side: PanelSide) {
 }
 
 export function savePanelWidth(side: PanelSide, width: number) {
-  window.localStorage.setItem(
-    PANEL_CONFIG[side].key,
-    clampPanelWidth(side, width).toString(),
-  );
+  try {
+    window.localStorage.setItem(
+      PANEL_CONFIG[side].key,
+      clampPanelWidth(side, width).toString(),
+    );
+  } catch {
+    warnStorage(`Could not save ${side} panel width to localStorage.`);
+  }
 }

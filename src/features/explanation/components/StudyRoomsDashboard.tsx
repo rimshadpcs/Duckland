@@ -99,7 +99,11 @@ export function StudyRoomsDashboard({
 
   const updatePinnedRooms = (nextPinnedRoomIds: string[]) => {
     setPinnedRoomIds(nextPinnedRoomIds);
-    localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(nextPinnedRoomIds));
+    try {
+      localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(nextPinnedRoomIds));
+    } catch {
+      // Pinning is a local preference; keep the UI usable if storage is blocked.
+    }
   };
 
   const handleTogglePin = (room: StudyRoomWithSourceCount) => {

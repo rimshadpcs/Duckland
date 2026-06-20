@@ -8,16 +8,24 @@ export function useThemeMode() {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = window.localStorage.getItem("feynduck-theme");
-    if (savedTheme === "obsidian" || savedTheme === "light") {
-      setThemeMode(savedTheme);
+    try {
+      const savedTheme = window.localStorage.getItem("feynduck-theme");
+      if (savedTheme === "obsidian" || savedTheme === "light") {
+        setThemeMode(savedTheme);
+      }
+    } catch {
+      setThemeMode("light");
     }
   }, []);
 
   useEffect(() => {
     if (mounted) {
       document.documentElement.dataset.theme = themeMode;
-      window.localStorage.setItem("feynduck-theme", themeMode);
+      try {
+        window.localStorage.setItem("feynduck-theme", themeMode);
+      } catch {
+        // Theme still applies for this render; persistence is optional.
+      }
     }
   }, [themeMode, mounted]);
 
