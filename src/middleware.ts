@@ -12,9 +12,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/") {
-    const rewriteUrl = request.nextUrl.clone();
-    rewriteUrl.pathname = "/study";
-    return NextResponse.rewrite(rewriteUrl);
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", "/study");
+    return NextResponse.redirect(loginUrl);
   }
 
   if (pathname === "/session" || pathname.startsWith("/session/")) {
