@@ -1,5 +1,5 @@
 import { StudyDemoPage } from "@src/features/explanation";
-import { redirect } from "next/navigation";
+import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { getAuthenticatedUser } from "@src/lib/auth";
 import { getRoomSource } from "@src/lib/repositories/sources";
 import { getStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
@@ -20,11 +20,11 @@ export default async function Page({
   const roomId = roomIdParam?.trim() || null;
 
   if (!user) {
-    redirect("/login?next=%2Fstudy%2Fsession");
+    return <AuthRedirect to="/login?next=%2Fstudy%2Fsession" />;
   }
 
   if (!user.profile?.onboarding_completed) {
-    redirect("/onboarding?next=%2Fstudy%2Fsession");
+    return <AuthRedirect to="/onboarding?next=%2Fstudy%2Fsession" />;
   }
 
   let room: StudyRoomRow | null = null;

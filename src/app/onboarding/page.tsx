@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
+import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { OnboardingFlow } from "@src/features/auth/components/OnboardingFlow";
-import { requireAuthenticatedUser } from "@src/lib/auth";
+import { getAuthenticatedUser } from "@src/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +19,14 @@ export default async function OnboardingPage({
 }) {
   const params = await searchParams;
   const next = getSafeNext(params?.next);
-  const user = await requireAuthenticatedUser(`/onboarding?next=${encodeURIComponent(next)}`);
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+    return <AuthRedirect to={`/login?next=${encodeURIComponent(`/onboarding?next=${encodeURIComponent(next)}`)}`} />;
+  }
 
   if (user.profile?.onboarding_completed) {
-    redirect("/study");
+    return <AuthRedirect to="/study" />;
   }
 
   return <OnboardingFlow profile={user.profile} email={user.email} />;

@@ -1,5 +1,5 @@
 import { StudyRoomsDashboard } from "@src/features/explanation";
-import { redirect } from "next/navigation";
+import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { getAuthenticatedUser } from "@src/lib/auth";
 import { getStudyRooms, type StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
 
@@ -11,11 +11,11 @@ export default async function Page() {
   let loadError: string | null = null;
 
   if (!user) {
-    redirect("/login?next=%2Fstudy");
+    return <AuthRedirect to="/login?next=%2Fstudy" />;
   }
 
   if (!user.profile?.onboarding_completed) {
-    redirect("/onboarding?next=%2Fstudy");
+    return <AuthRedirect to="/onboarding?next=%2Fstudy" />;
   }
 
   try {
