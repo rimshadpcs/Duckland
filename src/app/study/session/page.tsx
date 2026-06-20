@@ -1,8 +1,11 @@
 import { StudyDemoPage } from "@src/features/explanation";
-import { requireOnboardedUser } from "@src/lib/auth";
+import { redirect } from "next/navigation";
+import { getAuthenticatedUser } from "@src/lib/auth";
 import { getRoomSource } from "@src/lib/repositories/sources";
 import { getStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
-import { getStudyRoom } from "@src/lib/repositories/study-rooms";
+import { getStudyRoom, type StudyRoomRow } from "@src/lib/repositories/study-rooms";
+import type { SourceRow } from "@src/lib/repositories/sources";
+import type { StudyRoomSessionRow } from "@src/lib/repositories/study-room-sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +14,46 @@ export default async function Page({
 }: {
   searchParams?: Promise<{ roomId?: string | string[] }>;
 }) {
-  const user = await requireOnboardedUser("/study/session");
+  const user = await getAuthenticatedUser();
   const params = await searchParams;
   const roomIdParam = Array.isArray(params?.roomId) ? params?.roomId[0] : params?.roomId;
   const roomId = roomIdParam?.trim() || null;
-  const room = roomId ? await getStudyRoom(roomId) : null;
-  const source = room ? await getRoomSource(room.id) : null;
-  const session = room ? await getStudyRoomSession(room.id) : null;
+
+  if (!user) {
+    redirect("/login?next=%2Fstudy%2Fsession");
+  }
+
+  if (!user.profile?.onboarding_completed) {
+    redirect("/onboarding?next=%2Fstudy%2Fsession");
+  }
+
+  let room: StudyRoomRow | null = null;
+  let source: SourceRow | null = null;
+  let session: StudyRoomSessionRow | null = null;
+
+  try {
+    room = roomId ? await getStudyRoom(roomId) : null;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Study] could not load room", error);
+    }
+  }
+
+  try {
+    source = room ? await getRoomSource(room.id) : null;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Study] could not load room source", error);
+    }
+  }
+
+  try {
+    session = room ? await getStudyRoomSession(room.id) : null;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Study] could not load room session", error);
+    }
+  }
 
   return (
     <StudyDemoPage

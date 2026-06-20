@@ -1,13 +1,22 @@
 import { StudyRoomsDashboard } from "@src/features/explanation";
-import { requireOnboardedUser } from "@src/lib/auth";
+import { redirect } from "next/navigation";
+import { getAuthenticatedUser } from "@src/lib/auth";
 import { getStudyRooms, type StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const user = await requireOnboardedUser("/study");
+  const user = await getAuthenticatedUser();
   let rooms: StudyRoomWithSourceCount[] = [];
   let loadError: string | null = null;
+
+  if (!user) {
+    redirect("/login?next=%2Fstudy");
+  }
+
+  if (!user.profile?.onboarding_completed) {
+    redirect("/onboarding?next=%2Fstudy");
+  }
 
   try {
     rooms = await getStudyRooms();
