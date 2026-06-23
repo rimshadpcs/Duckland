@@ -330,7 +330,6 @@ export function ExplainForm({
   const [studyToolsState, setStudyToolsState] = useState<Json | null>(null);
   const [sessionHydrated, setSessionHydrated] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const serverSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchConceptSuggestions = async (sourceMaterial: string) => {
     if (sourceMaterial.trim().length < 10) {
@@ -421,9 +420,6 @@ export function ExplainForm({
     return () => {
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
-      }
-      if (serverSaveTimeoutRef.current) {
-        clearTimeout(serverSaveTimeoutRef.current);
       }
     };
   }, []);
@@ -552,7 +548,7 @@ export function ExplainForm({
 
   useEffect(() => {
     const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey);
-    if (persistedSession && (!initialSource?.updated_at || persistedSession.sourceUpdatedAt === initialSource.updated_at)) {
+    if (persistedSession) {
       setSelectedConcept(persistedSession.selectedConcept);
       setResult(persistedSession.result);
       setHistory(persistedSession.history);
@@ -604,12 +600,7 @@ export function ExplainForm({
     savePersistedSession(sessionStorageKey, snapshot);
 
     if (roomId) {
-      if (serverSaveTimeoutRef.current) {
-        clearTimeout(serverSaveTimeoutRef.current);
-      }
-      serverSaveTimeoutRef.current = setTimeout(() => {
-        void saveRoomSessionStateAction(roomId, snapshot as unknown as Json);
-      }, 650);
+      void saveRoomSessionStateAction(roomId, snapshot as unknown as Json);
     }
   }, [
     sessionHydrated,
