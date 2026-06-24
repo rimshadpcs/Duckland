@@ -90,12 +90,12 @@ export function StudyRoomsDashboard({
         return;
       }
 
-      window.location.href = `/study/session?roomId=${result.data.id}`;
+      window.location.href = `/study/room/${result.data.id}`;
     });
   };
 
   const openRoom = (roomId: string) => {
-    window.location.href = `/study/session?roomId=${roomId}`;
+    window.location.href = `/study/room/${roomId}`;
   };
 
   const updatePinnedRooms = (nextPinnedRoomIds: string[]) => {

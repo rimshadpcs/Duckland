@@ -5,6 +5,7 @@ import { AppNavbar } from "./AppNavbar";
 import { ExplainForm } from "./ExplainForm";
 import type { AuthenticatedUser } from "@src/lib/auth";
 import type { SourceRow } from "@src/lib/repositories/sources";
+import type { RoomConceptRow } from "@src/lib/repositories/study-path";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
 import type { Json } from "@src/types/database";
 
@@ -15,12 +16,16 @@ export function StudyDemoPage({
   initialRoom,
   initialSource,
   initialSessionState,
+  initialConcept,
+  initialRoomConcepts = [],
   requestedRoomId,
 }: {
   authUser?: AuthenticatedUser;
   initialRoom?: StudyRoomRow | null;
   initialSource?: SourceRow | null;
   initialSessionState?: Json | null;
+  initialConcept?: RoomConceptRow | null;
+  initialRoomConcepts?: RoomConceptRow[];
   requestedRoomId?: string | null;
 }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
@@ -55,13 +60,13 @@ export function StudyDemoPage({
         mounted={mounted} 
         isSession={true}
         roomTitle={roomTitle || initialRoom?.title}
-        roomSubject={roomSubject || initialRoom?.selected_concept || initialRoom?.description || undefined}
+        roomSubject={roomSubject || initialConcept?.title || initialRoom?.selected_concept || initialRoom?.description || undefined}
         authUser={authUser}
       />
       <ExplainForm onRoomLoaded={(title, subject) => {
         setRoomTitle(title);
         setRoomSubject(subject);
-      }} initialRoom={initialRoom} initialSource={initialSource} initialSessionState={initialSessionState} requestedRoomId={requestedRoomId} />
+      }} initialRoom={initialRoom} initialSource={initialSource} initialSessionState={initialSessionState} initialConcept={initialConcept} initialRoomConcepts={initialRoomConcepts} requestedRoomId={requestedRoomId} />
     </div>
   );
 }

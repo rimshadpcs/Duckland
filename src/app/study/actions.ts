@@ -9,6 +9,12 @@ import {
   updateRoomSourceState,
 } from "@src/lib/repositories/study-rooms";
 import { deleteStudyRoomSession, saveStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
+import {
+  createCustomRoomConcept,
+  startRoomConcept,
+  updateRoomConceptProgress,
+  type ConceptStatus,
+} from "@src/lib/repositories/study-path";
 import { saveRoomSource } from "@src/lib/repositories/sources";
 import type { Json } from "@src/types/database";
 
@@ -51,6 +57,7 @@ export async function renameStudyRoomAction(roomId: string, title: string): Prom
   try {
     await renameStudyRoom(roomId, title);
     revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
     revalidatePath("/study/session");
     return { ok: true, data: null };
   } catch (error) {
@@ -117,6 +124,7 @@ export async function saveRoomSourceAction(input: {
 export async function saveRoomSessionStateAction(roomId: string, state: Json): Promise<StudyActionResult> {
   try {
     await saveStudyRoomSession(roomId, state);
+    revalidatePath(`/study/room/${roomId}`);
     return { ok: true, data: null };
   } catch (error) {
     return { ok: false, error: getMessage(error, "Could not save room session.") };
@@ -126,8 +134,55 @@ export async function saveRoomSessionStateAction(roomId: string, state: Json): P
 export async function clearRoomSessionStateAction(roomId: string): Promise<StudyActionResult> {
   try {
     await deleteStudyRoomSession(roomId);
+    revalidatePath(`/study/room/${roomId}`);
     return { ok: true, data: null };
   } catch (error) {
     return { ok: false, error: getMessage(error, "Could not clear room session.") };
+  }
+}
+
+export async function createCustomRoomConceptAction(
+  roomId: string,
+  title: string,
+): Promise<StudyActionResult<{ id: string; title: string } | null>> {
+  try {
+    const concept = await createCustomRoomConcept(roomId, title);
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    revalidatePath("/study/session");
+    return { ok: true, data: concept ? { id: concept.id, title: concept.title } : null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not add concept.") };
+  }
+}
+
+export async function startRoomConceptAction(roomId: string, conceptId: string): Promise<StudyActionResult> {
+  try {
+    await startRoomConcept(roomId, conceptId);
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not start concept.") };
+  }
+}
+
+export async function updateRoomConceptProgressAction(
+  roomId: string,
+  conceptId: string,
+  input: {
+    clarityScore?: number | null;
+    mainGap?: string | null;
+    status?: ConceptStatus | null;
+  },
+): Promise<StudyActionResult> {
+  try {
+    await updateRoomConceptProgress(roomId, conceptId, input);
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    revalidatePath("/study/session");
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not update concept progress.") };
   }
 }

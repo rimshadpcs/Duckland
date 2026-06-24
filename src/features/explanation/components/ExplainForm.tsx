@@ -7,11 +7,14 @@ import {
   clearRoomSessionStateAction,
   saveRoomSessionStateAction,
   saveRoomSourceAction,
+  startRoomConceptAction,
+  updateRoomConceptProgressAction,
   updateRoomSelectedConceptAction,
 } from "@src/app/study/actions";
 import { cn } from "@src/lib/utils";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import type { SourceRow } from "@src/lib/repositories/sources";
+import type { RoomConceptRow } from "@src/lib/repositories/study-path";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
 import type { Json } from "@src/types/database";
 import type { ExplanationRequest, ExplanationResult } from "../types";
@@ -45,7 +48,7 @@ type ConceptSuggestion = {
   description?: string;
 };
 
-type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "clear";
+type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
 
 type ConceptTrackSnapshot = {
   result: ExplanationResult | null;
@@ -249,6 +252,7 @@ function parseConceptTracks(value: unknown): Record<string, RoomConceptTrack> {
     const status: ConceptStatus =
       track.status === "clear" ||
       track.status === "gap_found" ||
+      track.status === "improving" ||
       track.status === "in_progress" ||
       track.status === "not_started"
         ? track.status
@@ -324,7 +328,10 @@ function getConceptId(title: string) {
 
 function getConceptStatus(result: ExplanationResult | null, hasHistory: boolean): ConceptStatus {
   if (result?.status === "clear") return "clear";
-  if (result && result.status !== "topic_mismatch") return "gap_found";
+  if (result && result.status !== "topic_mismatch") {
+    if (typeof result.clarityScore === "number" && result.clarityScore >= 60) return "improving";
+    return "gap_found";
+  }
   if (hasHistory) return "in_progress";
   return "not_started";
 }
@@ -507,12 +514,16 @@ export function ExplainForm({
   initialRoom,
   initialSource,
   initialSessionState,
+  initialConcept,
+  initialRoomConcepts = [],
   requestedRoomId,
 }: {
   onRoomLoaded?: (title: string, subject: string) => void;
   initialRoom?: StudyRoomRow | null;
   initialSource?: SourceRow | null;
   initialSessionState?: Json | null;
+  initialConcept?: RoomConceptRow | null;
+  initialRoomConcepts?: RoomConceptRow[];
   requestedRoomId?: string | null;
 }) {
   const [roomId] = useState<string | null>(initialRoom?.id || null);
@@ -540,6 +551,8 @@ export function ExplainForm({
   const [resolvedGaps, setResolvedGaps] = useState<string[]>([]);
   const [history, setHistory] = useState<ConversationMessage[]>([]);
   const [conceptSuggestions, setConceptSuggestions] = useState<ConceptSuggestion[]>([]);
+  const [serverConcepts, setServerConcepts] = useState<RoomConceptRow[]>(initialRoomConcepts);
+  const [activeServerConceptId, setActiveServerConceptId] = useState<string | null>(initialConcept?.id || null);
   const [conceptsLoading, setConceptsLoading] = useState(false);
   const [conceptsError, setConceptsError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -656,12 +669,17 @@ export function ExplainForm({
 
   useEffect(() => {
     const sourceMaterial = initialSource?.content || "";
+    const initialConceptTitle = initialConcept?.title || initialRoom?.selected_concept || null;
     setRequest((prev) => ({ ...prev, notes: sourceMaterial }));
     setSavedSourceMaterial(sourceMaterial);
-    setSelectedConcept(initialRoom?.selected_concept || null);
+    setSelectedConcept(initialConceptTitle);
+    setActiveServerConceptId(initialConcept?.id || null);
+    if (initialConceptTitle) {
+      setHistory(createEmptyConceptSnapshot(initialConceptTitle).history);
+    }
     if (sourceMaterial) void fetchConceptSuggestions(sourceMaterial);
     if (onRoomLoaded) {
-      onRoomLoaded(initialRoom?.title || "Quick explain", initialRoom?.selected_concept || initialRoom?.description || "");
+      onRoomLoaded(initialRoom?.title || "Quick explain", initialConceptTitle || initialRoom?.description || "");
     }
   }, []);
 
@@ -763,7 +781,40 @@ export function ExplainForm({
     );
     setRequest(prev => ({ ...prev, notes: sourceMaterial }));
     setIsSavingSource(false);
-    void fetchConceptSuggestions(sourceMaterial);
+    setConceptsLoading(true);
+    setConceptsError(null);
+    void fetch("/api/study-path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomId,
+        source: sourceMaterial,
+        sourceTitle: result.data.title,
+      }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as { concepts?: RoomConceptRow[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Could not build learning path.");
+        if (Array.isArray(payload.concepts)) {
+          setServerConcepts(payload.concepts);
+          setConceptSuggestions(
+            payload.concepts.slice(0, 6).map((concept) => ({
+              title: concept.title,
+              description: concept.description || undefined,
+            })),
+          );
+        }
+      })
+      .catch((caught) => {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[Study] learning path generation failed", caught);
+        }
+        setConceptsError("We couldn’t create your learning path yet. You can still enter a concept below.");
+        void fetchConceptSuggestions(sourceMaterial);
+      })
+      .finally(() => {
+        setConceptsLoading(false);
+      });
     window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
     if (onRoomLoaded) {
       onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
@@ -835,18 +886,44 @@ export function ExplainForm({
     const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey, roomId);
     if (persistedSession) {
       setConceptTracks(persistedSession.conceptTracks || {});
-      setSelectedConcept(persistedSession.selectedConcept);
-      setResult(persistedSession.result);
-      setHistory(persistedSession.history);
-      setPreviousExplanations(persistedSession.previousExplanations);
-      setPreviousMainGaps(persistedSession.previousMainGaps);
-      setPreviousSocraticQuestions(persistedSession.previousSocraticQuestions);
-      setResolvedGaps(persistedSession.resolvedGaps);
-      setStudyToolsState(persistedSession.studyTools || null);
+      const routedConceptTitle = initialConcept?.title || null;
+      const shouldUsePersistedCurrent =
+        !routedConceptTitle ||
+        (persistedSession.selectedConcept &&
+          getConceptId(persistedSession.selectedConcept) === getConceptId(routedConceptTitle));
 
-      if (onRoomLoaded && persistedSession.selectedConcept) {
-        onRoomLoaded(initialRoom?.title || "Quick explain", persistedSession.selectedConcept);
+      if (shouldUsePersistedCurrent) {
+        setSelectedConcept(persistedSession.selectedConcept);
+        setResult(persistedSession.result);
+        setHistory(persistedSession.history);
+        setPreviousExplanations(persistedSession.previousExplanations);
+        setPreviousMainGaps(persistedSession.previousMainGaps);
+        setPreviousSocraticQuestions(persistedSession.previousSocraticQuestions);
+        setResolvedGaps(persistedSession.resolvedGaps);
+        setStudyToolsState(persistedSession.studyTools || null);
+
+        if (onRoomLoaded && persistedSession.selectedConcept) {
+          onRoomLoaded(initialRoom?.title || "Quick explain", persistedSession.selectedConcept);
+        }
+      } else if (routedConceptTitle) {
+        const routedTrack = persistedSession.conceptTracks?.[getConceptId(routedConceptTitle)];
+        if (routedTrack) {
+          restoreConceptTrack(routedTrack);
+        } else {
+          setSelectedConcept(routedConceptTitle);
+          setHistory(createEmptyConceptSnapshot(routedConceptTitle).history);
+          setResult(null);
+          setPreviousExplanations([]);
+          setPreviousMainGaps([]);
+          setPreviousSocraticQuestions([]);
+          setResolvedGaps([]);
+          setStudyToolsState(null);
+        }
       }
+    }
+
+    if (initialConcept?.id && roomId) {
+      void startRoomConceptAction(roomId, initialConcept.id);
     }
 
     setSessionHydrated(true);
@@ -990,9 +1067,12 @@ export function ExplainForm({
     const currentTracks = saveCurrentConceptTrack();
     const conceptId = getConceptId(nextConcept);
     const existingTrack = currentTracks[conceptId];
+    const serverConcept = serverConcepts.find((item) => getConceptId(item.title) === conceptId) || null;
+    setActiveServerConceptId(serverConcept?.id || null);
 
     if (existingTrack) {
       restoreConceptTrack(existingTrack);
+      if (serverConcept?.id && roomId) void startRoomConceptAction(roomId, serverConcept.id);
       return;
     }
 
@@ -1017,6 +1097,7 @@ export function ExplainForm({
     setSelectedConcept(nextConcept);
     if (roomId) {
       void updateRoomSelectedConceptAction(roomId, nextConcept);
+      if (serverConcept?.id) void startRoomConceptAction(roomId, serverConcept.id);
     }
     setResult(null);
     setError(null);
@@ -1172,6 +1253,29 @@ export function ExplainForm({
       if (resultPayload.resolvedGaps?.length) {
         setResolvedGaps(prev => Array.from(new Set([...prev, ...resultPayload.resolvedGaps!])));
       }
+      if (roomId && activeServerConceptId) {
+        const nextStatus = getConceptStatus(resultPayload, true);
+        void updateRoomConceptProgressAction(roomId, activeServerConceptId, {
+          clarityScore: resultPayload.status === "topic_mismatch" ? null : resultPayload.clarityScore,
+          mainGap: readResultField(resultPayload, ["mainGap", "gapSummary"]),
+          status: nextStatus,
+        });
+        setServerConcepts((current) =>
+          current.map((concept) =>
+            concept.id === activeServerConceptId
+              ? {
+                  ...concept,
+                  status: nextStatus,
+                  latest_clarity_score:
+                    resultPayload.status === "topic_mismatch" ? concept.latest_clarity_score : resultPayload.clarityScore,
+                  main_gap: nextStatus === "clear" ? null : readResultField(resultPayload, ["mainGap", "gapSummary"]) || concept.main_gap,
+                  completed_at: nextStatus === "clear" ? new Date().toISOString() : null,
+                  last_activity_at: new Date().toISOString(),
+                }
+              : concept,
+          ),
+        );
+      }
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : "Could not analyse this explanation.";
       setResult(null);
@@ -1208,6 +1312,20 @@ export function ExplainForm({
     (concept) => getConceptId(concept.title) !== (selectedConcept ? getConceptId(selectedConcept) : ""),
   );
   const panelConcepts = [
+    ...serverConcepts.map((concept): RoomConceptTrack => {
+      const localTrack = conceptTracks[getConceptId(concept.title)];
+      return {
+        id: getConceptId(concept.title),
+        roomId,
+        title: concept.title,
+        status: localTrack?.status || concept.status,
+        latestClarityScore: localTrack?.latestClarityScore ?? concept.latest_clarity_score,
+        startedAt: localTrack?.startedAt || concept.started_at,
+        completedAt: localTrack?.completedAt || concept.completed_at,
+        lastActivityAt: localTrack?.lastActivityAt || concept.last_activity_at,
+        snapshot: localTrack?.snapshot || createEmptyConceptSnapshot(concept.title),
+      };
+    }),
     ...Object.values(conceptTracks),
     ...(selectedConcept && !conceptTracks[getConceptId(selectedConcept)]
       ? [{
@@ -1232,6 +1350,7 @@ export function ExplainForm({
       : []),
     ...conceptSuggestions
       .filter((concept) => !conceptTracks[getConceptId(concept.title)])
+      .filter((concept) => !serverConcepts.some((item) => getConceptId(item.title) === getConceptId(concept.title)))
       .map((concept): RoomConceptTrack => ({
         id: getConceptId(concept.title),
         roomId,

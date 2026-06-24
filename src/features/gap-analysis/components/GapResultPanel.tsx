@@ -38,7 +38,7 @@ type StudyToolsSnapshot = {
   flashcardReviewState?: Record<string, FlashcardReviewState>;
 };
 
-type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "clear";
+type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
 
 type PanelConcept = {
   id: string;
@@ -137,13 +137,14 @@ function PanelTabs({ activeTab, onChange }: { activeTab: StudyPanelTab; onChange
 function getConceptStatusLabel(concept: PanelConcept) {
   if (concept.status === "clear") return `Clear${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
   if (concept.status === "gap_found") return `Gap found${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
-  if (concept.status === "in_progress") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  if (concept.status === "improving" || concept.status === "in_progress") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
   return "Not started";
 }
 
 function getConceptStatusIcon(status: ConceptStatus) {
   if (status === "clear") return "✓";
   if (status === "gap_found") return "!";
+  if (status === "improving") return "◐";
   if (status === "in_progress") return "◐";
   return "○";
 }
