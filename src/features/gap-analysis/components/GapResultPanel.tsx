@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Lightbulb, Loader2, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronDown, Lightbulb, Loader2, RotateCcw } from "lucide-react";
 import type { GapAnalysisResult } from "../types";
 import type { Json } from "@src/types/database";
 
@@ -38,6 +38,15 @@ type StudyToolsSnapshot = {
   flashcardReviewState?: Record<string, FlashcardReviewState>;
 };
 
+type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "clear";
+
+type PanelConcept = {
+  id: string;
+  title: string;
+  status: ConceptStatus;
+  latestClarityScore: number | null;
+};
+
 type GapResultPanelProps = {
   result: GapAnalysisResult | null;
   isLoading?: boolean;
@@ -51,6 +60,9 @@ type GapResultPanelProps = {
   sessionId?: string;
   initialStudyToolsState?: Json | null;
   onStudyToolsStateChange?: (state: Json | null) => void;
+  concepts?: PanelConcept[];
+  activeConceptId?: string | null;
+  onConceptSelect?: (title: string) => void;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -120,6 +132,20 @@ function PanelTabs({ activeTab, onChange }: { activeTab: StudyPanelTab; onChange
       ))}
     </div>
   );
+}
+
+function getConceptStatusLabel(concept: PanelConcept) {
+  if (concept.status === "clear") return `Clear${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  if (concept.status === "gap_found") return `Gap found${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  if (concept.status === "in_progress") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  return "Not started";
+}
+
+function getConceptStatusIcon(status: ConceptStatus) {
+  if (status === "clear") return "✓";
+  if (status === "gap_found") return "!";
+  if (status === "in_progress") return "◐";
+  return "○";
 }
 
 function InsightsTab({
@@ -236,6 +262,9 @@ export function GapResultPanel({
   sessionId = "quick",
   initialStudyToolsState = null,
   onStudyToolsStateChange,
+  concepts = [],
+  activeConceptId = null,
+  onConceptSelect,
 }: GapResultPanelProps) {
   const panelStyle = {
     width: width ? `${width}px` : undefined,
@@ -256,7 +285,8 @@ export function GapResultPanel({
   const [cardIndex, setCardIndex] = useState(0);
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [flashcardReviewState, setFlashcardReviewState] = useState<Record<string, FlashcardReviewState>>({});
-  const hasHydratedStudyToolsRef = useRef(false);
+  const [isConceptSwitcherOpen, setIsConceptSwitcherOpen] = useState(false);
+  const hydratedStudyToolsKeyRef = useRef<string | null>(null);
 
   const latestEvaluation = useMemo(() => getLatestEvaluation(result), [result]);
   const hasCompletedExplanation = Boolean(result && selectedConcept && sourceMaterial);
@@ -281,8 +311,9 @@ export function GapResultPanel({
   }, [selectedConcept, sourceMaterial]);
 
   useEffect(() => {
-    if (hasHydratedStudyToolsRef.current) return;
-    hasHydratedStudyToolsRef.current = true;
+    const hydrationKey = `${sessionId}_${selectedConcept || "none"}`;
+    if (hydratedStudyToolsKeyRef.current === hydrationKey) return;
+    hydratedStudyToolsKeyRef.current = hydrationKey;
 
     try {
       const initialSnapshot = parseStudyToolsSnapshot(initialStudyToolsState);
@@ -336,7 +367,7 @@ export function GapResultPanel({
       window.localStorage.removeItem(quizStorageKey);
       window.localStorage.removeItem(flashcardsStorageKey);
     }
-  }, [quizStorageKey, flashcardsStorageKey, initialStudyToolsState]);
+  }, [quizStorageKey, flashcardsStorageKey, initialStudyToolsState, selectedConcept, sessionId]);
 
   useEffect(() => {
     const hasStudyTools = quizQuestions.length > 0 || flashcards.length > 0;
@@ -462,6 +493,7 @@ export function GapResultPanel({
   const currentCard = flashcards[cardIndex];
   const isAnswerChecked = checkedAnswerIndex !== null;
   const currentCardReviewState = currentCard ? flashcardReviewState[currentCard.id] : undefined;
+  const activeConcept = concepts.find((concept) => concept.id === activeConceptId);
 
   const markFlashcard = (state: FlashcardReviewState) => {
     if (!currentCard) return;
@@ -476,6 +508,45 @@ export function GapResultPanel({
     <aside className="dashboard-panel right-panel" style={panelStyle}>
       <div className="panel-header study-panel-header">
         <h3 style={{ fontFamily: "inherit", fontWeight: 700 }}>Study panel</h3>
+        {activeConcept ? (
+          <div className="concept-switcher">
+            <button
+              type="button"
+              className="concept-switcher-trigger"
+              aria-expanded={isConceptSwitcherOpen}
+              onClick={() => setIsConceptSwitcherOpen((current) => !current)}
+            >
+              <span>
+                <small>Current concept</small>
+                <strong>{activeConcept.title}</strong>
+              </span>
+              <em>{getConceptStatusLabel(activeConcept)}</em>
+              <ChevronDown size={16} />
+            </button>
+            {isConceptSwitcherOpen ? (
+              <div className="concept-switcher-popover">
+                <div className="concept-switcher-title">This study room</div>
+                {concepts.map((concept) => (
+                  <button
+                    key={concept.id}
+                    type="button"
+                    className={concept.id === activeConceptId ? "active" : ""}
+                    onClick={() => {
+                      onConceptSelect?.(concept.title);
+                      setIsConceptSwitcherOpen(false);
+                    }}
+                  >
+                    <span aria-hidden="true">{getConceptStatusIcon(concept.status)}</span>
+                    <span>
+                      <strong>{concept.title}</strong>
+                      <small>{getConceptStatusLabel(concept)}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <PanelTabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 

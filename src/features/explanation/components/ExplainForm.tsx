@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { GapResultPanel } from "@src/features/gap-analysis";
-import { ArrowUp, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowUp, CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   clearRoomSessionStateAction,
   saveRoomSessionStateAction,
@@ -45,6 +45,30 @@ type ConceptSuggestion = {
   description?: string;
 };
 
+type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "clear";
+
+type ConceptTrackSnapshot = {
+  result: ExplanationResult | null;
+  history: ConversationMessage[];
+  previousExplanations: string[];
+  previousMainGaps: string[];
+  previousSocraticQuestions: string[];
+  resolvedGaps: string[];
+  studyTools?: Json | null;
+};
+
+type RoomConceptTrack = {
+  id: string;
+  roomId: string | null;
+  title: string;
+  status: ConceptStatus;
+  latestClarityScore: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  lastActivityAt: string | null;
+  snapshot: ConceptTrackSnapshot;
+};
+
 type PersistedSessionSnapshot = {
   selectedConcept: string | null;
   result: ExplanationResult | null;
@@ -54,6 +78,7 @@ type PersistedSessionSnapshot = {
   previousSocraticQuestions: string[];
   resolvedGaps: string[];
   studyTools?: Json | null;
+  conceptTracks?: Record<string, RoomConceptTrack>;
   sourceUpdatedAt?: string | null;
 };
 
@@ -61,11 +86,85 @@ function getSessionStorageKey(roomId: string | null) {
   return `feynduck-session-${roomId || "quick"}`;
 }
 
-function readPersistedSession(key: string): PersistedSessionSnapshot | null {
+function getConceptTrackIndexKey(roomId: string | null) {
+  return `feynduck-concepts-${roomId || "quick"}`;
+}
+
+function getConceptTrackStorageKey(roomId: string | null, conceptId: string) {
+  return `feynduck-concept-${roomId || "quick"}-${conceptId}`;
+}
+
+function readPersistedConceptTracks(roomId: string | null): Record<string, RoomConceptTrack> {
+  try {
+    const rawIndex = window.localStorage.getItem(getConceptTrackIndexKey(roomId));
+    const conceptIds = rawIndex ? JSON.parse(rawIndex) : [];
+    if (!Array.isArray(conceptIds)) return {};
+
+    const tracks: Record<string, RoomConceptTrack> = {};
+    for (const conceptId of conceptIds) {
+      if (typeof conceptId !== "string") continue;
+      const rawTrack = window.localStorage.getItem(getConceptTrackStorageKey(roomId, conceptId));
+      if (!rawTrack) continue;
+      Object.assign(tracks, parseConceptTracks({ [conceptId]: JSON.parse(rawTrack) }));
+    }
+
+    return tracks;
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedConceptTracks(roomId: string | null, tracks: Record<string, RoomConceptTrack>) {
+  const indexKey = getConceptTrackIndexKey(roomId);
+  let previousIds: string[] = [];
+
+  try {
+    const rawIndex = window.localStorage.getItem(indexKey);
+    const parsedIndex = rawIndex ? JSON.parse(rawIndex) : [];
+    previousIds = Array.isArray(parsedIndex)
+      ? parsedIndex.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    previousIds = [];
+  }
+
+  const nextIds = Object.keys(tracks);
+  const staleIds = previousIds.filter((conceptId) => !nextIds.includes(conceptId));
+  staleIds.forEach((conceptId) => {
+    window.localStorage.removeItem(getConceptTrackStorageKey(roomId, conceptId));
+  });
+
+  nextIds.forEach((conceptId) => {
+    window.localStorage.setItem(getConceptTrackStorageKey(roomId, conceptId), JSON.stringify(tracks[conceptId]));
+  });
+  window.localStorage.setItem(indexKey, JSON.stringify(nextIds));
+}
+
+function clearPersistedConceptTracks(roomId: string | null) {
+  try {
+    const indexKey = getConceptTrackIndexKey(roomId);
+    const rawIndex = window.localStorage.getItem(indexKey);
+    const conceptIds = rawIndex ? JSON.parse(rawIndex) : [];
+    if (Array.isArray(conceptIds)) {
+      conceptIds.forEach((conceptId) => {
+        if (typeof conceptId === "string") {
+          window.localStorage.removeItem(getConceptTrackStorageKey(roomId, conceptId));
+        }
+      });
+    }
+    window.localStorage.removeItem(indexKey);
+  } catch {
+    window.localStorage.removeItem(getConceptTrackIndexKey(roomId));
+  }
+}
+
+function readPersistedSession(key: string, roomId: string | null): PersistedSessionSnapshot | null {
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedSessionSnapshot>;
+    const sessionConceptTracks = parseConceptTracks(parsed.conceptTracks);
+    const scopedConceptTracks = readPersistedConceptTracks(roomId);
 
     return {
       selectedConcept: typeof parsed.selectedConcept === "string" ? parsed.selectedConcept : null,
@@ -92,6 +191,10 @@ function readPersistedSession(key: string): PersistedSessionSnapshot | null {
         ? parsed.resolvedGaps.filter((value): value is string => typeof value === "string")
         : [],
       studyTools: parsed.studyTools as Json | null | undefined,
+      conceptTracks: {
+        ...sessionConceptTracks,
+        ...scopedConceptTracks,
+      },
       sourceUpdatedAt: typeof parsed.sourceUpdatedAt === "string" ? parsed.sourceUpdatedAt : null,
     };
   } catch {
@@ -129,16 +232,125 @@ function parsePersistedSession(value: unknown): PersistedSessionSnapshot | null 
       ? parsed.resolvedGaps.filter((item): item is string => typeof item === "string")
       : [],
     studyTools: parsed.studyTools as Json | null | undefined,
+    conceptTracks: parseConceptTracks(parsed.conceptTracks),
     sourceUpdatedAt: typeof parsed.sourceUpdatedAt === "string" ? parsed.sourceUpdatedAt : null,
   };
 }
 
-function savePersistedSession(key: string, snapshot: PersistedSessionSnapshot) {
-  window.localStorage.setItem(key, JSON.stringify(snapshot));
+function parseConceptTracks(value: unknown): Record<string, RoomConceptTrack> {
+  if (!value || typeof value !== "object") return {};
+
+  const tracks: Record<string, RoomConceptTrack> = {};
+  for (const [id, rawTrack] of Object.entries(value as Record<string, unknown>)) {
+    if (!rawTrack || typeof rawTrack !== "object") continue;
+    const track = rawTrack as Partial<RoomConceptTrack>;
+    if (typeof track.title !== "string" || !track.title.trim()) continue;
+
+    const status: ConceptStatus =
+      track.status === "clear" ||
+      track.status === "gap_found" ||
+      track.status === "in_progress" ||
+      track.status === "not_started"
+        ? track.status
+        : "not_started";
+    const snapshot = track.snapshot && typeof track.snapshot === "object"
+      ? track.snapshot as Partial<ConceptTrackSnapshot>
+      : {};
+
+    tracks[id] = {
+      id,
+      roomId: typeof track.roomId === "string" ? track.roomId : null,
+      title: track.title,
+      status,
+      latestClarityScore: typeof track.latestClarityScore === "number" ? track.latestClarityScore : null,
+      startedAt: typeof track.startedAt === "string" ? track.startedAt : null,
+      completedAt: typeof track.completedAt === "string" ? track.completedAt : null,
+      lastActivityAt: typeof track.lastActivityAt === "string" ? track.lastActivityAt : null,
+      snapshot: {
+        result: snapshot.result && typeof snapshot.result === "object" ? snapshot.result as ExplanationResult : null,
+        history: Array.isArray(snapshot.history)
+          ? snapshot.history.filter((message): message is ConversationMessage => (
+              message &&
+              typeof message === "object" &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string" &&
+              typeof message.id === "string"
+            ))
+          : [],
+        previousExplanations: Array.isArray(snapshot.previousExplanations)
+          ? snapshot.previousExplanations.filter((item): item is string => typeof item === "string")
+          : [],
+        previousMainGaps: Array.isArray(snapshot.previousMainGaps)
+          ? snapshot.previousMainGaps.filter((item): item is string => typeof item === "string")
+          : [],
+        previousSocraticQuestions: Array.isArray(snapshot.previousSocraticQuestions)
+          ? snapshot.previousSocraticQuestions.filter((item): item is string => typeof item === "string")
+          : [],
+        resolvedGaps: Array.isArray(snapshot.resolvedGaps)
+          ? snapshot.resolvedGaps.filter((item): item is string => typeof item === "string")
+          : [],
+        studyTools: snapshot.studyTools as Json | null | undefined,
+      },
+    };
+  }
+
+  return tracks;
 }
 
-function clearPersistedSession(key: string) {
+function savePersistedSession(key: string, snapshot: PersistedSessionSnapshot, roomId: string | null) {
+  const localSnapshot: PersistedSessionSnapshot = {
+    ...snapshot,
+    conceptTracks: undefined,
+  };
+
+  window.localStorage.setItem(key, JSON.stringify(localSnapshot));
+  savePersistedConceptTracks(roomId, snapshot.conceptTracks || {});
+}
+
+function clearPersistedSession(key: string, roomId: string | null) {
   window.localStorage.removeItem(key);
+  clearPersistedConceptTracks(roomId);
+}
+
+function getConceptId(title: string) {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "concept";
+}
+
+function getConceptStatus(result: ExplanationResult | null, hasHistory: boolean): ConceptStatus {
+  if (result?.status === "clear") return "clear";
+  if (result && result.status !== "topic_mismatch") return "gap_found";
+  if (hasHistory) return "in_progress";
+  return "not_started";
+}
+
+function createEmptyConceptSnapshot(title: string): ConceptTrackSnapshot {
+  const selectionId = createMessageId("concept");
+
+  return {
+    result: null,
+    history: [
+      {
+        ...conceptQuestionMessage,
+      },
+      {
+        id: `${selectionId}-assistant`,
+        role: "assistant",
+        kind: "feedback",
+        content: `Great — explain ${title} in your own words.`,
+      },
+    ],
+    previousExplanations: [],
+    previousMainGaps: [],
+    previousSocraticQuestions: [],
+    resolvedGaps: [],
+    studyTools: null,
+  };
 }
 
 function createMessageId(prefix: string) {
@@ -323,13 +535,77 @@ export function ExplainForm({
   const [previousMainGaps, setPreviousMainGaps] = useState<string[]>([]);
   const [previousSocraticQuestions, setPreviousSocraticQuestions] = useState<string[]>([]);
   const [resolvedGaps, setResolvedGaps] = useState<string[]>([]);
+  const [history, setHistory] = useState<ConversationMessage[]>([]);
   const [conceptSuggestions, setConceptSuggestions] = useState<ConceptSuggestion[]>([]);
   const [conceptsLoading, setConceptsLoading] = useState(false);
   const [conceptsError, setConceptsError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [studyToolsState, setStudyToolsState] = useState<Json | null>(null);
+  const [conceptTracks, setConceptTracks] = useState<Record<string, RoomConceptTrack>>({});
+  const [isChoosingNextConcept, setIsChoosingNextConcept] = useState(false);
   const [sessionHydrated, setSessionHydrated] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const buildCurrentConceptTrack = (
+    concept: string,
+    overrides: Partial<RoomConceptTrack> = {},
+  ): RoomConceptTrack => {
+    const id = getConceptId(concept);
+    const existing = conceptTracks[id];
+    const now = new Date().toISOString();
+    const cleanHistory = history.filter((message) => message.kind !== "loading");
+    const status = overrides.status || getConceptStatus(result, cleanHistory.length > 0);
+
+    return {
+      id,
+      roomId,
+      title: concept,
+      status,
+      latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : existing?.latestClarityScore ?? null,
+      startedAt: existing?.startedAt || now,
+      completedAt: status === "clear" ? existing?.completedAt || now : existing?.completedAt || null,
+      lastActivityAt: now,
+      snapshot: {
+        result,
+        history: cleanHistory,
+        previousExplanations,
+        previousMainGaps,
+        previousSocraticQuestions,
+        resolvedGaps,
+        studyTools: studyToolsState,
+      },
+      ...overrides,
+    };
+  };
+
+  const saveCurrentConceptTrack = () => {
+    if (!selectedConcept) return conceptTracks;
+    const id = getConceptId(selectedConcept);
+    const nextTracks = {
+      ...conceptTracks,
+      [id]: buildCurrentConceptTrack(selectedConcept),
+    };
+    setConceptTracks(nextTracks);
+    return nextTracks;
+  };
+
+  const restoreConceptTrack = (track: RoomConceptTrack) => {
+    setSelectedConcept(track.title);
+    setResult(track.snapshot.result);
+    setHistory(track.snapshot.history);
+    setPreviousExplanations(track.snapshot.previousExplanations);
+    setPreviousMainGaps(track.snapshot.previousMainGaps);
+    setPreviousSocraticQuestions(track.snapshot.previousSocraticQuestions);
+    setResolvedGaps(track.snapshot.resolvedGaps);
+    setStudyToolsState(track.snapshot.studyTools || null);
+    setRequest(prev => ({ ...prev, explanation: "" }));
+    setError(null);
+    setNotice(null);
+    setIsChoosingNextConcept(false);
+
+    if (roomId) void updateRoomSelectedConceptAction(roomId, track.title);
+    if (onRoomLoaded) onRoomLoaded(room ? room.title : "Quick explain", track.title);
+  };
 
   const fetchConceptSuggestions = async (sourceMaterial: string) => {
     if (sourceMaterial.trim().length < 10) {
@@ -387,7 +663,7 @@ export function ExplainForm({
   }, []);
 
   const resetEvaluationSession = () => {
-    clearPersistedSession(sessionStorageKey);
+    clearPersistedSession(sessionStorageKey, roomId);
     if (roomId) void clearRoomSessionStateAction(roomId);
     setSelectedConcept(null);
     setResult(null);
@@ -401,6 +677,8 @@ export function ExplainForm({
     setConceptsError(null);
     setConceptsLoading(false);
     setStudyToolsState(null);
+    setConceptTracks({});
+    setIsChoosingNextConcept(false);
     setHistory([]);
     setRequest(prev => ({ ...prev, explanation: "" }));
   };
@@ -540,15 +818,14 @@ export function ExplainForm({
     };
   }, [isDraggingLeft, isDraggingRight]);
 
-  const [history, setHistory] = useState<ConversationMessage[]>([]);
-
   const conversationRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const submitLockRef = useRef(false);
 
   useEffect(() => {
-    const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey);
+    const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey, roomId);
     if (persistedSession) {
+      setConceptTracks(persistedSession.conceptTracks || {});
       setSelectedConcept(persistedSession.selectedConcept);
       setResult(persistedSession.result);
       setHistory(persistedSession.history);
@@ -577,10 +854,11 @@ export function ExplainForm({
       previousExplanations.length > 0 ||
       previousMainGaps.length > 0 ||
       previousSocraticQuestions.length > 0 ||
-      resolvedGaps.length > 0;
+      resolvedGaps.length > 0 ||
+      Object.keys(conceptTracks).length > 0;
 
     if (!hasSessionState) {
-      clearPersistedSession(sessionStorageKey);
+      clearPersistedSession(sessionStorageKey, roomId);
       if (roomId) void clearRoomSessionStateAction(roomId);
       return;
     }
@@ -594,10 +872,16 @@ export function ExplainForm({
       previousSocraticQuestions,
       resolvedGaps,
       studyTools: studyToolsState,
+      conceptTracks: selectedConcept
+        ? {
+            ...conceptTracks,
+            [getConceptId(selectedConcept)]: buildCurrentConceptTrack(selectedConcept),
+          }
+        : conceptTracks,
       sourceUpdatedAt: source?.updated_at || initialSource?.updated_at || null,
     };
 
-    savePersistedSession(sessionStorageKey, snapshot);
+    savePersistedSession(sessionStorageKey, snapshot, roomId);
 
     if (roomId) {
       void saveRoomSessionStateAction(roomId, snapshot as unknown as Json);
@@ -613,6 +897,7 @@ export function ExplainForm({
     previousSocraticQuestions,
     resolvedGaps,
     studyToolsState,
+    conceptTracks,
     source?.updated_at,
     initialSource?.updated_at,
   ]);
@@ -622,6 +907,56 @@ export function ExplainForm({
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
   }, [history, result]);
+
+  useEffect(() => {
+    if (!sessionHydrated || !selectedConcept) return;
+
+    const conceptId = getConceptId(selectedConcept);
+    const cleanHistory = history.filter((message) => message.kind !== "loading");
+    const now = new Date().toISOString();
+    const status = getConceptStatus(result, cleanHistory.length > 0);
+    const snapshot: ConceptTrackSnapshot = {
+      result,
+      history: cleanHistory,
+      previousExplanations,
+      previousMainGaps,
+      previousSocraticQuestions,
+      resolvedGaps,
+      studyTools: studyToolsState,
+    };
+
+    setConceptTracks((current) => {
+      const existing = current[conceptId];
+      const nextTrack: RoomConceptTrack = {
+        id: conceptId,
+        roomId,
+        title: selectedConcept,
+        status,
+        latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : existing?.latestClarityScore ?? null,
+        startedAt: existing?.startedAt || now,
+        completedAt: status === "clear" ? existing?.completedAt || now : existing?.completedAt || null,
+        lastActivityAt: now,
+        snapshot,
+      };
+
+      if (JSON.stringify(existing) === JSON.stringify(nextTrack)) return current;
+      return {
+        ...current,
+        [conceptId]: nextTrack,
+      };
+    });
+  }, [
+    sessionHydrated,
+    roomId,
+    selectedConcept,
+    result,
+    history,
+    previousExplanations,
+    previousMainGaps,
+    previousSocraticQuestions,
+    resolvedGaps,
+    studyToolsState,
+  ]);
 
   useEffect(() => {
     const textarea = composerTextareaRef.current;
@@ -643,7 +978,33 @@ export function ExplainForm({
       return;
     }
 
-    const selectionId = createMessageId("concept");
+    const currentTracks = saveCurrentConceptTrack();
+    const conceptId = getConceptId(nextConcept);
+    const existingTrack = currentTracks[conceptId];
+
+    if (existingTrack) {
+      restoreConceptTrack(existingTrack);
+      return;
+    }
+
+    const emptySnapshot = createEmptyConceptSnapshot(nextConcept);
+    const now = new Date().toISOString();
+    const nextTrack: RoomConceptTrack = {
+      id: conceptId,
+      roomId,
+      title: nextConcept,
+      status: "not_started",
+      latestClarityScore: null,
+      startedAt: now,
+      completedAt: null,
+      lastActivityAt: now,
+      snapshot: emptySnapshot,
+    };
+
+    setConceptTracks({
+      ...currentTracks,
+      [conceptId]: nextTrack,
+    });
     setSelectedConcept(nextConcept);
     if (roomId) {
       void updateRoomSelectedConceptAction(roomId, nextConcept);
@@ -655,25 +1016,36 @@ export function ExplainForm({
     setPreviousMainGaps([]);
     setPreviousSocraticQuestions([]);
     setResolvedGaps([]);
-    setHistory([
-      conceptQuestionMessage,
-      {
-        id: `${selectionId}-student`,
-        role: "user",
-        content: nextConcept,
-      },
-      {
-        id: `${selectionId}-assistant`,
-        role: "assistant",
-        kind: "feedback",
-        content: `Great — explain ${nextConcept} in your own words.`,
-      },
-    ]);
+    setStudyToolsState(null);
+    setHistory(emptySnapshot.history);
+    setIsChoosingNextConcept(false);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (onRoomLoaded) {
       onRoomLoaded(room ? room.title : "Quick explain", nextConcept);
     }
+  };
+
+  const handleChooseAnotherConcept = () => {
+    saveCurrentConceptTrack();
+    setIsChoosingNextConcept(true);
+    setError(null);
+    setNotice(null);
+    if (!conceptSuggestions.length && savedSourceMaterial) {
+      void fetchConceptSuggestions(savedSourceMaterial);
+    }
+  };
+
+  const handleAskFollowUp = () => {
+    setIsChoosingNextConcept(false);
+    window.setTimeout(() => {
+      composerTextareaRef.current?.focus();
+    }, 0);
+  };
+
+  const handleReviewThisConcept = () => {
+    setIsChoosingNextConcept(false);
+    setNotice(`Reviewing ${selectedConcept}. Your quiz and flashcards are in the study panel.`);
   };
 
   const focusCustomConceptInput = () => {
@@ -824,6 +1196,49 @@ export function ExplainForm({
   }
 
   const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
+  const isConceptClear = result?.status === "clear" && (result.clarityScore ?? 0) >= 90;
+  const conceptSuggestionOptions = conceptSuggestions.filter(
+    (concept) => getConceptId(concept.title) !== (selectedConcept ? getConceptId(selectedConcept) : ""),
+  );
+  const panelConcepts = [
+    ...Object.values(conceptTracks),
+    ...(selectedConcept && !conceptTracks[getConceptId(selectedConcept)]
+      ? [{
+          id: getConceptId(selectedConcept),
+          roomId,
+          title: selectedConcept,
+          status: getConceptStatus(result, history.length > 0),
+          latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : null,
+          startedAt: null,
+          completedAt: result?.status === "clear" ? new Date().toISOString() : null,
+          lastActivityAt: null,
+          snapshot: {
+            result,
+            history,
+            previousExplanations,
+            previousMainGaps,
+            previousSocraticQuestions,
+            resolvedGaps,
+            studyTools: studyToolsState,
+          },
+        } satisfies RoomConceptTrack]
+      : []),
+    ...conceptSuggestions
+      .filter((concept) => !conceptTracks[getConceptId(concept.title)])
+      .map((concept): RoomConceptTrack => ({
+        id: getConceptId(concept.title),
+        roomId,
+        title: concept.title,
+        status: "not_started",
+        latestClarityScore: null,
+        startedAt: null,
+        completedAt: null,
+        lastActivityAt: null,
+        snapshot: createEmptyConceptSnapshot(concept.title),
+      })),
+  ].filter((concept, index, all) => (
+    all.findIndex((item) => item.id === concept.id) === index
+  ));
   const conversationMessages = getRenderableMessages(
     history,
     result,
@@ -835,6 +1250,8 @@ export function ExplainForm({
     ? "Add study material first..."
     : !selectedConcept
       ? "Enter a concept or topic..."
+      : isConceptClear
+        ? `Ask a follow-up about ${selectedConcept}...`
       : result
         ? `Re-explain ${selectedConcept}...`
         : `Explain ${selectedConcept}...`;
@@ -967,6 +1384,53 @@ export function ExplainForm({
                   : "Feynduck needs your material before it can check your explanation."}
               </p>
             </div>
+          ) : isChoosingNextConcept ? (
+            <div className="concept-picker-state">
+              <div>
+                <span className="conversation-kicker">Next concept</span>
+                <h2>What would you like to learn next?</h2>
+                <p>Choose another concept from this material.</p>
+              </div>
+              {conceptsLoading ? (
+                <div className="concept-loading large" aria-live="polite">
+                  <Loader2 className="icon-spin" size={18} />
+                  <span>Finding the next concepts in your material...</span>
+                </div>
+              ) : null}
+              {!conceptsLoading && conceptsError ? (
+                <div className="concept-error">{conceptsError}</div>
+              ) : null}
+              <div className="next-concept-grid">
+                {conceptSuggestionOptions.map((concept) => (
+                  <button
+                    key={concept.title}
+                    type="button"
+                    className="next-concept-card"
+                    onClick={() => selectConcept(concept.title)}
+                  >
+                    <strong>{concept.title}</strong>
+                    {concept.description ? <span>{concept.description}</span> : null}
+                  </button>
+                ))}
+              </div>
+              <div className="next-concept-custom">
+                <textarea
+                  className="composer-textarea"
+                  placeholder="Enter another concept..."
+                  value={request.explanation}
+                  onChange={(event) => updateField("explanation", event.target.value)}
+                  rows={2}
+                />
+                <button
+                  type="button"
+                  className="source-action-btn source-action-btn-primary"
+                  disabled={!request.explanation.trim()}
+                  onClick={() => selectConcept(request.explanation)}
+                >
+                  Start concept
+                </button>
+              </div>
+            </div>
           ) : (
             <>
               <div className="conversation-kicker">Conversation</div>
@@ -1007,6 +1471,35 @@ export function ExplainForm({
                   </div>
                 );
               })}
+              {isConceptClear && selectedConcept ? (
+                <div className="concept-complete-card">
+                  <div className="concept-complete-icon"><CheckCircle2 size={22} /></div>
+                  <div>
+                    <h3>You can explain {selectedConcept} clearly.</h3>
+                    <p>
+                      {result.chatMessage ||
+                        result.whyItMatters ||
+                        "You connected the central mechanism clearly enough to move on or review it later."}
+                    </p>
+                    <div className="concept-complete-chips">
+                      <span>Clarity {result.clarityScore}</span>
+                      <span>Quiz ready</span>
+                      <span>Flashcards ready</span>
+                    </div>
+                    <div className="concept-complete-actions">
+                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
+                        Choose another concept
+                      </button>
+                      <button type="button" className="source-action-btn" onClick={handleReviewThisConcept}>
+                        Review this concept
+                      </button>
+                      <button type="button" className="source-action-btn" onClick={handleAskFollowUp}>
+                        Ask a follow-up
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {hasSavedMaterial && !selectedConcept && (
                 <div className="concept-suggestions" aria-label="Suggested concepts">
                   {conceptsLoading && (
@@ -1046,7 +1539,7 @@ export function ExplainForm({
           )}
         </div>
 
-        <div className="composer-container">
+        <div className={cn("composer-container", isConceptClear && "secondary")}>
           <div className="composer-label-icon">
             <MessageSquareText size={14} />
             <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
@@ -1113,6 +1606,14 @@ export function ExplainForm({
         sessionId={roomId || "quick"}
         initialStudyToolsState={studyToolsState}
         onStudyToolsStateChange={setStudyToolsState}
+        concepts={panelConcepts.map((concept) => ({
+          id: concept.id,
+          title: concept.title,
+          status: concept.status,
+          latestClarityScore: concept.latestClarityScore,
+        }))}
+        activeConceptId={selectedConcept ? getConceptId(selectedConcept) : null}
+        onConceptSelect={selectConcept}
       />
     </div>
   );

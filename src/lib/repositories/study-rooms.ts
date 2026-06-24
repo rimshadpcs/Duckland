@@ -60,28 +60,30 @@ export async function getStudyRooms() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("You must be signed in to load rooms.");
 
-  const { data, error } = await supabase
+  const { data: rooms, error } = await supabase
     .from("study_rooms")
-    .select("*, sources(count)")
+    .select("*")
     .eq("user_id", user.id)
     .order("last_activity_at", { ascending: false });
 
-  if (error) {
-    const fallback = await supabase
-      .from("study_rooms")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("last_activity_at", { ascending: false });
+  if (error) throw new Error(getErrorMessage("Could not load study rooms", error));
+  if (!rooms.length) return [];
 
-    if (fallback.error) throw new Error(getErrorMessage("Could not load study rooms", fallback.error));
-    return fallback.data.map((room) => withSourceCount(room, 0));
+  const roomIds = rooms.map((room) => room.id);
+  const { data: sources, error: sourcesError } = await supabase
+    .from("sources")
+    .select("room_id")
+    .eq("user_id", user.id)
+    .in("room_id", roomIds);
+
+  if (sourcesError) return rooms.map((room) => withSourceCount(room, 0));
+
+  const sourceCounts = new Map<string, number>();
+  for (const source of sources || []) {
+    sourceCounts.set(source.room_id, (sourceCounts.get(source.room_id) || 0) + 1);
   }
 
-  return data.map((room) => {
-    const sources = room.sources as { count: number }[] | null | undefined;
-    const { sources: _sources, ...studyRoom } = room;
-    return withSourceCount(studyRoom as StudyRoomRow, sources?.[0]?.count ?? 0);
-  });
+  return rooms.map((room) => withSourceCount(room, sourceCounts.get(room.id) || 0));
 }
 
 export async function getStudyRoom(roomId: string) {
