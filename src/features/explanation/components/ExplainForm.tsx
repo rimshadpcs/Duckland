@@ -528,6 +528,9 @@ export function ExplainForm({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [sourceSavedAt, setSourceSavedAt] = useState<string | null>(initialSource?.updated_at || null);
+  const [isSourceFreshlySaved, setIsSourceFreshlySaved] = useState(false);
+  const [isSavingSource, setIsSavingSource] = useState(false);
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
@@ -716,6 +719,7 @@ export function ExplainForm({
 
     setError(null);
     setNotice(null);
+    setIsSavingSource(true);
     setIsEditingNotes(false);
     resetEvaluationSession();
 
@@ -728,9 +732,11 @@ export function ExplainForm({
     if (!result.ok) {
       setError(result.error);
       setIsEditingNotes(true);
+      setIsSavingSource(false);
       return;
     }
 
+    const savedAt = new Date().toISOString();
     setSource((current) => ({
       id: result.data.sourceId,
       room_id: roomId,
@@ -740,22 +746,25 @@ export function ExplainForm({
       content: sourceMaterial,
       metadata: current?.metadata || {},
       created_at: current?.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      updated_at: savedAt,
     }));
     setSavedSourceMaterial(sourceMaterial);
+    setSourceSavedAt(savedAt);
+    setIsSourceFreshlySaved(true);
     setRoom((current) =>
       current
         ? {
             ...current,
             title: result.data.roomTitle || current.title,
             status: "in_progress",
-            last_activity_at: new Date().toISOString(),
+            last_activity_at: savedAt,
           }
         : current,
     );
     setRequest(prev => ({ ...prev, notes: sourceMaterial }));
-    setNotice("Material saved");
+    setIsSavingSource(false);
     void fetchConceptSuggestions(sourceMaterial);
+    window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
     if (onRoomLoaded) {
       onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
     }
@@ -1045,7 +1054,7 @@ export function ExplainForm({
 
   const handleReviewThisConcept = () => {
     setIsChoosingNextConcept(false);
-    setNotice(`Reviewing ${selectedConcept}. Your quiz and flashcards are in the study panel.`);
+    setNotice("Quiz and flashcards are ready in the study panel.");
   };
 
   const focusCustomConceptInput = () => {
@@ -1057,9 +1066,7 @@ export function ExplainForm({
   };
 
   const handleChangeTopic = () => {
-    const shouldReset = window.confirm("Change topic? This will clear the current conversation and feedback, but keep your source material.");
-    if (!shouldReset) return;
-
+    saveCurrentConceptTrack();
     setSelectedConcept(null);
     setResult(null);
     setError(null);
@@ -1104,7 +1111,7 @@ export function ExplainForm({
       id: `${submissionId}-typing`,
       role: "assistant",
       kind: "loading",
-      content: "Thinking about your explanation...",
+      content: "Looking for the missing link...",
     };
 
     setHistory(prev => [
@@ -1280,7 +1287,11 @@ export function ExplainForm({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
             <div>
               <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--ink)' }}>{room ? room.title : "Quick explain"}</h4>
-              <div className="source-meta">{hasSavedMaterial ? "Study material added" : room?.description || "No material yet"}</div>
+              <div className="source-meta">
+                {hasSavedMaterial
+                  ? `Pasted text · ${isSourceFreshlySaved ? "Saved just now" : sourceSavedAt ? "Saved" : "Saved"}`
+                  : room?.description || "No material yet"}
+              </div>
               {selectedConcept && (
                 <div className="current-focus-pill">
                   <span>Current focus</span>
@@ -1317,14 +1328,16 @@ export function ExplainForm({
                 <button
                   className="source-action-btn"
                   onClick={handleCancelNotesEdit}
+                  disabled={isSavingSource}
                 >
                   Cancel
                 </button>
                 <button
                   className="source-action-btn source-action-btn-primary"
                   onClick={handleSaveNotes}
+                  disabled={isSavingSource}
                 >
-                  Save material
+                  {isSavingSource ? "Saving..." : "Save material"}
                 </button>
               </div>
             </div>
@@ -1435,7 +1448,7 @@ export function ExplainForm({
             <>
               <div className="conversation-kicker">Conversation</div>
               {conversationMessages.map((msg) => {
-                const content = msg.content?.trim() || "Thinking about your explanation...";
+                const content = msg.content?.trim() || "Looking for the missing link...";
                 const visualRole = msg.role === "assistant" ? "assistant" : "student";
                 const avatar = (
                   <div className="avatar">

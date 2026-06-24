@@ -48,6 +48,7 @@ export function StudyRoomsDashboard({
   const [pinnedRoomIds, setPinnedRoomIds] = useState<string[]>([]);
   const [openMenuRoomId, setOpenMenuRoomId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingDeleteRoom, setPendingDeleteRoom] = useState<StudyRoomWithSourceCount | null>(null);
   const [newRoomTitle, setNewRoomTitle] = useState("");
   const [newRoomDescription, setNewRoomDescription] = useState("");
   const [error, setError] = useState<string | null>(loadError || null);
@@ -138,9 +139,13 @@ export function StudyRoomsDashboard({
   };
 
   const handleDeleteRoom = (room: StudyRoomWithSourceCount) => {
-    const confirmed = window.confirm(`Delete "${room.title}"? Its source material will be deleted too.`);
-    if (!confirmed) return;
+    setPendingDeleteRoom(room);
+    setOpenMenuRoomId(null);
+  };
 
+  const confirmDeleteRoom = () => {
+    if (!pendingDeleteRoom) return;
+    const room = pendingDeleteRoom;
     startTransition(async () => {
       const result = await deleteStudyRoomAction(room.id);
       if (!result.ok) {
@@ -149,6 +154,7 @@ export function StudyRoomsDashboard({
       }
       setRooms((current) => current.filter((item) => item.id !== room.id));
       updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
+      setPendingDeleteRoom(null);
     });
   };
 
@@ -156,6 +162,10 @@ export function StudyRoomsDashboard({
     .map((id) => rooms.find((room) => room.id === id))
     .filter((room): room is StudyRoomWithSourceCount => Boolean(room));
   const unpinnedRooms = rooms.filter((room) => !pinnedRoomIds.includes(room.id));
+  const continueRoom = [...rooms].sort((first, second) => (
+    new Date(second.last_activity_at || second.created_at || 0).getTime() -
+    new Date(first.last_activity_at || first.created_at || 0).getTime()
+  ))[0] || null;
 
   const renderRoomCard = (room: StudyRoomWithSourceCount) => {
     const statusText = room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room);
@@ -240,6 +250,23 @@ export function StudyRoomsDashboard({
           </div>
         ) : null}
 
+        {continueRoom ? (
+          <section className="continue-learning" aria-label="Continue learning">
+            <div>
+              <span>Continue learning</span>
+              <h2>{continueRoom.title}</h2>
+              <p>
+                {continueRoom.selected_concept
+                  ? `Current concept: ${continueRoom.selected_concept}`
+                  : `${Number.isFinite(continueRoom.source_count) ? continueRoom.source_count : 0} sources added`}
+              </p>
+            </div>
+            <button type="button" onClick={() => openRoom(continueRoom.id)}>
+              Continue →
+            </button>
+          </section>
+        ) : null}
+
         <div className="rooms-grid">
           <div className="room-card create-card" onClick={() => setIsModalOpen(true)}>
             <div className="create-icon">+</div>
@@ -303,6 +330,25 @@ export function StudyRoomsDashboard({
               </button>
               <button className="modal-btn-create" onClick={handleCreateRoom} disabled={isPending}>
                 {isPending ? "Creating..." : "Create room"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteRoom && (
+        <div className="modal-overlay">
+          <div className="modal-content confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-room-title">
+            <h3 id="delete-room-title">Delete study room?</h3>
+            <p>
+              This will delete “{pendingDeleteRoom.title}” and its source material. This cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button className="modal-btn-cancel" onClick={() => setPendingDeleteRoom(null)} disabled={isPending}>
+                Cancel
+              </button>
+              <button className="modal-btn-create danger" onClick={confirmDeleteRoom} disabled={isPending}>
+                {isPending ? "Deleting..." : "Delete room"}
               </button>
             </div>
           </div>

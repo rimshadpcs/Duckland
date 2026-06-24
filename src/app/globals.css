@@ -3589,6 +3589,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
   gap: 14px;
   max-width: 800px;
   width: 100%;
+  animation: message-enter 180ms ease both;
 }
 
 .message.duck,
@@ -4069,6 +4070,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
   right: 0;
   top: calc(100% + 8px);
   z-index: 20;
+  animation: popover-enter 160ms ease both;
 }
 
 .concept-switcher-title {
@@ -4097,6 +4099,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
 
 .study-panel-content {
   min-height: 0;
+  animation: panel-fade 160ms ease both;
 }
 
 .insights-card {
@@ -4155,6 +4158,24 @@ html[data-theme="obsidian"] .pricing-save-callout {
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.skeleton-block span {
+  grid-column: 1 / -1;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #eee6d8 0%, #fbf6eb 45%, #eee6d8 100%);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.skeleton-block span:nth-of-type(2) {
+  width: 82%;
+}
+
+.skeleton-block span:nth-of-type(3) {
+  width: 64%;
 }
 
 .study-tool-primary,
@@ -4308,6 +4329,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .flashcard p {
@@ -4315,6 +4337,66 @@ html[data-theme="obsidian"] .pricing-save-callout {
   font-size: 0.94rem;
   line-height: 1.5;
   margin: 0;
+}
+
+.review-summary {
+  gap: 6px;
+}
+
+.review-summary p {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 750;
+  margin: 0;
+}
+
+@keyframes message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes panel-fade {
+  from {
+    opacity: 0.78;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message,
+  .concept-switcher-popover,
+  .study-panel-content,
+  .skeleton-block span {
+    animation: none;
+  }
 }
 
 .priority-pill {

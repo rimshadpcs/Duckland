@@ -565,6 +565,11 @@ html[data-theme="obsidian"] .answer-feedback {
   color: #f4f4f2;
 }
 
+html[data-theme="obsidian"] .skeleton-block span {
+  background: linear-gradient(90deg, #34342f 0%, #44423d 45%, #34342f 100%);
+  background-size: 220% 100%;
+}
+
 html[data-theme="obsidian"] .study-tool-card h4,
 html[data-theme="obsidian"] .flashcard h4,
 html[data-theme="obsidian"] .flashcard p,
@@ -889,6 +894,56 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   color: var(--amber-dark);
   font-size: 0.75rem;
   letter-spacing: 0.02em;
+}
+
+.continue-learning {
+  align-items: center;
+  background: #fffaf1;
+  border: 1px solid #ded4c2;
+  border-radius: 22px;
+  box-shadow: 0 8px 28px rgba(26, 22, 18, 0.04);
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 auto 24px;
+  padding: 18px 20px;
+  width: min(900px, 100%);
+}
+
+.continue-learning span {
+  color: var(--amber-dark);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.continue-learning h2 {
+  color: var(--ink);
+  font-size: 1.15rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.continue-learning p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin: 5px 0 0;
+}
+
+.continue-learning button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--duck);
+  color: #1a1612;
+  cursor: pointer;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 900;
+  padding: 10px 16px;
 }
 
 .all-rooms-heading {
@@ -1283,6 +1338,18 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   cursor: pointer;
 }
 
+.modal-btn-create.danger {
+  background: #991b1b;
+  color: #fff;
+}
+
+.confirm-dialog p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
 .modal-btn-create:hover {
   background: var(--amber);
 }
@@ -1412,6 +1479,28 @@ html[data-theme="obsidian"] .rooms-error {
   background: rgba(127, 29, 29, 0.18);
   border-color: rgba(248, 113, 113, 0.24);
   color: #fca5a5;
+}
+
+html[data-theme="obsidian"] .continue-learning {
+  background: #242421;
+  border-color: #3d3d38;
+  box-shadow: none;
+}
+
+html[data-theme="obsidian"] .continue-learning h2 {
+  color: #f4f4f2;
+}
+
+html[data-theme="obsidian"] .continue-learning p {
+  color: #aaa69d;
+}
+
+html[data-theme="obsidian"] .continue-learning button {
+  color: #1a1612;
+}
+
+html[data-theme="obsidian"] .confirm-dialog p {
+  color: #aaa69d;
 }
 
 html[data-theme="obsidian"] .modal-content {

@@ -178,8 +178,8 @@ function InsightsTab({
           </>
         ) : (
           <>
-            <h4>Waiting for your explanation</h4>
-            <p>Send your explanation to generate a clarity score, main gap, and Socratic question.</p>
+            <h4>Explain the concept in your own words</h4>
+            <p>Feynduck will identify the missing reasoning link.</p>
           </>
         )}
       </div>
@@ -494,6 +494,10 @@ export function GapResultPanel({
   const isAnswerChecked = checkedAnswerIndex !== null;
   const currentCardReviewState = currentCard ? flashcardReviewState[currentCard.id] : undefined;
   const activeConcept = concepts.find((concept) => concept.id === activeConceptId);
+  const reviewedFlashcardCount = flashcards.filter((card) => flashcardReviewState[card.id]).length;
+  const understoodFlashcardCount = flashcards.filter((card) => flashcardReviewState[card.id] === "understood").length;
+  const needsReviewFlashcardCount = flashcards.filter((card) => flashcardReviewState[card.id] === "needs_review").length;
+  const isFlashcardRoundComplete = flashcards.length > 0 && reviewedFlashcardCount === flashcards.length;
 
   const markFlashcard = (state: FlashcardReviewState) => {
     if (!currentCard) return;
@@ -502,7 +506,25 @@ export function GapResultPanel({
       ...current,
       [currentCard.id]: state,
     }));
+
+    window.setTimeout(() => {
+      if (cardIndex < flashcards.length - 1) {
+        setCardIndex((current) => Math.min(flashcards.length - 1, current + 1));
+        setIsCardRevealed(false);
+      }
+    }, 240);
   };
+
+  useEffect(() => {
+    if (!isConceptSwitcherOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsConceptSwitcherOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isConceptSwitcherOpen]);
 
   return (
     <aside className="dashboard-panel right-panel" style={panelStyle}>
@@ -571,7 +593,7 @@ export function GapResultPanel({
               <div className="empty-insights compact">
                 <Lightbulb size={36} strokeWidth={1.5} />
                 <h4>Complete an explanation first</h4>
-                <p>Complete an explanation first, then generate a focused quiz.</p>
+                <p>Then generate questions from your weak spots.</p>
               </div>
             )}
 
@@ -586,9 +608,12 @@ export function GapResultPanel({
             )}
 
             {quizLoading && (
-              <div className="study-tool-loading">
+              <div className="study-tool-loading skeleton-block">
                 <Loader2 className="icon-spin" size={18} />
-                Generating focused quiz...
+                Building a quiz around your weak spots...
+                <span />
+                <span />
+                <span />
               </div>
             )}
 
@@ -683,7 +708,7 @@ export function GapResultPanel({
               <div className="empty-insights compact">
                 <Lightbulb size={36} strokeWidth={1.5} />
                 <h4>Complete an explanation first</h4>
-                <p>Complete an explanation first, then generate focused flashcards.</p>
+                <p>Build focused review cards after your first explanation.</p>
               </div>
             )}
 
@@ -698,13 +723,46 @@ export function GapResultPanel({
             )}
 
             {flashcardsLoading && (
-              <div className="study-tool-loading">
+              <div className="study-tool-loading skeleton-block">
                 <Loader2 className="icon-spin" size={18} />
-                Generating flashcards...
+                Creating focused review cards...
+                <span />
+                <span />
               </div>
             )}
 
-            {currentCard && !flashcardsLoading && (
+            {isFlashcardRoundComplete && !flashcardsLoading ? (
+              <div className="study-tool-session">
+                <div className="study-tool-card review-summary">
+                  <span className="study-tool-focus">Review complete</span>
+                  <h4>Round complete</h4>
+                  <p>{understoodFlashcardCount} understood</p>
+                  <p>{needsReviewFlashcardCount} need review</p>
+                </div>
+                <button
+                  className="study-tool-primary"
+                  type="button"
+                  onClick={() => {
+                    const firstNeedsReviewIndex = flashcards.findIndex((card) => flashcardReviewState[card.id] === "needs_review");
+                    setCardIndex(firstNeedsReviewIndex >= 0 ? firstNeedsReviewIndex : 0);
+                    setIsCardRevealed(false);
+                  }}
+                >
+                  Review weak cards
+                </button>
+                <button
+                  className="study-tool-secondary"
+                  type="button"
+                  onClick={() => {
+                    setFlashcardReviewState({});
+                    setCardIndex(0);
+                    setIsCardRevealed(false);
+                  }}
+                >
+                  Review all again
+                </button>
+              </div>
+            ) : currentCard && !flashcardsLoading && (
               <div className="study-tool-session">
                 <div className={`flashcard ${isCardRevealed ? "revealed" : ""}`}>
                   <span className={`priority-pill ${currentCard.priority}`}>{currentCard.priority} priority</span>
