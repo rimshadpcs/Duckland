@@ -43,11 +43,6 @@ type ConversationMessage = {
   kind?: "feedback" | "question" | "error" | "loading";
 };
 
-type ConceptSuggestion = {
-  title: string;
-  description?: string;
-};
-
 type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
 
 type ConceptTrackSnapshot = {
@@ -550,7 +545,6 @@ export function ExplainForm({
   const [previousSocraticQuestions, setPreviousSocraticQuestions] = useState<string[]>([]);
   const [resolvedGaps, setResolvedGaps] = useState<string[]>([]);
   const [history, setHistory] = useState<ConversationMessage[]>([]);
-  const [conceptSuggestions, setConceptSuggestions] = useState<ConceptSuggestion[]>([]);
   const [serverConcepts, setServerConcepts] = useState<RoomConceptRow[]>(initialRoomConcepts);
   const [activeServerConceptId, setActiveServerConceptId] = useState<string | null>(initialConcept?.id || null);
   const [conceptsLoading, setConceptsLoading] = useState(false);
@@ -623,45 +617,34 @@ export function ExplainForm({
     if (onRoomLoaded) onRoomLoaded(room ? room.title : "Quick explain", track.title);
   };
 
-  const fetchConceptSuggestions = async (sourceMaterial: string) => {
-    if (sourceMaterial.trim().length < 10) {
-      setConceptSuggestions([]);
-      setConceptsError(null);
-      setConceptsLoading(false);
-      return;
-    }
+  const mapLearningPath = async (sourceMaterial: string, sourceTitle?: string | null) => {
+    const cleanSource = sourceMaterial.trim();
+    if (!roomId || cleanSource.length < 10) return;
 
     setConceptsLoading(true);
     setConceptsError(null);
-
     try {
-      const response = await fetch("/api/concepts", {
+      const response = await fetch("/api/study-path", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceMaterial }),
+        body: JSON.stringify({
+          roomId,
+          source: cleanSource,
+          sourceTitle: sourceTitle || source?.title || "Study material",
+        }),
       });
 
-      const payload = (await response.json()) as {
-        concepts?: ConceptSuggestion[];
-        error?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(payload.error || "I couldn't generate suggestions, but you can still enter a concept below.");
+      const payload = (await response.json()) as { concepts?: RoomConceptRow[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not build learning path.");
+      if (Array.isArray(payload.concepts)) {
+        setServerConcepts(payload.concepts);
       }
-
-      setConceptSuggestions(
-        Array.isArray(payload.concepts)
-          ? payload.concepts.filter((concept) => concept.title?.trim()).slice(0, 6)
-          : [],
-      );
     } catch (caught) {
-      setConceptSuggestions([]);
-      setConceptsError(
-        caught instanceof Error
-          ? caught.message
-          : "I couldn't generate suggestions, but you can still enter a concept below.",
-      );
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Study] learning path generation failed", caught);
+      }
+      setServerConcepts([]);
+      setConceptsError("We couldn’t map the concepts in this material yet.");
     } finally {
       setConceptsLoading(false);
     }
@@ -677,7 +660,7 @@ export function ExplainForm({
     if (initialConceptTitle) {
       setHistory(createEmptyConceptSnapshot(initialConceptTitle).history);
     }
-    if (sourceMaterial) void fetchConceptSuggestions(sourceMaterial);
+    if (sourceMaterial && !initialRoomConcepts.length) void mapLearningPath(sourceMaterial, initialSource?.title);
     if (onRoomLoaded) {
       onRoomLoaded(initialRoom?.title || "Quick explain", initialConceptTitle || initialRoom?.description || "");
     }
@@ -694,7 +677,7 @@ export function ExplainForm({
     setPreviousMainGaps([]);
     setPreviousSocraticQuestions([]);
     setResolvedGaps([]);
-    setConceptSuggestions([]);
+    setServerConcepts([]);
     setConceptsError(null);
     setConceptsLoading(false);
     setStudyToolsState(null);
@@ -740,6 +723,7 @@ export function ExplainForm({
     setIsSavingSource(true);
     setIsEditingNotes(false);
     resetEvaluationSession();
+    setServerConcepts([]);
 
     const result = await saveRoomSourceAction({
       roomId,
@@ -781,40 +765,7 @@ export function ExplainForm({
     );
     setRequest(prev => ({ ...prev, notes: sourceMaterial }));
     setIsSavingSource(false);
-    setConceptsLoading(true);
-    setConceptsError(null);
-    void fetch("/api/study-path", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roomId,
-        source: sourceMaterial,
-        sourceTitle: result.data.title,
-      }),
-    })
-      .then(async (response) => {
-        const payload = (await response.json()) as { concepts?: RoomConceptRow[]; error?: string };
-        if (!response.ok) throw new Error(payload.error || "Could not build learning path.");
-        if (Array.isArray(payload.concepts)) {
-          setServerConcepts(payload.concepts);
-          setConceptSuggestions(
-            payload.concepts.slice(0, 6).map((concept) => ({
-              title: concept.title,
-              description: concept.description || undefined,
-            })),
-          );
-        }
-      })
-      .catch((caught) => {
-        if (process.env.NODE_ENV === "development") {
-          console.warn("[Study] learning path generation failed", caught);
-        }
-        setConceptsError("We couldn’t create your learning path yet. You can still enter a concept below.");
-        void fetchConceptSuggestions(sourceMaterial);
-      })
-      .finally(() => {
-        setConceptsLoading(false);
-      });
+    void mapLearningPath(sourceMaterial, result.data.title);
     window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
     if (onRoomLoaded) {
       onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
@@ -1121,9 +1072,7 @@ export function ExplainForm({
     setIsChoosingNextConcept(true);
     setError(null);
     setNotice(null);
-    if (!conceptSuggestions.length && savedSourceMaterial) {
-      void fetchConceptSuggestions(savedSourceMaterial);
-    }
+    if (!serverConcepts.length && savedSourceMaterial) void mapLearningPath(savedSourceMaterial, source?.title);
   };
 
   const handleAskFollowUp = () => {
@@ -1308,7 +1257,7 @@ export function ExplainForm({
 
   const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
   const isConceptClear = result?.status === "clear" && (result.clarityScore ?? 0) >= 90;
-  const conceptSuggestionOptions = conceptSuggestions.filter(
+  const conceptSuggestionOptions = serverConcepts.filter(
     (concept) => getConceptId(concept.title) !== (selectedConcept ? getConceptId(selectedConcept) : ""),
   );
   const panelConcepts = [
@@ -1348,20 +1297,6 @@ export function ExplainForm({
           },
         } satisfies RoomConceptTrack]
       : []),
-    ...conceptSuggestions
-      .filter((concept) => !conceptTracks[getConceptId(concept.title)])
-      .filter((concept) => !serverConcepts.some((item) => getConceptId(item.title) === getConceptId(concept.title)))
-      .map((concept): RoomConceptTrack => ({
-        id: getConceptId(concept.title),
-        roomId,
-        title: concept.title,
-        status: "not_started",
-        latestClarityScore: null,
-        startedAt: null,
-        completedAt: null,
-        lastActivityAt: null,
-        snapshot: createEmptyConceptSnapshot(concept.title),
-      })),
   ].filter((concept, index, all) => (
     all.findIndex((item) => item.id === concept.id) === index
   ));
@@ -1526,11 +1461,22 @@ export function ExplainForm({
               {conceptsLoading ? (
                 <div className="concept-loading large" aria-live="polite">
                   <Loader2 className="icon-spin" size={18} />
-                  <span>Finding the next concepts in your material...</span>
+                  <span>Mapping the concepts in your material...</span>
                 </div>
               ) : null}
               {!conceptsLoading && conceptsError ? (
-                <div className="concept-error">{conceptsError}</div>
+                <div className="concept-error learning-path-error">
+                  <strong>{conceptsError}</strong>
+                  <span>Try again, or add the concept you want to explain yourself.</span>
+                  <div>
+                    <button type="button" onClick={() => mapLearningPath(savedSourceMaterial, source?.title)}>
+                      Try again
+                    </button>
+                    <button type="button" onClick={focusCustomConceptInput}>
+                      Add your own concept
+                    </button>
+                  </div>
+                </div>
               ) : null}
               <div className="next-concept-grid">
                 {conceptSuggestionOptions.map((concept) => (
@@ -1637,31 +1583,43 @@ export function ExplainForm({
                   {conceptsLoading && (
                     <div className="concept-loading" aria-live="polite">
                       <Loader2 className="icon-spin" size={16} />
-                      <span>Finding concepts in your material...</span>
+                      <span>Mapping the concepts in your material...</span>
                     </div>
                   )}
                   {!conceptsLoading && conceptsError && (
-                    <div className="concept-error">{conceptsError}</div>
+                    <div className="concept-error learning-path-error">
+                      <strong>{conceptsError}</strong>
+                      <span>Try again, or add the concept you want to explain yourself.</span>
+                      <div>
+                        <button type="button" onClick={() => mapLearningPath(savedSourceMaterial, source?.title)}>
+                          Try again
+                        </button>
+                        <button type="button" onClick={focusCustomConceptInput}>
+                          Add your own concept
+                        </button>
+                      </div>
+                    </div>
                   )}
-                  {!conceptsLoading && conceptSuggestions.map((concept) => (
+                  {!conceptsLoading && !conceptsError && serverConcepts.map((concept) => (
                     <button
                       key={concept.title}
                       type="button"
                       className="concept-chip"
                       onClick={() => selectConcept(concept.title)}
-                      title={concept.description}
+                      title={concept.description || undefined}
                     >
                       {concept.title}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    className="concept-chip"
-                    onClick={focusCustomConceptInput}
-                    disabled={conceptsLoading}
-                  >
-                    Other
-                  </button>
+                  {!conceptsLoading && !conceptsError ? (
+                    <button
+                      type="button"
+                      className="concept-chip"
+                      onClick={focusCustomConceptInput}
+                    >
+                      Add your own concept
+                    </button>
+                  ) : null}
                 </div>
               )}
               {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}

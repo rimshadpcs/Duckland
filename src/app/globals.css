@@ -3707,6 +3707,45 @@ html[data-theme="obsidian"] .pricing-save-callout {
   color: #8a6200;
 }
 
+.learning-path-error {
+  align-items: flex-start;
+  display: grid;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.learning-path-error strong {
+  color: var(--ink);
+}
+
+.learning-path-error span {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.learning-path-error div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.learning-path-error button {
+  background: var(--duck);
+  border: 1px solid rgba(26, 22, 18, 0.08);
+  border-radius: 999px;
+  color: #1a1612;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+  padding: 8px 12px;
+}
+
+.learning-path-error button + button {
+  background: transparent;
+  color: var(--ink);
+}
+
 .concept-picker-state {
   display: grid;
   align-content: start;
@@ -3894,6 +3933,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
 
 .room-overview-header button,
 .room-overview-empty button,
+.recommended-concept-card button,
 .add-custom-concept button {
   border: none;
   border-radius: 999px;
@@ -3932,7 +3972,6 @@ html[data-theme="obsidian"] .pricing-save-callout {
 
 .recommended-concept-card {
   align-items: center;
-  cursor: pointer;
   display: flex;
   gap: 20px;
   justify-content: space-between;
@@ -3949,6 +3988,15 @@ html[data-theme="obsidian"] .pricing-save-callout {
 .recommended-concept-card h2 {
   font-size: 1.65rem;
   margin: 8px 0;
+}
+
+.recommended-concept-card .concept-status {
+  display: inline-flex;
+  margin-bottom: 12px;
+}
+
+.recommended-concept-card button {
+  flex: 0 0 auto;
 }
 
 .learning-path-list {
@@ -4000,7 +4048,7 @@ html[data-theme="obsidian"] .pricing-save-callout {
   cursor: pointer;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
   padding: 16px 24px;
   text-align: left;
 }
@@ -4009,21 +4057,50 @@ html[data-theme="obsidian"] .pricing-save-callout {
   background: rgba(245, 200, 66, 0.12);
 }
 
-.concept-row strong {
+.concept-row-main {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.concept-row-main strong {
   display: block;
   font-size: 0.98rem;
   margin-bottom: 4px;
 }
 
+.concept-row-main em {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.concept-row-description {
+  min-width: 0;
+}
+
 .concept-status {
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
+  display: inline-flex;
   font-size: 0.76rem;
   font-style: normal;
   font-weight: 850;
+  justify-content: center;
+  min-height: 30px;
+  min-width: 30px;
   padding: 7px 10px;
   white-space: nowrap;
+}
+
+.concept-row-main > .concept-status {
+  font-size: 0.95rem;
+  padding: 0;
 }
 
 .concept-status.clear {
@@ -4106,6 +4183,8 @@ html[data-theme="obsidian"] .add-custom-concept input {
   }
 
   .concept-row {
+    align-items: start;
+    gap: 8px;
     grid-template-columns: 1fr;
   }
 }

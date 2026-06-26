@@ -2,6 +2,16 @@
 
 Feynduck helps you find the gaps in your understanding by using the Feynman Technique.
 
+## Developer Setup
+
+Feynduck requires Node 22. The project includes an `.nvmrc` file for local version management.
+
+```bash
+nvm use
+npm install
+npm run build
+```
+
 ## Domain Setup
 
 The project is designed to support the following domain structure:

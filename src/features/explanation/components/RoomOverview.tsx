@@ -30,25 +30,74 @@ function statusClass(status: RoomConceptRow["status"]) {
   return `concept-status ${status.replace("_", "-")}`;
 }
 
-function getRecommendedConcept(concepts: RoomConceptRow[]) {
-  const byPriority = [
-    concepts.filter((concept) => concept.status === "gap_found"),
-    concepts.filter((concept) => concept.status === "improving"),
-    concepts.filter((concept) => concept.status === "in_progress"),
-    concepts.filter((concept) => concept.status === "not_started"),
-    concepts.filter((concept) => concept.status === "clear"),
-  ];
+function statusIcon(status: RoomConceptRow["status"]) {
+  if (status === "clear") return "✓";
+  if (status === "improving") return "◐";
+  if (status === "gap_found") return "!";
+  if (status === "in_progress") return "◌";
+  return "○";
+}
 
-  for (const group of byPriority) {
-    if (!group.length) continue;
-    return [...group].sort((first, second) => {
-      const firstDate = new Date(first.last_activity_at || first.created_at || 0).getTime();
-      const secondDate = new Date(second.last_activity_at || second.created_at || 0).getTime();
-      return firstDate - secondDate;
-    })[0];
+function statusText(concept: RoomConceptRow) {
+  const label = statusLabel(concept.status);
+  return concept.latest_clarity_score != null ? `${label} · Clarity ${concept.latest_clarity_score}` : label;
+}
+
+function rowStatusText(concept: RoomConceptRow) {
+  const label = statusLabel(concept.status);
+  return concept.latest_clarity_score != null ? `${label} · ${concept.latest_clarity_score}` : label;
+}
+
+function sortMostRecent(first: RoomConceptRow, second: RoomConceptRow) {
+  const firstDate = new Date(first.last_activity_at || first.created_at || 0).getTime();
+  const secondDate = new Date(second.last_activity_at || second.created_at || 0).getTime();
+  return secondDate - firstDate;
+}
+
+function getFirstFoundationalConcept(units: StudyUnitWithConcepts[], status: RoomConceptRow["status"]) {
+  for (const unit of units) {
+    const concept = [...unit.concepts].sort((first, second) => first.sort_order - second.sort_order).find((item) => item.status === status);
+    if (concept) return concept;
   }
 
   return null;
+}
+
+function getRecommendedConcept(concepts: RoomConceptRow[], units: StudyUnitWithConcepts[]) {
+  const gapFound = concepts.filter((concept) => concept.status === "gap_found").sort(sortMostRecent)[0];
+  if (gapFound) return gapFound;
+
+  const improving = concepts.filter((concept) => concept.status === "improving").sort(sortMostRecent)[0];
+  if (improving) return improving;
+
+  const notStarted = getFirstFoundationalConcept(units, "not_started");
+  if (notStarted) return notStarted;
+
+  const inProgress = concepts.filter((concept) => concept.status === "in_progress").sort(sortMostRecent)[0];
+  if (inProgress) return inProgress;
+
+  return null;
+}
+
+function getSummaryText(concepts: RoomConceptRow[]) {
+  if (!concepts.length) return "";
+
+  const counts = {
+    clear: concepts.filter((concept) => concept.status === "clear").length,
+    improving: concepts.filter((concept) => concept.status === "improving" || concept.status === "in_progress").length,
+    gaps: concepts.filter((concept) => concept.status === "gap_found").length,
+  };
+
+  if (counts.clear === 0 && counts.improving === 0 && counts.gaps === 0) {
+    return `${concepts.length} concepts ready to explain`;
+  }
+
+  return [
+    `${concepts.length} concepts`,
+    counts.clear ? `${counts.clear} clear` : null,
+    counts.improving ? `${counts.improving} improving` : null,
+    counts.gaps ? `${counts.gaps} gaps found` : null,
+  ].filter(Boolean).join(" · ");
 }
 
 export function RoomOverview({
@@ -64,14 +113,10 @@ export function RoomOverview({
   const [error, setError] = useState<string | null>(loadError || null);
   const [isPending, startTransition] = useTransition();
 
-  const stats = useMemo(() => {
-    const clear = concepts.filter((concept) => concept.status === "clear").length;
-    const improving = concepts.filter((concept) => concept.status === "improving" || concept.status === "in_progress").length;
-    const gaps = concepts.filter((concept) => concept.status === "gap_found").length;
-    return { clear, improving, gaps };
-  }, [concepts]);
-
-  const recommendedConcept = getRecommendedConcept(concepts);
+  const summaryText = useMemo(() => getSummaryText(concepts), [concepts]);
+  const recommendedConcept = getRecommendedConcept(concepts, units);
+  const firstClearConcept = concepts.find((concept) => concept.status === "clear") || concepts[0] || null;
+  const allConceptsClear = concepts.length > 0 && concepts.every((concept) => concept.status === "clear");
 
   const openConcept = (conceptId?: string) => {
     const conceptParam = conceptId ? `&conceptId=${encodeURIComponent(conceptId)}` : "";
@@ -116,10 +161,10 @@ export function RoomOverview({
             <h1>{room.title}</h1>
             <p>
               {concepts.length
-                ? `${concepts.length} concepts · ${stats.clear} clear · ${stats.improving} improving · ${stats.gaps} gaps found`
-                : source
+                ? summaryText
+                  : source
                   ? "Source material added. Build your learning path to start."
-                  : "Add source material to build a learning path."}
+                  : "Add study material to create your learning path."}
             </p>
           </div>
           <button type="button" onClick={() => openConcept()}>
@@ -132,7 +177,7 @@ export function RoomOverview({
         {!source ? (
           <section className="room-overview-empty">
             <h2>No source material yet</h2>
-            <p>Add notes first, then Feynduck can build a source-grounded path of concepts.</p>
+            <p>Add study material to create your learning path.</p>
             <button type="button" onClick={() => openConcept()}>Add source material</button>
           </section>
         ) : concepts.length === 0 ? (
@@ -144,13 +189,28 @@ export function RoomOverview({
         ) : (
           <>
             {recommendedConcept ? (
-              <section className="recommended-concept-card" onClick={() => openConcept(recommendedConcept.id)}>
+              <section className="recommended-concept-card">
                 <div>
-                  <span>Recommended next</span>
+                  <span>Continue learning</span>
                   <h2>{recommendedConcept.title}</h2>
-                  <p>{recommendedConcept.description || "Continue from the concept that needs the most attention."}</p>
+                  <strong className={statusClass(recommendedConcept.status)}>{statusText(recommendedConcept)}</strong>
+                  <p>
+                    {recommendedConcept.main_gap ||
+                      (recommendedConcept.status === "gap_found" || recommendedConcept.status === "improving"
+                        ? "Continue explaining this concept to strengthen your understanding."
+                        : recommendedConcept.description || "Start with this source-grounded concept.")}
+                  </p>
                 </div>
-                <strong className={statusClass(recommendedConcept.status)}>{statusLabel(recommendedConcept.status)}</strong>
+                <button type="button" onClick={() => openConcept(recommendedConcept.id)}>Continue explaining</button>
+              </section>
+            ) : allConceptsClear ? (
+              <section className="recommended-concept-card">
+                <div>
+                  <span>Continue learning</span>
+                  <h2>You’ve explained every concept in this room clearly.</h2>
+                  <p>Choose one concept to review whenever you want to revisit the material.</p>
+                </div>
+                <button type="button" onClick={() => openConcept(firstClearConcept?.id)}>Review a concept</button>
               </section>
             ) : null}
 
@@ -167,13 +227,18 @@ export function RoomOverview({
                   <div className="concept-row-list">
                     {unit.concepts.map((concept) => (
                       <button key={concept.id} type="button" className="concept-row" onClick={() => openConcept(concept.id)}>
-                        <div>
-                          <strong>{concept.title}</strong>
+                        <div className="concept-row-main">
+                          <span className={statusClass(concept.status)} aria-label={statusLabel(concept.status)}>
+                            <span aria-hidden="true">{statusIcon(concept.status)}</span>
+                          </span>
+                          <div>
+                            <strong>{concept.title}</strong>
+                            <em>{rowStatusText(concept)}</em>
+                          </div>
+                        </div>
+                        <div className="concept-row-description">
                           {concept.description ? <span>{concept.description}</span> : null}
                         </div>
-                        <em className={statusClass(concept.status)}>
-                          {concept.latest_clarity_score != null ? `${statusLabel(concept.status)} · ${concept.latest_clarity_score}` : statusLabel(concept.status)}
-                        </em>
                       </button>
                     ))}
                   </div>
