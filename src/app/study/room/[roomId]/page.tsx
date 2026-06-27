@@ -1,7 +1,7 @@
 import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { RoomOverview } from "@src/features/explanation";
 import { getAuthenticatedUser } from "@src/lib/auth";
-import { getRoomSource } from "@src/lib/repositories/sources";
+import { getRoomSources } from "@src/lib/repositories/sources";
 import { getRoomLearningPath, type RoomConceptRow, type StudyUnitWithConcepts } from "@src/lib/repositories/study-path";
 import { getStudyRoom } from "@src/lib/repositories/study-rooms";
 
@@ -35,7 +35,8 @@ export default async function Page({
   let loadError: string | null = null;
 
   try {
-    source = await getRoomSource(room.id);
+    const sources = await getRoomSources(room.id);
+    source = sources.find((item) => item.is_active) || sources[0] || null;
   } catch (error) {
     loadError = error instanceof Error ? error.message : "Could not load source material.";
   }

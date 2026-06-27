@@ -184,6 +184,8 @@ export type Database = {
           page_count: number | null;
           extracted_text_length: number | null;
           extraction_status: string | null;
+          sort_order: number;
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -200,6 +202,8 @@ export type Database = {
           page_count?: number | null;
           extracted_text_length?: number | null;
           extraction_status?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -216,6 +220,8 @@ export type Database = {
           page_count?: number | null;
           extracted_text_length?: number | null;
           extraction_status?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };

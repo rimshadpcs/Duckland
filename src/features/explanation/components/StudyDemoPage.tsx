@@ -14,7 +14,7 @@ type ThemeMode = "light" | "obsidian";
 export function StudyDemoPage({
   authUser,
   initialRoom,
-  initialSource,
+  initialSources = [],
   initialSessionState,
   initialConcept,
   initialRoomConcepts = [],
@@ -22,7 +22,7 @@ export function StudyDemoPage({
 }: {
   authUser?: AuthenticatedUser;
   initialRoom?: StudyRoomRow | null;
-  initialSource?: SourceRow | null;
+  initialSources?: SourceRow[];
   initialSessionState?: Json | null;
   initialConcept?: RoomConceptRow | null;
   initialRoomConcepts?: RoomConceptRow[];
@@ -66,7 +66,7 @@ export function StudyDemoPage({
       <ExplainForm onRoomLoaded={(title, subject) => {
         setRoomTitle(title);
         setRoomSubject(subject);
-      }} initialRoom={initialRoom} initialSource={initialSource} initialSessionState={initialSessionState} initialConcept={initialConcept} initialRoomConcepts={initialRoomConcepts} requestedRoomId={requestedRoomId} />
+      }} initialRoom={initialRoom} initialSources={initialSources} initialSessionState={initialSessionState} initialConcept={initialConcept} initialRoomConcepts={initialRoomConcepts} requestedRoomId={requestedRoomId} />
     </div>
   );
 }

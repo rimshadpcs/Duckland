@@ -21,6 +21,10 @@ export type StudyUnitWithConcepts = StudyUnitRow & {
   concepts: RoomConceptRow[];
 };
 
+function normalizeConceptTitle(title: string) {
+  return title.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
 function getErrorMessage(prefix: string, error: { message?: string } | null) {
   return `${prefix}${error?.message ? `: ${error.message}` : "."}`;
 }
@@ -215,12 +219,86 @@ export async function updateRoomConceptProgress(
   return data;
 }
 
-export async function saveGeneratedStudyPath(roomId: string, path: GeneratedStudyPath) {
+export async function saveGeneratedStudyPath(
+  roomId: string,
+  path: GeneratedStudyPath,
+  options: { mergeExisting?: boolean } = {},
+) {
   const { supabase, userId } = await getAuthenticatedUserId();
   const existing = await getRoomLearningPath(roomId);
 
-  if (existing.concepts.length > 0) {
+  if (existing.concepts.length > 0 && !options.mergeExisting) {
     return existing;
+  }
+
+  if (existing.concepts.length > 0 && options.mergeExisting) {
+    const existingConceptKeys = new Set(existing.concepts.map((concept) => normalizeConceptTitle(concept.title)));
+    const existingUnitKeys = new Map(existing.units.map((unit) => [normalizeConceptTitle(unit.title), unit]));
+    const savedConcepts: RoomConceptRow[] = [...existing.concepts];
+
+    for (let unitIndex = 0; unitIndex < path.units.length; unitIndex += 1) {
+      const unit = path.units[unitIndex];
+      const unitKey = normalizeConceptTitle(unit.title);
+      let savedUnit = existingUnitKeys.get(unitKey);
+
+      const missingConcepts = unit.concepts.filter((concept) => {
+        const conceptKey = normalizeConceptTitle(concept.title);
+        if (!conceptKey || existingConceptKeys.has(conceptKey)) return false;
+        existingConceptKeys.add(conceptKey);
+        return true;
+      });
+
+      if (!missingConcepts.length) continue;
+
+      if (!savedUnit) {
+        const { data: createdUnit, error: unitError } = await supabase
+          .from("study_units")
+          .insert({
+            room_id: roomId,
+            user_id: userId,
+            title: unit.title,
+            description: unit.description || null,
+            sort_order: existing.units.length + unitIndex,
+          })
+          .select("*")
+          .single();
+
+        if (unitError) {
+          if (isMissingStudyPathTableError(unitError)) return { units: [], concepts: [], missingSchema: true };
+          throw new Error(getErrorMessage("Could not save study unit", unitError));
+        }
+
+        savedUnit = { ...createdUnit, concepts: [] };
+        existing.units.push(savedUnit);
+        existingUnitKeys.set(unitKey, savedUnit);
+      }
+
+      const conceptRows = missingConcepts.map((concept, conceptIndex) => ({
+        room_id: roomId,
+        unit_id: savedUnit.id,
+        user_id: userId,
+        title: concept.title,
+        description: concept.description || null,
+        sort_order: savedUnit.concepts.length + conceptIndex,
+        status: "not_started" as const,
+        prerequisite_concept_ids: [],
+      }));
+
+      const { data: unitConcepts, error: conceptError } = await supabase
+        .from("room_concepts")
+        .insert(conceptRows)
+        .select("*");
+
+      if (conceptError) {
+        if (isMissingStudyPathTableError(conceptError)) return { units: [], concepts: [], missingSchema: true };
+        throw new Error(getErrorMessage("Could not save room concepts", conceptError));
+      }
+
+      savedUnit.concepts.push(...(unitConcepts || []));
+      savedConcepts.push(...(unitConcepts || []));
+    }
+
+    return { units: existing.units, concepts: savedConcepts, missingSchema: false };
   }
 
   const savedUnits: StudyUnitWithConcepts[] = [];

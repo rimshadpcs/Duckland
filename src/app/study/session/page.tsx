@@ -1,7 +1,7 @@
 import { StudyDemoPage } from "@src/features/explanation";
 import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { getAuthenticatedUser } from "@src/lib/auth";
-import { getRoomSource } from "@src/lib/repositories/sources";
+import { getRoomSources } from "@src/lib/repositories/sources";
 import { getRoomConcept, getRoomLearningPath, type RoomConceptRow } from "@src/lib/repositories/study-path";
 import { getStudyRoomSession } from "@src/lib/repositories/study-room-sessions";
 import { getStudyRoom, type StudyRoomRow } from "@src/lib/repositories/study-rooms";
@@ -31,7 +31,7 @@ export default async function Page({
   }
 
   let room: StudyRoomRow | null = null;
-  let source: SourceRow | null = null;
+  let sources: SourceRow[] = [];
   let session: StudyRoomSessionRow | null = null;
   let concept: RoomConceptRow | null = null;
   let roomConcepts: RoomConceptRow[] = [];
@@ -45,7 +45,7 @@ export default async function Page({
   }
 
   try {
-    source = room ? await getRoomSource(room.id) : null;
+    sources = room ? await getRoomSources(room.id) : [];
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       console.warn("[Study] could not load room source", error);
@@ -83,7 +83,7 @@ export default async function Page({
     <StudyDemoPage
       authUser={user}
       initialRoom={room}
-      initialSource={source}
+      initialSources={sources}
       initialSessionState={session?.state || null}
       initialConcept={concept}
       initialRoomConcepts={roomConcepts}

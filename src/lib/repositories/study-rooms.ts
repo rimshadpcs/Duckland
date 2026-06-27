@@ -136,15 +136,18 @@ export async function deleteStudyRoom(roomId: string) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("You must be signed in to delete rooms.");
 
-  const { data: source } = await supabase
+  const { data: sources } = await supabase
     .from("sources")
     .select("storage_path")
     .eq("room_id", roomId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .eq("user_id", user.id);
 
-  if (source?.storage_path) {
-    const { error: storageError } = await supabase.storage.from("study-files").remove([source.storage_path]);
+  const storagePaths = (sources || [])
+    .map((source) => source.storage_path)
+    .filter((path): path is string => Boolean(path));
+
+  if (storagePaths.length) {
+    const { error: storageError } = await supabase.storage.from("study-files").remove(storagePaths);
     if (storageError && process.env.NODE_ENV === "development") {
       console.warn("[Study] could not remove study room PDF", storageError);
     }

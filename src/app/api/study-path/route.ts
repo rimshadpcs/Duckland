@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient, getOpenAIKeyStatus, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
 import { getRoomLearningPath, saveGeneratedStudyPath, type GeneratedStudyPath } from "@src/lib/repositories/study-path";
+import { getCombinedRoomSourceContent } from "@src/lib/repositories/sources";
 
 type StudyPathRequestBody = {
   roomId?: unknown;
   source?: unknown;
   sourceTitle?: unknown;
+  force?: unknown;
 };
+
+const COMBINED_SOURCE_CHARACTER_LIMIT = 120_000;
 
 const studyPathPrompt = `
 You create a structured learning path for Feynduck from a student's source material.
@@ -113,14 +117,30 @@ export async function POST(request: Request) {
   }
 
   const roomId = cleanText(body.roomId, 80);
-  const source = typeof body.source === "string" ? body.source.trim() : "";
-  const sourceTitle = cleanText(body.sourceTitle, 120);
+  const force = body.force === true;
+  const suppliedSource = typeof body.source === "string" ? body.source.trim() : "";
+  const suppliedSourceTitle = cleanText(body.sourceTitle, 120);
 
   if (!roomId) return NextResponse.json({ error: "roomId is required." }, { status: 400 });
-  if (source.length < 10) return NextResponse.json({ error: "source is required." }, { status: 400 });
+
+  const combinedSource = await getCombinedRoomSourceContent(roomId);
+  const source = combinedSource.content.trim() || suppliedSource;
+  const sourceTitle = combinedSource.sourceCount
+    ? combinedSource.sources.map((item) => item.title).join(", ")
+    : suppliedSourceTitle;
+
+  if (!combinedSource.sourceCount && source.length < 10) {
+    return NextResponse.json({ error: "Add material before generating a learning path." }, { status: 400 });
+  }
+
+  if (combinedSource.totalCharacters > COMBINED_SOURCE_CHARACTER_LIMIT) {
+    return NextResponse.json({
+      error: "This room has too much active material to map at once.\n\nExclude a source, split the material into another room, or add a smaller section.",
+    }, { status: 413 });
+  }
 
   const existing = await getRoomLearningPath(roomId);
-  if (existing.concepts.length > 0) {
+  if (existing.concepts.length > 0 && !force) {
     return NextResponse.json({ units: existing.units, concepts: existing.concepts, reused: true });
   }
 
@@ -160,10 +180,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "I couldn't build a learning path from that source yet." }, { status: 502 });
   }
 
-  const savedPath = await saveGeneratedStudyPath(roomId, path);
+  const savedPath = await saveGeneratedStudyPath(roomId, path, { mergeExisting: force });
   return NextResponse.json({
     units: savedPath.units,
     concepts: savedPath.concepts,
     missingSchema: savedPath.missingSchema,
+    merged: force,
   });
 }

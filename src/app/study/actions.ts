@@ -15,7 +15,14 @@ import {
   updateRoomConceptProgress,
   type ConceptStatus,
 } from "@src/lib/repositories/study-path";
-import { saveRoomPdfSource, saveRoomSource } from "@src/lib/repositories/sources";
+import {
+  createPdfSource,
+  createTextSource,
+  deleteSource,
+  toggleSourceActive,
+  updateSource,
+} from "@src/lib/repositories/sources";
+import type { SourceRow } from "@src/lib/repositories/sources";
 import type { Json } from "@src/types/database";
 
 export type StudyActionResult<T = null> =
@@ -91,10 +98,10 @@ export async function saveRoomSourceAction(input: {
   roomTitle: string;
   title?: string | null;
   content: string;
-}): Promise<StudyActionResult<{ sourceId: string; title: string; roomTitle?: string }>> {
+}): Promise<StudyActionResult<{ sourceId: string; title: string; roomTitle?: string; source: SourceRow }>> {
   try {
     const sourceTitle = input.title?.trim() || deriveSourceTitle(input.content);
-    const source = await saveRoomSource(input.roomId, {
+    const source = await createTextSource(input.roomId, {
       title: sourceTitle,
       content: input.content,
     });
@@ -114,6 +121,7 @@ export async function saveRoomSourceAction(input: {
         sourceId: source.id,
         title: source.title || sourceTitle,
         roomTitle: nextRoomTitle,
+        source,
       },
     };
   } catch (error) {
@@ -138,10 +146,11 @@ export async function saveRoomPdfSourceAction(input: {
   originalFileName: string;
   pageCount: number;
   extractedTextLength: number;
+  source: SourceRow;
 }>> {
   try {
     const sourceTitle = input.title?.trim() || input.originalFileName;
-    const source = await saveRoomPdfSource(input.roomId, {
+    const source = await createPdfSource(input.roomId, {
       title: sourceTitle,
       content: input.content,
       originalFileName: input.originalFileName,
@@ -170,10 +179,58 @@ export async function saveRoomPdfSourceAction(input: {
         originalFileName: source.original_file_name || input.originalFileName,
         pageCount: source.page_count || input.pageCount,
         extractedTextLength: source.extracted_text_length || input.extractedTextLength,
+        source,
       },
     };
   } catch (error) {
     return { ok: false, error: getMessage(error, "Could not save PDF source material.") };
+  }
+}
+
+export async function renameRoomSourceAction(
+  sourceId: string,
+  title: string,
+  roomId: string,
+): Promise<StudyActionResult<{ title: string }>> {
+  try {
+    const source = await updateSource(sourceId, { title });
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    revalidatePath("/study/session");
+    return { ok: true, data: { title: source.title || "Untitled source" } };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not rename source material.") };
+  }
+}
+
+export async function toggleRoomSourceActiveAction(
+  sourceId: string,
+  roomId: string,
+  isActive: boolean,
+): Promise<StudyActionResult<{ isActive: boolean }>> {
+  try {
+    const source = await toggleSourceActive(sourceId, isActive);
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    revalidatePath("/study/session");
+    return { ok: true, data: { isActive: source.is_active } };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not update source material.") };
+  }
+}
+
+export async function deleteRoomSourceAction(
+  sourceId: string,
+  roomId: string,
+): Promise<StudyActionResult> {
+  try {
+    await deleteSource(sourceId);
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${roomId}`);
+    revalidatePath("/study/session");
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not delete source material.") };
   }
 }
 

@@ -5,10 +5,13 @@ import { GapResultPanel } from "@src/features/gap-analysis";
 import { CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react";
 import {
   clearRoomSessionStateAction,
+  deleteRoomSourceAction,
+  renameRoomSourceAction,
   saveRoomPdfSourceAction,
   saveRoomSessionStateAction,
   saveRoomSourceAction,
   startRoomConceptAction,
+  toggleRoomSourceActiveAction,
   updateRoomConceptProgressAction,
   updateRoomSelectedConceptAction,
 } from "@src/app/study/actions";
@@ -101,6 +104,29 @@ function sanitizePdfFileName(name: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "study-material"}.pdf`;
+}
+
+function getSourceDisplayTitle(source: SourceRow) {
+  return source.title?.trim() || source.original_file_name?.trim() || (source.source_type === "pdf" ? "PDF source" : "Pasted notes");
+}
+
+function getSourceCharacterCount(source: SourceRow) {
+  return source.extracted_text_length || source.content.trim().length;
+}
+
+function combineSourceContent(sources: SourceRow[]) {
+  return sources
+    .filter((source) => source.is_active)
+    .map((source) => `===== Source: ${getSourceDisplayTitle(source)} =====\n${source.content.trim()}`)
+    .join("\n\n");
+}
+
+function formatSourceMeta(source: SourceRow) {
+  const characters = `${getSourceCharacterCount(source).toLocaleString()} characters`;
+  if (source.source_type === "pdf") {
+    return ["PDF", source.page_count ? `${source.page_count} pages` : null, characters].filter(Boolean).join(" · ");
+  }
+  return `Pasted text · ${characters}`;
 }
 
 function getConceptTrackIndexKey(roomId: string | null) {
@@ -526,7 +552,7 @@ function getRenderableMessages(
 export function ExplainForm({
   onRoomLoaded,
   initialRoom,
-  initialSource,
+  initialSources = [],
   initialSessionState,
   initialConcept,
   initialRoomConcepts = [],
@@ -534,7 +560,7 @@ export function ExplainForm({
 }: {
   onRoomLoaded?: (title: string, subject: string) => void;
   initialRoom?: StudyRoomRow | null;
-  initialSource?: SourceRow | null;
+  initialSources?: SourceRow[];
   initialSessionState?: Json | null;
   initialConcept?: RoomConceptRow | null;
   initialRoomConcepts?: RoomConceptRow[];
@@ -542,7 +568,8 @@ export function ExplainForm({
 }) {
   const [roomId] = useState<string | null>(initialRoom?.id || null);
   const [room, setRoom] = useState<StudyRoomRow | null>(initialRoom || null);
-  const [source, setSource] = useState<SourceRow | null>(initialSource || null);
+  const [sources, setSources] = useState<SourceRow[]>(initialSources);
+  const [openSourceId, setOpenSourceId] = useState<string | null>(initialSources.find((item) => item.is_active)?.id || initialSources[0]?.id || null);
   const [roomStatus] = useState<"found" | "not_found" | "quick">(
     initialRoom ? "found" : requestedRoomId ? "not_found" : "quick",
   );
@@ -553,19 +580,24 @@ export function ExplainForm({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [sourceSavedAt, setSourceSavedAt] = useState<string | null>(initialSource?.updated_at || null);
-  const [isSourceFreshlySaved, setIsSourceFreshlySaved] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(true);
   const [isSupportPanelOpen, setIsSupportPanelOpen] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [sourceInputMode, setSourceInputMode] = useState<"paste" | "pdf" | null>(null);
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
+  const [sourceActionError, setSourceActionError] = useState<string | null>(null);
+  const [pathUpdateNotice, setPathUpdateNotice] = useState<string | null>(null);
+  const [openSourceMenuId, setOpenSourceMenuId] = useState<string | null>(null);
+  const [renamingSourceId, setRenamingSourceId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [pendingDeleteSourceId, setPendingDeleteSourceId] = useState<string | null>(null);
   const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [pdfProgress, setPdfProgress] = useState<{ currentPage: number; totalPages: number } | null>(null);
   const [isPdfBusy, setIsPdfBusy] = useState(false);
-  const [showExtractedText, setShowExtractedText] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [previousExplanations, setPreviousExplanations] = useState<string[]>([]);
   const [previousMainGaps, setPreviousMainGaps] = useState<string[]>([]);
@@ -644,9 +676,9 @@ export function ExplainForm({
     if (onRoomLoaded) onRoomLoaded(room ? room.title : "Quick explain", track.title);
   };
 
-  const mapLearningPath = async (sourceMaterial: string, sourceTitle?: string | null) => {
-    const cleanSource = sourceMaterial.trim();
-    if (!roomId || cleanSource.length < 10) return;
+  const mapLearningPath = async (force = false, sourceOverride?: string) => {
+    const material = (sourceOverride || savedSourceMaterial).trim();
+    if (!roomId || material.length < 10) return;
 
     setConceptsLoading(true);
     setConceptsError(null);
@@ -656,8 +688,7 @@ export function ExplainForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          source: cleanSource,
-          sourceTitle: sourceTitle || source?.title || "Study material",
+          force,
         }),
       });
 
@@ -665,20 +696,21 @@ export function ExplainForm({
       if (!response.ok) throw new Error(payload.error || "Could not build learning path.");
       if (Array.isArray(payload.concepts)) {
         setServerConcepts(payload.concepts);
+        setPathUpdateNotice(null);
       }
     } catch (caught) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[Study] learning path generation failed", caught);
       }
       setServerConcepts([]);
-      setConceptsError("We couldn’t map the concepts in this material yet.");
+      setConceptsError(caught instanceof Error ? caught.message : "We couldn’t map the concepts in this material yet.");
     } finally {
       setConceptsLoading(false);
     }
   };
 
   useEffect(() => {
-    const sourceMaterial = initialSource?.content || "";
+    const sourceMaterial = combineSourceContent(initialSources);
     const initialConceptTitle = initialConcept?.title || initialRoom?.selected_concept || null;
     setRequest((prev) => ({ ...prev, notes: sourceMaterial }));
     setSavedSourceMaterial(sourceMaterial);
@@ -687,7 +719,7 @@ export function ExplainForm({
     if (initialConceptTitle) {
       setHistory(createEmptyConceptSnapshot(initialConceptTitle).history);
     }
-    if (sourceMaterial && !initialRoomConcepts.length) void mapLearningPath(sourceMaterial, initialSource?.title);
+    if (sourceMaterial && !initialRoomConcepts.length) void mapLearningPath(false, sourceMaterial);
     if (onRoomLoaded) {
       onRoomLoaded(initialRoom?.title || "Quick explain", initialConceptTitle || initialRoom?.description || "");
     }
@@ -733,6 +765,22 @@ export function ExplainForm({
     };
   }, []);
 
+  useEffect(() => {
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenSourceMenuId(null);
+      setPendingDeleteSourceId(null);
+      if (!isPdfBusy) {
+        setIsAddMaterialOpen(false);
+        setSourceInputMode(null);
+        setIsEditingNotes(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isPdfBusy]);
+
   const handleSaveNotes = async () => {
     const sourceMaterial = request.notes.trim();
     if (sourceMaterial.length < 10) {
@@ -747,14 +795,14 @@ export function ExplainForm({
 
     setError(null);
     setNotice(null);
+    setSourceActionError(null);
     setIsSavingSource(true);
     setIsEditingNotes(false);
-    resetEvaluationSession();
-    setServerConcepts([]);
 
     const result = await saveRoomSourceAction({
       roomId,
       roomTitle: room.title,
+      title: pasteTitle,
       content: sourceMaterial,
     });
 
@@ -766,25 +814,11 @@ export function ExplainForm({
     }
 
     const savedAt = new Date().toISOString();
-    setSource((current) => ({
-      id: result.data.sourceId,
-      room_id: roomId,
-      user_id: current?.user_id || room.user_id,
-      source_type: "pasted_text",
-      title: result.data.title,
-      content: sourceMaterial,
-      metadata: current?.metadata || {},
-      original_file_name: null,
-      storage_path: null,
-      page_count: null,
-      extracted_text_length: sourceMaterial.length,
-      extraction_status: null,
-      created_at: current?.created_at || new Date().toISOString(),
-      updated_at: savedAt,
-    }));
-    setSavedSourceMaterial(sourceMaterial);
-    setSourceSavedAt(savedAt);
-    setIsSourceFreshlySaved(true);
+    const nextSources = [...sources, result.data.source];
+    const nextMaterial = combineSourceContent(nextSources);
+    setSources(nextSources);
+    setOpenSourceId(result.data.source.id);
+    setSavedSourceMaterial(nextMaterial);
     setRoom((current) =>
       current
         ? {
@@ -795,11 +829,16 @@ export function ExplainForm({
           }
         : current,
     );
-    setRequest(prev => ({ ...prev, notes: sourceMaterial }));
+    setRequest(prev => ({ ...prev, notes: nextMaterial }));
     setIsSavingSource(false);
     setSourceInputMode(null);
-    void mapLearningPath(sourceMaterial, result.data.title);
-    window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
+    setIsAddMaterialOpen(false);
+    setPasteTitle("");
+    if (serverConcepts.length) {
+      setPathUpdateNotice(`New material added. Your learning path is based on ${Math.max(1, sources.filter((item) => item.is_active).length)} source${sources.filter((item) => item.is_active).length === 1 ? "" : "s"}. Update it to include ${nextSources.filter((item) => item.is_active).length} sources?`);
+    } else {
+      void mapLearningPath(false, nextMaterial);
+    }
     if (onRoomLoaded) {
       onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
     }
@@ -808,6 +847,7 @@ export function ExplainForm({
   const handleCancelNotesEdit = () => {
     setRequest(prev => ({ ...prev, notes: savedSourceMaterial }));
     setIsEditingNotes(false);
+    setSourceInputMode(null);
   };
 
   const resetPdfSelection = () => {
@@ -821,11 +861,14 @@ export function ExplainForm({
     resetPdfSelection();
     setSourceInputMode("paste");
     setIsEditingNotes(true);
+    setIsAddMaterialOpen(true);
+    setRequest((prev) => ({ ...prev, notes: "" }));
   };
 
   const openPdfMode = () => {
     setIsEditingNotes(false);
     setSourceInputMode("pdf");
+    setIsAddMaterialOpen(true);
     setPdfError(null);
     setPdfStatus(null);
   };
@@ -859,6 +902,7 @@ export function ExplainForm({
     if (isPdfBusy) return;
     resetPdfSelection();
     setSourceInputMode(null);
+    setIsAddMaterialOpen(false);
   };
 
   const handleSavePdfSource = async () => {
@@ -903,8 +947,6 @@ export function ExplainForm({
       });
 
       setPdfStatus(`${extraction.pageCount} pages · ${extraction.extractedTextLength.toLocaleString()} characters extracted`);
-      resetEvaluationSession();
-      setServerConcepts([]);
 
       const result = await saveRoomPdfSourceAction({
         roomId,
@@ -921,26 +963,11 @@ export function ExplainForm({
 
       uploadedPath = null;
       const savedAt = new Date().toISOString();
-      setSource((current) => ({
-        id: result.data.sourceId,
-        room_id: roomId,
-        user_id: current?.user_id || room.user_id,
-        source_type: "pdf",
-        title: result.data.title,
-        content: extraction.text,
-        metadata: current?.metadata || {},
-        original_file_name: result.data.originalFileName,
-        storage_path: result.data.storagePath,
-        page_count: result.data.pageCount,
-        extracted_text_length: result.data.extractedTextLength,
-        extraction_status: "complete",
-        created_at: current?.created_at || new Date().toISOString(),
-        updated_at: savedAt,
-      }));
-      setSavedSourceMaterial(extraction.text);
-      setSourceSavedAt(savedAt);
-      setIsSourceFreshlySaved(true);
-      setShowExtractedText(false);
+      const nextSources = [...sources, result.data.source];
+      const nextMaterial = combineSourceContent(nextSources);
+      setSources(nextSources);
+      setOpenSourceId(result.data.source.id);
+      setSavedSourceMaterial(nextMaterial);
       setRoom((current) =>
         current
           ? {
@@ -951,12 +978,16 @@ export function ExplainForm({
             }
           : current,
       );
-      setRequest(prev => ({ ...prev, notes: extraction.text }));
+      setRequest(prev => ({ ...prev, notes: nextMaterial }));
       setSelectedPdfFile(null);
       setSourceInputMode(null);
+      setIsAddMaterialOpen(false);
       setPdfStatus("PDF added · Learning path ready");
-      void mapLearningPath(extraction.text, result.data.title);
-      window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
+      if (serverConcepts.length) {
+        setPathUpdateNotice(`New material added. Your learning path is based on ${Math.max(1, sources.filter((item) => item.is_active).length)} source${sources.filter((item) => item.is_active).length === 1 ? "" : "s"}. Update it to include ${nextSources.filter((item) => item.is_active).length} sources?`);
+      } else {
+        void mapLearningPath(false, nextMaterial);
+      }
       if (onRoomLoaded) {
         onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
       }
@@ -975,6 +1006,89 @@ export function ExplainForm({
       setPdfProgress(null);
       setIsPdfBusy(false);
     }
+  };
+
+  const handleUpdateLearningPath = () => {
+    if (!savedSourceMaterial.trim()) {
+      setConceptsError("Add material before generating a learning path.");
+      return;
+    }
+    void mapLearningPath(true);
+  };
+
+  const handleToggleSourceActive = async (target: SourceRow) => {
+    if (!roomId) return;
+    setSourceActionError(null);
+    const result = await toggleRoomSourceActiveAction(target.id, roomId, !target.is_active);
+    if (!result.ok) {
+      setSourceActionError(result.error);
+      return;
+    }
+
+    const nextSources = sources.map((item) =>
+      item.id === target.id ? { ...item, is_active: result.data.isActive, updated_at: new Date().toISOString() } : item,
+    );
+    const nextMaterial = combineSourceContent(nextSources);
+    setSources(nextSources);
+    setSavedSourceMaterial(nextMaterial);
+    setRequest((prev) => ({ ...prev, notes: nextMaterial }));
+    setOpenSourceMenuId(null);
+    setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+  };
+
+  const handleDeleteSource = async (target: SourceRow) => {
+    if (!roomId) return;
+    setSourceActionError(null);
+    const result = await deleteRoomSourceAction(target.id, roomId);
+    if (!result.ok) {
+      setSourceActionError(result.error);
+      return;
+    }
+
+    const nextSources = sources.filter((item) => item.id !== target.id);
+    const nextMaterial = combineSourceContent(nextSources);
+    setSources(nextSources);
+    setSavedSourceMaterial(nextMaterial);
+    setRequest((prev) => ({ ...prev, notes: nextMaterial }));
+    setPendingDeleteSourceId(null);
+    setOpenSourceMenuId(null);
+    if (openSourceId === target.id) {
+      setOpenSourceId(nextSources[0]?.id || null);
+    }
+    setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+  };
+
+  const startRenameSource = (target: SourceRow) => {
+    setRenamingSourceId(target.id);
+    setRenameDraft(getSourceDisplayTitle(target));
+    setOpenSourceMenuId(null);
+    setSourceActionError(null);
+  };
+
+  const handleRenameSource = async (target: SourceRow) => {
+    if (!roomId) return;
+    const cleanTitle = renameDraft.trim();
+    if (!cleanTitle) {
+      setSourceActionError("Source title is required.");
+      return;
+    }
+
+    const result = await renameRoomSourceAction(target.id, cleanTitle, roomId);
+    if (!result.ok) {
+      setSourceActionError(result.error);
+      return;
+    }
+
+    const nextSources = sources.map((item) =>
+      item.id === target.id ? { ...item, title: result.data.title, updated_at: new Date().toISOString() } : item,
+    );
+    const nextMaterial = combineSourceContent(nextSources);
+    setSources(nextSources);
+    setSavedSourceMaterial(nextMaterial);
+    setRequest((prev) => ({ ...prev, notes: nextMaterial }));
+    setRenamingSourceId(null);
+    setRenameDraft("");
+    setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
   };
 
   // Resize State
@@ -1115,7 +1229,7 @@ export function ExplainForm({
             [getConceptId(selectedConcept)]: buildCurrentConceptTrack(selectedConcept),
           }
         : conceptTracks,
-      sourceUpdatedAt: source?.updated_at || initialSource?.updated_at || null,
+      sourceUpdatedAt: sources.map((item) => item.updated_at).join("|") || null,
     };
 
     savePersistedSession(sessionStorageKey, snapshot, roomId);
@@ -1135,8 +1249,7 @@ export function ExplainForm({
     resolvedGaps,
     studyToolsState,
     conceptTracks,
-    source?.updated_at,
-    initialSource?.updated_at,
+    sources,
   ]);
 
   useEffect(() => {
@@ -1272,7 +1385,7 @@ export function ExplainForm({
     setIsChoosingNextConcept(true);
     setError(null);
     setNotice(null);
-    if (!serverConcepts.length && savedSourceMaterial) void mapLearningPath(savedSourceMaterial, source?.title);
+    if (!serverConcepts.length && savedSourceMaterial) void mapLearningPath(false);
   };
 
   const handleAskFollowUp = () => {
@@ -1455,6 +1568,12 @@ export function ExplainForm({
     );
   }
 
+  const activeSources = sources.filter((item) => item.is_active);
+  const openSource = sources.find((item) => item.id === openSourceId) || sources[0] || null;
+  const activeCharacterCount = activeSources.reduce((total, item) => total + getSourceCharacterCount(item), 0);
+  const sourceCountLabel = sources.length
+    ? `${sources.length} source${sources.length === 1 ? "" : "s"} · ${activeCharacterCount.toLocaleString()} characters`
+    : "No study material yet";
   const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
   const isConceptClear = result?.status === "clear" && (result.clarityScore ?? 0) >= 90;
   const conceptSuggestionOptions = serverConcepts.filter(
@@ -1522,26 +1641,8 @@ export function ExplainForm({
     : hasSavedMaterial
       ? "Concepts pending"
       : "Add material";
-  const isPdfSource = source?.source_type === "pdf";
-  const pdfFileName = source?.original_file_name || source?.title || "PDF source";
-  const pdfMeta = isPdfSource
-    ? [
-        "PDF",
-        source?.page_count ? `${source.page_count} pages` : null,
-        sourceSavedAt ? "Saved" : null,
-      ].filter(Boolean).join(" · ")
-    : null;
-  const hasExistingSource = !!source || hasSavedMaterial;
-
   const renderPdfUploadPanel = () => (
     <div className="pdf-upload-panel" aria-live="polite">
-      {hasExistingSource ? (
-        <div className="replace-source-confirm">
-          <strong>Replace current study material?</strong>
-          <p>Your existing learning path may no longer match this source.</p>
-        </div>
-      ) : null}
-
       <label className="pdf-file-picker">
         <span>Upload PDF</span>
         <input
@@ -1584,7 +1685,7 @@ export function ExplainForm({
           onClick={handleSavePdfSource}
           disabled={!selectedPdfFile || isPdfBusy}
         >
-          {isPdfBusy ? "Working..." : hasExistingSource ? "Replace material" : "Add PDF"}
+          {isPdfBusy ? "Working..." : "Add PDF"}
         </button>
       </div>
     </div>
@@ -1611,16 +1712,10 @@ export function ExplainForm({
           </button>
         </div>
         <div className="panel-content">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+          <div className="source-room-summary">
             <div>
-              <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--ink)' }}>{room ? room.title : "Quick explain"}</h4>
-              <div className="source-meta">
-                {isPdfSource && pdfMeta
-                  ? pdfMeta
-                  : hasSavedMaterial
-                    ? `Pasted text · ${isSourceFreshlySaved ? "Saved just now" : sourceSavedAt ? "Saved" : "Saved"}`
-                    : room?.description || "No material yet"}
-              </div>
+              <h4>{room ? room.title : "Quick explain"}</h4>
+              <div className="source-meta">{sourceCountLabel}</div>
               {selectedConcept && (
                 <div className="current-focus-pill">
                   <span>Current focus</span>
@@ -1628,104 +1723,129 @@ export function ExplainForm({
                 </div>
               )}
             </div>
+            <button className="source-action-btn source-action-btn-primary" type="button" onClick={() => setIsAddMaterialOpen((current) => !current)}>
+              Add material
+            </button>
           </div>
 
-          {sourceInputMode === "pdf" ? (
-            renderPdfUploadPanel()
-          ) : !request.notes && !isEditingNotes ? (
-            <div className="empty-insights" style={{ alignItems: 'flex-start', textAlign: 'left', padding: '0', height: 'auto' }}>
-              <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--ink)' }}>No study material added yet</h4>
-              <p style={{ marginBottom: '24px' }}>Add source material for Feynduck to use as the source.</p>
-              <div className="source-choice-actions">
-                <button className="source-action-btn source-action-btn-primary" type="button" onClick={openPasteMode}>
-                  Paste text
+          {pathUpdateNotice ? (
+            <div className="source-path-notice" role="status">
+              <strong>{pathUpdateNotice.startsWith("New material") ? "New material added" : "Study material changed"}</strong>
+              <p>{pathUpdateNotice}</p>
+              <div>
+                <button className="source-action-btn source-action-btn-primary" type="button" onClick={handleUpdateLearningPath} disabled={conceptsLoading}>
+                  {conceptsLoading ? "Updating..." : "Update learning path"}
                 </button>
-                <button className="source-action-btn" type="button" onClick={openPdfMode}>
-                  Upload PDF
-                </button>
+                <button className="source-action-btn" type="button" onClick={() => setPathUpdateNotice(null)}>Not now</button>
               </div>
             </div>
-          ) : isEditingNotes ? (
-            <div>
+          ) : null}
+
+          {isAddMaterialOpen ? (
+            <div className="add-material-sheet">
               <div className="source-choice-tabs" aria-label="Source type">
-                <button className="active" type="button" onClick={openPasteMode}>Paste text</button>
-                <button type="button" onClick={openPdfMode}>Upload PDF</button>
+                <button className={sourceInputMode === "pdf" ? "" : "active"} type="button" onClick={openPasteMode}>Paste text</button>
+                <button className={sourceInputMode === "pdf" ? "active" : ""} type="button" onClick={openPdfMode}>Upload PDF</button>
               </div>
-              <textarea
-                className="notes-textarea-minimal"
-                placeholder="Add your study material here..."
-                value={request.notes}
-                onChange={(e) => updateField("notes", e.target.value)}
-                rows={15}
-                style={{ width: '100%', minWidth: '220px', marginBottom: '16px' }}
-              />
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button
-                  className="source-action-btn"
-                  onClick={handleCancelNotesEdit}
-                  disabled={isSavingSource}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="source-action-btn source-action-btn-primary"
-                  onClick={handleSaveNotes}
-                  disabled={isSavingSource}
-                >
-                  {isSavingSource ? "Saving..." : "Save material"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {isPdfSource ? (
-                <>
-                  <div className="pdf-source-summary">
-                    <strong>{pdfFileName}</strong>
-                    <span>{pdfMeta}</span>
-                    {source?.extracted_text_length ? (
-                      <em>{source.extracted_text_length.toLocaleString()} characters extracted</em>
-                    ) : null}
-                  </div>
-                  <div className="source-actions">
-                    <button className="source-action-btn" type="button" onClick={openPdfMode}>Replace PDF</button>
-                    <button className="source-action-btn" type="button" onClick={() => setShowExtractedText((current) => !current)}>
-                      {showExtractedText ? "Hide extracted text" : "View extracted text"}
+              {sourceInputMode === "pdf" ? (
+                renderPdfUploadPanel()
+              ) : (
+                <div>
+                  <label className="source-field-label">
+                    <span>Title (optional)</span>
+                    <input
+                      className="source-title-input"
+                      value={pasteTitle}
+                      onChange={(event) => setPasteTitle(event.target.value)}
+                      placeholder="Pasted notes"
+                    />
+                  </label>
+                  <textarea
+                    className="notes-textarea-minimal"
+                    placeholder="Paste your notes or text..."
+                    value={request.notes}
+                    onChange={(e) => updateField("notes", e.target.value)}
+                    rows={10}
+                    style={{ width: '100%', minWidth: '220px', marginBottom: '16px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button className="source-action-btn" onClick={handleCancelNotesEdit} disabled={isSavingSource}>Cancel</button>
+                    <button className="source-action-btn source-action-btn-primary" onClick={handleSaveNotes} disabled={isSavingSource}>
+                      {isSavingSource ? "Saving..." : "Add text"}
                     </button>
-                    {selectedConcept && (
-                      <button className="source-action-btn" type="button" onClick={handleChangeTopic}>Change topic</button>
-                    )}
                   </div>
-                  {showExtractedText ? (
-                    <div style={{ marginTop: '16px', position: 'relative' }}>
-                      <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
-                        {request.notes}
-                      </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {sourceActionError ? <div className="pdf-error" role="alert">{sourceActionError}</div> : null}
+
+          {sources.length ? (
+            <div className="source-list" aria-label="Room sources">
+              {sources.map((item) => (
+                <div key={item.id} className={cn("source-list-item", openSourceId === item.id && "active", !item.is_active && "inactive")}>
+                  <button type="button" className="source-row-main" onClick={() => setOpenSourceId(item.id)}>
+                    <strong>{getSourceDisplayTitle(item)}</strong>
+                    <span>{formatSourceMeta(item)}</span>
+                    <em>{item.is_active ? "Included in learning path" : "Excluded from learning path"}</em>
+                  </button>
+                  <button
+                    type="button"
+                    className="source-menu-trigger"
+                    aria-label={`Actions for ${getSourceDisplayTitle(item)}`}
+                    aria-expanded={openSourceMenuId === item.id}
+                    onClick={() => setOpenSourceMenuId((current) => current === item.id ? null : item.id)}
+                  >
+                    ...
+                  </button>
+                  {openSourceMenuId === item.id ? (
+                    <div className="source-menu" role="menu">
+                      <button type="button" role="menuitem" onClick={() => { setOpenSourceId(item.id); setOpenSourceMenuId(null); }}>View source</button>
+                      <button type="button" role="menuitem" onClick={() => startRenameSource(item)}>Rename</button>
+                      <button type="button" role="menuitem" onClick={() => handleToggleSourceActive(item)}>
+                        {item.is_active ? "Exclude from learning path" : "Include in learning path"}
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => { setPendingDeleteSourceId(item.id); setOpenSourceMenuId(null); }}>Delete</button>
                     </div>
                   ) : null}
-                </>
-              ) : (
-                <>
-                  <div className="metadata-pills">
-                    <span className="metadata-pill">{source?.title || "Source material"}</span>
-                  </div>
-
-                  <div style={{ marginTop: '24px', position: 'relative' }}>
-                    <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
-                      {request.notes}
+                  {renamingSourceId === item.id ? (
+                    <div className="source-inline-edit">
+                      <input value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} aria-label="Source title" />
+                      <button type="button" onClick={() => handleRenameSource(item)}>Save</button>
+                      <button type="button" onClick={() => setRenamingSourceId(null)}>Cancel</button>
                     </div>
-                  </div>
-                  <div className="source-actions">
-                    <button className="source-action-btn" type="button" onClick={() => setIsEditingNotes(true)}>Edit source</button>
-                    <button className="source-action-btn" type="button" onClick={openPdfMode}>Replace with PDF</button>
-                    {selectedConcept && (
-                      <button className="source-action-btn" type="button" onClick={handleChangeTopic}>Change topic</button>
-                    )}
-                  </div>
-                </>
-              )}
+                  ) : null}
+                  {pendingDeleteSourceId === item.id ? (
+                    <div className="source-delete-confirm">
+                      <span>Delete this material?</span>
+                      <button type="button" onClick={() => handleDeleteSource(item)}>Delete</button>
+                      <button type="button" onClick={() => setPendingDeleteSourceId(null)}>Cancel</button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-insights" style={{ alignItems: 'flex-start', textAlign: 'left', padding: '0', height: 'auto' }}>
+              <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--ink)' }}>No study material yet</h4>
+              <p style={{ marginBottom: '24px' }}>Add a PDF or pasted notes for Feynduck to use as the source.</p>
+            </div>
+          )}
 
-              <div className="study-context-block">
+          {openSource ? (
+            <div className="source-preview-block">
+              <div className="source-preview-heading">
+                <span>{openSource.source_type === "pdf" ? "Extracted PDF text" : "Pasted source"}</span>
+                <strong>{getSourceDisplayTitle(openSource)}</strong>
+              </div>
+              <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
+                {openSource.content}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="study-context-block">
                 <div className="study-context-heading">
                   <span>Room progress</span>
                   <strong>{roomProgressLabel}</strong>
@@ -1755,9 +1875,7 @@ export function ExplainForm({
                     <p>{previousMainGaps[previousMainGaps.length - 1]}</p>
                   </div>
                 ) : null}
-              </div>
-            </>
-          )}
+          </div>
         </div>
       </aside>
 
@@ -1822,7 +1940,7 @@ export function ExplainForm({
                   <strong>{conceptsError}</strong>
                   <span>Try again, or add the concept you want to explain yourself.</span>
                   <div>
-                    <button type="button" onClick={() => mapLearningPath(savedSourceMaterial, source?.title)}>
+                    <button type="button" onClick={() => mapLearningPath(false)}>
                       Try again
                     </button>
                     <button type="button" onClick={focusCustomConceptInput}>
@@ -1896,7 +2014,7 @@ export function ExplainForm({
                       <strong>{conceptsError}</strong>
                       <span>Try again, or add the concept you want to explain yourself.</span>
                       <div>
-                        <button type="button" onClick={() => mapLearningPath(savedSourceMaterial, source?.title)}>
+                        <button type="button" onClick={() => mapLearningPath(false)}>
                           Try again
                         </button>
                         <button type="button" onClick={focusCustomConceptInput}>
