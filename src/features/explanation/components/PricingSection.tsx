@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { trackEvent } from "@src/lib/analytics";
 import { pricingTiers } from "./LandingPageData";
 import { SectionHeader } from "./SectionHeader";
 
@@ -9,6 +10,17 @@ type BillingCycle = "monthly" | "annual";
 
 export function PricingSection() {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("annual");
+  const primaryPlans = pricingTiers.filter((plan) => plan.name !== "Institution");
+  const institutionPlan = pricingTiers.find((plan) => plan.name === "Institution");
+
+  const getPlanPrice = (plan: (typeof pricingTiers)[number]) => {
+    const isAnnual = billingCycle === "annual";
+    return {
+      price: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+      priceNote: isAnnual ? plan.annualNote : plan.monthlyNote,
+      priceSuffix: isAnnual ? plan.annualSuffix : plan.monthlySuffix,
+    };
+  };
 
   return (
     <section className="section pricing" id="pricing">
@@ -44,11 +56,8 @@ export function PricingSection() {
       </div>
 
       <div className="pricing-grid">
-        {pricingTiers.map((plan) => {
-          const isAnnual = billingCycle === "annual";
-          const price = isAnnual ? plan.annualPrice : plan.monthlyPrice;
-          const priceSuffix = isAnnual ? plan.annualSuffix : plan.monthlySuffix;
-          const priceNote = isAnnual ? plan.annualNote : plan.monthlyNote;
+        {primaryPlans.map((plan) => {
+          const { price, priceNote, priceSuffix } = getPlanPrice(plan);
 
           return (
             <article
@@ -74,13 +83,58 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
-              <a className="button primary" href="#top">
+              <a
+                className="button primary"
+                href={plan.ctaHref ?? "#top"}
+                onClick={() =>
+                  trackEvent("pricing_cta_clicked", {
+                    plan: plan.name,
+                    billingCycle,
+                    href: plan.ctaHref ?? "#top",
+                  })
+                }
+              >
                 {plan.cta}
               </a>
             </article>
           );
         })}
       </div>
+
+      {institutionPlan ? (
+        <article className="institution-card reveal">
+          <div className="institution-card-copy">
+            {institutionPlan.badge ? <strong className="badge">{institutionPlan.badge}</strong> : null}
+            <h3>{institutionPlan.name}</h3>
+            <p>{institutionPlan.intro}</p>
+          </div>
+          <ul>
+            {institutionPlan.items.slice(0, 4).map((item) => (
+              <li key={item}>
+                <Check size={16} />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <div className="institution-card-action">
+            <div className="price">Custom</div>
+            <p className="price-savings">{institutionPlan.annualNote}</p>
+            <a
+              className="button primary"
+              href={institutionPlan.ctaHref ?? "#top"}
+              onClick={() =>
+                trackEvent("pricing_cta_clicked", {
+                  plan: institutionPlan.name,
+                  billingCycle,
+                  href: institutionPlan.ctaHref ?? "#top",
+                })
+              }
+            >
+              {institutionPlan.cta}
+            </a>
+          </div>
+        </article>
+      ) : null}
 
       <p className="pricing-footer reveal">
         The cost of one tutoring session. Lasts all year.

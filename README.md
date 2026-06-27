@@ -25,6 +25,25 @@ The project is designed to support the following domain structure:
 
 The study experience is encapsulated in the `StudyDemoPage` component located at `src/features/explanation/components/StudyDemoPage.tsx`. This allows the same UI to be rendered across different routes or host-based entry points without code duplication.
 
+## Waitlist Admin
+
+Waitlist submissions are stored in Supabase in `public.waitlist_entries`.
+
+To view them inside the app, set:
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+WAITLIST_ADMIN_EMAILS=you@example.com
+```
+
+Then visit:
+
+```text
+/admin/waitlist
+```
+
+The admin page requires login and only allows emails listed in `WAITLIST_ADMIN_EMAILS`. Multiple admin emails can be comma-separated.
+
 ## Routing Note
 
 For production deployment of `app.feynduck.com`:

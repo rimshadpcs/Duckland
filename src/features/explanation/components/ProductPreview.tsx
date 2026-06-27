@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DashboardPreview } from "./DashboardPreview";
 import { previewItems } from "./LandingPageData";
 import { PreviewNavItem } from "./PreviewNavItem";
@@ -27,16 +27,44 @@ const previewStates = [
   },
 ];
 
+const cycleMs = 5200;
+
 export function ProductPreview() {
   const [active, setActive] = useState(0);
+  const [progress, setProgress] = useState(0);
   const activeState = previewStates[active];
+
+  useEffect(() => {
+    let frame = 0;
+    const startedAt = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - startedAt;
+      const nextProgress = Math.min((elapsed / cycleMs) * 100, 100);
+      setProgress(nextProgress);
+
+      if (elapsed >= cycleMs) {
+        setActive((current) => (current + 1) % previewItems.length);
+      } else {
+        frame = window.requestAnimationFrame(tick);
+      }
+    };
+
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [active]);
+
+  const selectPreview = (index: number) => {
+    setActive(index);
+    setProgress(0);
+  };
 
   return (
     <section className="section product-preview" id="preview">
       <SectionHeader
         label="product preview"
-        title="See how Feynduck works"
-        copy="From notes to explanation to missing link — one study loop at a time."
+        title="A time-lapsed workspace."
+        copy="The preview cycles through the full loop: source material, explanation, gap, re-explanation, score, and study tools."
       />
       <div className="preview-layout landing-preview-layout reveal">
         <div className="preview-sidebar">
@@ -48,17 +76,21 @@ export function ProductPreview() {
                 icon={item.icon}
                 index={index}
                 key={item.title}
-                onClick={() => setActive(index)}
+                onClick={() => selectPreview(index)}
+                progress={active === index ? progress : 0}
                 title={item.title}
               />
             ))}
           </div>
         </div>
 
-        <div className="demo-stage">
+        <div className="demo-stage" data-active-step={active}>
           <div className="preview-step-explainer">
             <span>What happens here</span>
             <p>{activeState.explanation}</p>
+          </div>
+          <div className="cursor-simulation" aria-hidden="true">
+            <span />
           </div>
           <DashboardPreview activeStep={active} />
         </div>

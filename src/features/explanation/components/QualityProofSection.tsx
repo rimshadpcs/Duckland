@@ -4,27 +4,37 @@ export function QualityProofSection() {
   return (
     <section className="quality-proof section">
       <SectionHeader
-        label="the problem"
-        title="Recognising the idea is not the same as explaining the mechanism."
+        label="quality proof"
+        title="The missing step becomes visible."
       />
-      <div className="proof-grid reveal">
-        <article className="proof-card before">
-          <span>Before</span>
-          <p>
-            “Cardiac output is how much blood the heart pumps. If stroke volume goes down,
-            the heart beats faster to make up for it.”
-          </p>
-          <small>Sounds right. But the formula link is missing.</small>
-        </article>
-        <article className="proof-card after">
-          <span>After using Feynduck</span>
-          <p>
-            “Cardiac output equals heart rate multiplied by stroke volume. If stroke volume falls,
-            heart rate has to increase to help keep the product stable, so the body compensates by
-            pumping more often per minute.”
-          </p>
-          <small>Same student. Now the mechanism is visible.</small>
-        </article>
+      <div className="diff-board reveal">
+        <div className="diff-toolbar">
+          <span>Student explanation diff</span>
+          <small>Hover the improved version</small>
+        </div>
+        <div className="proof-grid">
+          <article className="proof-card before">
+            <span>Before</span>
+            <p>
+              Cardiac output is how much blood the heart pumps. If stroke volume goes down,
+              the heart beats faster to make up for it.
+            </p>
+            <small>Sounds right. But the formula link is missing.</small>
+          </article>
+          <article className="proof-card after">
+            <span>After Feynduck</span>
+            <p>
+              Cardiac output equals heart rate{" "}
+              <mark>multiplied by stroke volume</mark>. If stroke volume falls, heart rate has to
+              increase to help keep the product stable, so the body compensates by pumping more
+              often per minute.
+            </p>
+            <div className="diff-callout">
+              <strong>Causal link restored</strong>
+              <small>The explanation now connects the compensation to the formula.</small>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
   );

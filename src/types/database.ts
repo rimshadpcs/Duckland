@@ -75,6 +75,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      waitlist_entries: {
+        Row: {
+          id: string;
+          email: string;
+          name: string | null;
+          school: string | null;
+          student_type: string | null;
+          study_focus: string | null;
+          source: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          name?: string | null;
+          school?: string | null;
+          student_type?: string | null;
+          study_focus?: string | null;
+          source?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          name?: string | null;
+          school?: string | null;
+          student_type?: string | null;
+          study_focus?: string | null;
+          source?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       study_rooms: {
         Row: {
           id: string;

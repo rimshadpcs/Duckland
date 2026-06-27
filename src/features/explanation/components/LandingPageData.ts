@@ -91,23 +91,23 @@ export const tabForStep = (step: number): WorkspaceTab => {
 
 export const audiences = [
   {
-    title: "Exam-heavy students",
-    copy: "You study hard, but freeze when the question asks “why?”",
+    title: "The night-before explainer",
+    copy: "You know the lecture, but the “why?” question still exposes the gap.",
     icon: ClipboardCheck,
   },
   {
-    title: "Pre-med & science students",
-    copy: "You memorize mechanisms, but need to explain causal chains clearly.",
+    title: "The mechanism memoriser",
+    copy: "You can name the pathway, but not defend each causal step.",
     icon: Microscope,
   },
   {
-    title: "CS & engineering students",
-    copy: "You follow examples, but need to reason through the underlying logic.",
+    title: "The example follower",
+    copy: "You can follow worked solutions, but struggle when the pattern changes.",
     icon: Code2,
   },
   {
-    title: "Students using AI to study",
-    copy: "You get summaries and answers, but still need to prove you understand them.",
+    title: "The AI-assisted student",
+    copy: "You have summaries everywhere, but still need proof that the understanding is yours.",
     icon: Sparkles,
   },
 ];
@@ -266,6 +266,27 @@ export const pricingTiers = [
       "Export your gap reports and session notes as a PDF to review offline",
       "Priority processing — faster responses during peak hours",
       "Early access to new features before anyone else",
+    ],
+  },
+  {
+    name: "Institution",
+    monthlyPrice: "Custom",
+    annualPrice: "Custom",
+    monthlySuffix: "",
+    annualSuffix: "",
+    monthlyNote: "For departments, schools, and universities",
+    annualNote: "For departments, schools, and universities",
+    intro: "Bring Feynduck to a whole cohort",
+    cta: "Book a call",
+    ctaHref: "mailto:hello@feynduck.ai?subject=Institution%20plan",
+    badge: "✦ Teams & campuses",
+    items: [
+      "Cohort workspaces for classes, modules, and exam groups",
+      "Admin controls for seats, subjects, and access",
+      "Shared source packs for lectures, reading lists, and revision materials",
+      "Aggregate clarity insights without exposing private student explanations",
+      "Custom onboarding for tutors, faculty, and learning support teams",
+      "Priority support and implementation planning",
     ],
   },
 ];

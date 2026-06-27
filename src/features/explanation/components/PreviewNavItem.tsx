@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 
 export function PreviewNavItem({
@@ -6,6 +7,7 @@ export function PreviewNavItem({
   icon: Icon,
   index,
   onClick,
+  progress = 0,
   title,
 }: {
   active: boolean;
@@ -13,6 +15,7 @@ export function PreviewNavItem({
   icon: LucideIcon;
   index: number;
   onClick: () => void;
+  progress?: number;
   title: string;
 }) {
   return (
@@ -20,6 +23,7 @@ export function PreviewNavItem({
       aria-current={active ? "step" : undefined}
       className={active ? "active" : ""}
       onClick={onClick}
+      style={{ "--tab-progress": `${progress}%` } as CSSProperties}
       type="button"
     >
       <span className="step-number">{String(index + 1).padStart(2, "0")}</span>

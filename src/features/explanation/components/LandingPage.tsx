@@ -13,6 +13,7 @@ import { PricingSection } from "./PricingSection";
 import { ProductFeaturesSection } from "./ProductFeaturesSection";
 import { ProductPreview } from "./ProductPreview";
 import { QualityProofSection } from "./QualityProofSection";
+import { UniversityMarquee } from "./UniversityMarquee";
 
 type ThemeMode = "light" | "obsidian";
 
@@ -85,6 +86,19 @@ export function LandingPage() {
     window.localStorage.setItem("feynduck-theme", themeMode);
   }, [themeMode, mounted]);
 
+  useEffect(() => {
+    const main = document.querySelector<HTMLElement>(".landing-page");
+    if (!main) return;
+
+    const updateGlow = (event: PointerEvent) => {
+      main.style.setProperty("--glow-x", `${event.clientX}px`);
+      main.style.setProperty("--glow-y", `${event.clientY}px`);
+    };
+
+    window.addEventListener("pointermove", updateGlow, { passive: true });
+    return () => window.removeEventListener("pointermove", updateGlow);
+  }, []);
+
   const toggleTheme = () => {
     setThemeMode((current) => (current === "obsidian" ? "light" : "obsidian"));
   };
@@ -94,6 +108,7 @@ export function LandingPage() {
     <main className="landing-page">
       <Navbar themeMode={themeMode} toggleTheme={toggleTheme} studyHref={studyHref} />
       <HeroSection themeMode={themeMode} studyHref={studyHref} />
+      <UniversityMarquee />
       <QualityProofSection />
       <HowItWorksSection />
       <ProductPreview />
@@ -103,7 +118,7 @@ export function LandingPage() {
       <PricingSection />
       <FAQSection />
       <FinalCTASection studyHref={studyHref} />
-      <Footer themeMode={themeMode} toggleTheme={toggleTheme} />
+      <Footer themeMode={themeMode} toggleTheme={toggleTheme} studyHref={studyHref} />
     </main>
   );
 }
