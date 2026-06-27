@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronDown, Lightbulb, Loader2, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronDown, Lightbulb, Loader2, PanelRightClose, RotateCcw } from "lucide-react";
 import type { GapAnalysisResult } from "../types";
 import type { Json } from "@src/types/database";
 
@@ -63,6 +63,7 @@ type GapResultPanelProps = {
   concepts?: PanelConcept[];
   activeConceptId?: string | null;
   onConceptSelect?: (title: string) => void;
+  onClose?: () => void;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -111,7 +112,7 @@ function parseStudyToolsSnapshot(value: unknown): StudyToolsSnapshot | null {
 
 function PanelTabs({ activeTab, onChange }: { activeTab: StudyPanelTab; onChange: (tab: StudyPanelTab) => void }) {
   const tabs: Array<{ id: StudyPanelTab; label: string }> = [
-    { id: "insights", label: "Insights" },
+    { id: "insights", label: "Feedback" },
     { id: "quiz", label: "Quiz" },
     { id: "flashcards", label: "Flashcards" },
   ];
@@ -190,12 +191,14 @@ function InsightsTab({
   return (
     <div className="insights-card">
       <div className="score-section">
-        <span className="score-label">Clarity Score</span>
-        <span className="score-value">{result?.status === "topic_mismatch" ? "—" : (result ? result.clarityScore : "--")}</span>
+        <span className="score-label">{result?.status === "topic_mismatch" ? "Status" : "Clarity Score"}</span>
+        <span className={`score-value ${result?.status === "topic_mismatch" ? "is-mismatch" : ""}`}>
+          {result?.status === "topic_mismatch" ? "Topic mismatch" : (result ? result.clarityScore : "--")}
+        </span>
       </div>
 
       {isClear ? (
-        <div className="insight-card strong" style={{ borderColor: "#22c55e" }}>
+        <div className="insight-card strong is-clear">
           <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#15803d", margin: "0 0 8px" }}>
             Clear
           </h4>
@@ -204,7 +207,7 @@ function InsightsTab({
           </p>
         </div>
       ) : (
-        <div className={`insight-card strong ${isLoading ? "loading-pulse" : ""}`} style={{ borderColor: result?.status === "topic_mismatch" ? "#eab308" : undefined }}>
+        <div className={`insight-card strong ${result?.status === "topic_mismatch" ? "is-mismatch" : "is-gap"} ${isLoading ? "loading-pulse" : ""}`}>
           <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: result?.status === "topic_mismatch" ? "#eab308" : "var(--amber-dark)", margin: "0 0 8px" }}>
             {result?.status === "topic_mismatch" ? "Topic mismatch" : "Main Gap"}
           </h4>
@@ -215,7 +218,7 @@ function InsightsTab({
       )}
 
       {!isClear && result?.socraticQuestion && (
-        <div className={`insight-card highlight ${isLoading ? "loading-pulse" : ""}`}>
+        <div className={`insight-card highlight is-socratic ${isLoading ? "loading-pulse" : ""}`}>
           <h4 style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#8a5a0a", margin: "0 0 8px" }}>
             <AlertCircle size={14} /> Socratic Question
           </h4>
@@ -226,7 +229,7 @@ function InsightsTab({
       )}
 
       {result?.status !== "topic_mismatch" && !isClear && (
-        <div className={`insight-card ${isLoading ? "loading-pulse" : ""}`}>
+        <div className={`insight-card is-why ${isLoading ? "loading-pulse" : ""}`}>
           <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", margin: "0 0 8px" }}>
             Why it matters
           </h4>
@@ -237,7 +240,7 @@ function InsightsTab({
       )}
 
       {!isClear && (
-        <div className={`insight-card ${isLoading ? "loading-pulse" : ""}`}>
+        <div className={`insight-card is-retry ${isLoading ? "loading-pulse" : ""}`}>
           <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", margin: "0 0 8px" }}>
             Try again
           </h4>
@@ -266,6 +269,7 @@ export function GapResultPanel({
   concepts = [],
   activeConceptId = null,
   onConceptSelect,
+  onClose,
 }: GapResultPanelProps) {
   const panelStyle = {
     width: width ? `${width}px` : undefined,
@@ -530,7 +534,19 @@ export function GapResultPanel({
   return (
     <aside className="dashboard-panel right-panel" style={panelStyle}>
       <div className="panel-header study-panel-header">
-        <h3 style={{ fontFamily: "inherit", fontWeight: 700 }}>Study panel</h3>
+        <div className="support-panel-title-row">
+          <h3 style={{ fontFamily: "inherit", fontWeight: 700 }}>Support</h3>
+          {onClose ? (
+            <button
+              type="button"
+              className="panel-toggle-btn"
+              onClick={onClose}
+              aria-label="Close support panel"
+            >
+              <PanelRightClose size={18} />
+            </button>
+          ) : null}
+        </div>
         {activeConcept ? (
           <div className="concept-switcher">
             <button

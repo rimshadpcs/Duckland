@@ -15,6 +15,9 @@ First, check for a topic mismatch:
 1. What selected concept is the user trying to explain?
 2. What topic is the student explanation actually about?
 3. Is the explanation clearly about the selected concept?
+Only return status "topic_mismatch" when the explanation is clearly about a different concept from the selected concept.
+Do not return topic_mismatch for a partial, broad, shallow, or incomplete explanation if it is still trying to explain the selected concept.
+If the explanation names the selected concept, a close synonym, or the main structures/processes from the selected concept, treat it as on-topic and evaluate the missing source-grounded link instead.
 If the explanation is about a different concept, return status "topic_mismatch" and do not provide a normal clarity score. Do not hallucinate a connection between unrelated topics.
 For example, if the selected concept is insulin resistance but the explanation describes glucagon raising blood glucose between meals, return topic_mismatch.
 

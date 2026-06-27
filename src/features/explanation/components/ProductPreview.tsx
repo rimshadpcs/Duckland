@@ -14,10 +14,10 @@ const previewStates = [
     explanation: "Explain the concept in your own words by typing or speaking. Feynduck listens for the reasoning behind your answer, not just the right keywords.",
   },
   {
-    explanation: "Feynduck compares your explanation with the source material, identifies the exact missing reasoning step, and asks one targeted question to help you discover it.",
+    explanation: "Feynduck compares your explanation with the source, separates the missing link from the follow-up question, and shows exactly what to repair.",
   },
   {
-    explanation: "Feynduck asks one targeted question about the missing link, then gives you another chance to explain it clearly.",
+    explanation: "The feedback naturally leads into a second explanation, so the student rebuilds the answer instead of passively reading a correction.",
   },
   {
     explanation: "Your clarity score helps you see which concepts are ready and which still need another explanation loop.",
@@ -64,7 +64,7 @@ export function ProductPreview() {
       <SectionHeader
         label="product preview"
         title="A time-lapsed workspace."
-        copy="The preview cycles through the full loop: source material, explanation, gap, re-explanation, score, and study tools."
+        copy="The preview cycles through the full loop: source material, explanation, missing link, re-explanation, score, and study tools."
       />
       <div className="preview-layout landing-preview-layout reveal">
         <div className="preview-sidebar">

@@ -136,6 +136,20 @@ export async function deleteStudyRoom(roomId: string) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("You must be signed in to delete rooms.");
 
+  const { data: source } = await supabase
+    .from("sources")
+    .select("storage_path")
+    .eq("room_id", roomId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (source?.storage_path) {
+    const { error: storageError } = await supabase.storage.from("study-files").remove([source.storage_path]);
+    if (storageError && process.env.NODE_ENV === "development") {
+      console.warn("[Study] could not remove study room PDF", storageError);
+    }
+  }
+
   const { error } = await supabase.from("study_rooms").delete().eq("id", roomId).eq("user_id", user.id);
   if (error) throw new Error(getErrorMessage("Could not delete study room", error));
 }

@@ -179,6 +179,11 @@ export type Database = {
           title: string | null;
           content: string;
           metadata: Json;
+          original_file_name: string | null;
+          storage_path: string | null;
+          page_count: number | null;
+          extracted_text_length: number | null;
+          extraction_status: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -190,6 +195,11 @@ export type Database = {
           title?: string | null;
           content: string;
           metadata?: Json;
+          original_file_name?: string | null;
+          storage_path?: string | null;
+          page_count?: number | null;
+          extracted_text_length?: number | null;
+          extraction_status?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -201,6 +211,11 @@ export type Database = {
           title?: string | null;
           content?: string;
           metadata?: Json;
+          original_file_name?: string | null;
+          storage_path?: string | null;
+          page_count?: number | null;
+          extracted_text_length?: number | null;
+          extraction_status?: string | null;
           created_at?: string;
           updated_at?: string;
         };

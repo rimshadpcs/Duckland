@@ -83,9 +83,14 @@ export function AppNavbar({
       </div>
 
       {isSession && (
-        <div className="app-nav-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--ink)' }}>{roomTitle || "Quick explain"}</span>
-          {roomSubject && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{roomSubject}</span>}
+        <div className="app-nav-center session-breadcrumb" aria-label="Study breadcrumb">
+          {roomTitle ? <span className="session-breadcrumb-room">{roomTitle}</span> : <span className="session-breadcrumb-room">Quick explain</span>}
+          {roomSubject ? (
+            <>
+              <span className="session-breadcrumb-separator" aria-hidden="true">›</span>
+              <span className="session-breadcrumb-concept">{roomSubject}</span>
+            </>
+          ) : null}
         </div>
       )}
 

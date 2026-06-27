@@ -15,7 +15,7 @@ import {
   updateRoomConceptProgress,
   type ConceptStatus,
 } from "@src/lib/repositories/study-path";
-import { saveRoomSource } from "@src/lib/repositories/sources";
+import { saveRoomPdfSource, saveRoomSource } from "@src/lib/repositories/sources";
 import type { Json } from "@src/types/database";
 
 export type StudyActionResult<T = null> =
@@ -118,6 +118,62 @@ export async function saveRoomSourceAction(input: {
     };
   } catch (error) {
     return { ok: false, error: getMessage(error, "Could not save source material.") };
+  }
+}
+
+export async function saveRoomPdfSourceAction(input: {
+  roomId: string;
+  roomTitle: string;
+  title?: string | null;
+  content: string;
+  originalFileName: string;
+  storagePath: string;
+  pageCount: number;
+  extractedTextLength: number;
+}): Promise<StudyActionResult<{
+  sourceId: string;
+  title: string;
+  roomTitle?: string;
+  storagePath: string;
+  originalFileName: string;
+  pageCount: number;
+  extractedTextLength: number;
+}>> {
+  try {
+    const sourceTitle = input.title?.trim() || input.originalFileName;
+    const source = await saveRoomPdfSource(input.roomId, {
+      title: sourceTitle,
+      content: input.content,
+      originalFileName: input.originalFileName,
+      storagePath: input.storagePath,
+      pageCount: input.pageCount,
+      extractedTextLength: input.extractedTextLength,
+    });
+
+    const nextRoomTitle = shouldAutoRename(input.roomTitle) ? sourceTitle : undefined;
+    await updateRoomSourceState({
+      roomId: input.roomId,
+      status: "in_progress",
+      title: nextRoomTitle,
+    });
+
+    revalidatePath("/study");
+    revalidatePath(`/study/room/${input.roomId}`);
+    revalidatePath("/study/session");
+    return {
+      ok: true,
+      data: {
+        sourceId: source.id,
+        title: source.title || sourceTitle,
+        roomTitle: nextRoomTitle,
+        storagePath: source.storage_path || input.storagePath,
+        originalFileName: source.original_file_name || input.originalFileName,
+        pageCount: source.page_count || input.pageCount,
+        extractedTextLength: source.extracted_text_length || input.extractedTextLength,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: getMessage(error, "Could not save PDF source material.") };
   }
 }
 

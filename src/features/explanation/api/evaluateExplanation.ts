@@ -145,6 +145,107 @@ function explainsCompensation(text: string) {
   return lower.includes("pancreas") || lower.includes("compensat") || lower.includes("more insulin") || lower.includes("hyperinsulin");
 }
 
+const topicStopWords = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "about",
+  "composition",
+  "concept",
+  "process",
+  "system",
+  "structure",
+  "function",
+  "mechanism",
+]);
+
+function normaliseTopicToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function getMeaningfulTopicTokens(value?: string) {
+  if (!value) return [];
+
+  return value
+    .split(/[^a-z0-9]+/i)
+    .map(normaliseTopicToken)
+    .filter((token) => token.length >= 4 && !topicStopWords.has(token));
+}
+
+function textContainsTopicToken(text: string, token: string) {
+  if (!token) return false;
+
+  const lower = text.toLowerCase();
+  const singular = token.endsWith("s") ? token.slice(0, -1) : token;
+  const plural = token.endsWith("s") ? token : `${token}s`;
+
+  return lower.includes(singular) || lower.includes(plural);
+}
+
+function isLikelySameSelectedTopic(request: ExplanationRequest) {
+  const selectedTokens = getMeaningfulTopicTokens(request.selectedConcept);
+  if (!selectedTokens.length) return false;
+
+  const explanationHits = selectedTokens.filter((token) => textContainsTopicToken(request.explanation, token)).length;
+  const notesHits = selectedTokens.filter((token) => textContainsTopicToken(request.notes, token)).length;
+
+  if (explanationHits > 0 && notesHits > 0) return true;
+
+  const selectedConcept = request.selectedConcept?.toLowerCase() || "";
+  const explanation = request.explanation.toLowerCase();
+
+  if (
+    selectedConcept.includes("airway") &&
+    explanation.includes("airway") &&
+    /(upper|lower|trachea|bronchi|bronchiole|alveoli|larynx|pharynx|cartilage|mucus|cilia|smooth muscle)/i.test(request.explanation)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function correctFalseTopicMismatch(
+  result: ExplanationResult,
+  request: ExplanationRequest,
+): ExplanationResult {
+  const selectedConcept = request.selectedConcept || "the selected concept";
+
+  return {
+    ...result,
+    status: "gap_found",
+    clarityScore: typeof result.clarityScore === "number" ? result.clarityScore : 70,
+    gapType: result.gapType === "topic_mismatch" ? "missing_mechanism" : result.gapType,
+    gapSummary:
+      result.gapSummary && result.gapSummary.toLowerCase() !== "topic mismatch"
+        ? result.gapSummary
+        : `Your explanation is about ${selectedConcept}, but it needs a clearer source-grounded link between the parts you named and the mechanism the source expects.`,
+    mainGap:
+      result.mainGap && result.mainGap.toLowerCase() !== "topic mismatch"
+        ? result.mainGap
+        : `You stayed on ${selectedConcept}, but did not fully connect the named parts to the source-level mechanism.`,
+    scoreReason:
+      result.scoreReason ||
+      "The explanation discusses the selected concept, so it should be scored for clarity rather than treated as off-topic.",
+    whyItMatters:
+      result.whyItMatters && !/match the selected concept/i.test(result.whyItMatters)
+        ? result.whyItMatters
+        : "This matters because an on-topic explanation should be judged by the missing reasoning link, not rejected as a different topic.",
+    socraticQuestion:
+      result.socraticQuestion && !/selected concept/i.test(result.socraticQuestion)
+        ? result.socraticQuestion
+        : `How do the parts you named work together to explain ${selectedConcept}?`,
+    suggestedReExplanationPrompt:
+      result.suggestedReExplanationPrompt ||
+      `Try explaining ${selectedConcept} by linking each important part to its role in the source.`,
+    chatMessage:
+      `This is not a topic mismatch: your answer is about ${selectedConcept}. The next step is to connect the parts you named into the source-grounded mechanism.`,
+  };
+}
+
 function applyInsulinResistanceCoverage(
   result: ExplanationResult,
   request: ExplanationRequest,
@@ -195,7 +296,7 @@ function normaliseEvaluationResult(
   }
 
   if (result.status === "topic_mismatch") {
-    return result;
+    return isLikelySameSelectedTopic(request) ? correctFalseTopicMismatch(result, request) : result;
   }
 
   const insulinCoverageResult = applyInsulinResistanceCoverage(result, request);

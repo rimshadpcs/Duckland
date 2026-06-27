@@ -43,7 +43,7 @@ const panelClass = (panel: "source" | "conversation" | "insights", activeStep: n
 type StudyToolTab = "insights" | "quiz" | "flashcards";
 
 const studyToolTabs: { id: StudyToolTab; label: string }[] = [
-  { id: "insights", label: "Insights" },
+  { id: "insights", label: "Feedback" },
   { id: "quiz", label: "Quiz" },
   { id: "flashcards", label: "Flashcards" },
 ];
@@ -98,15 +98,15 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card">
-            <span>Main gap</span>
+            <span>Missing link</span>
             <p>Waiting for study material.</p>
           </div>
           <div className="landing-insight-card">
-            <span>What to fix</span>
+            <span>Why it matters</span>
             <p>Add source material so Feynduck has context.</p>
           </div>
-          <div className="landing-insight-card amber">
-            <span>Socratic question</span>
+          <div className="landing-insight-card socratic">
+            <span>Socratic follow-up</span>
             <p>Feynduck will ask one targeted question after your explanation.</p>
           </div>
           <div className="landing-score-card compact">
@@ -121,15 +121,15 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card pending">
-            <span>Main gap</span>
+            <span>Missing link</span>
             <p>Waiting for your explanation.</p>
           </div>
           <div className="landing-insight-card pending">
-            <span>What to fix</span>
+            <span>Why it matters</span>
             <p>Feynduck will identify the missing reasoning step.</p>
           </div>
           <div className="landing-insight-card pending">
-            <span>Socratic question</span>
+            <span>Socratic follow-up</span>
             <p>Appears after your explanation is analysed.</p>
           </div>
           <div className="landing-score-card compact pending">
@@ -143,17 +143,17 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 4) {
       return (
         <>
-          <div className="landing-insight-card">
-            <span>Main gap</span>
-            <p>The formula link is now clearer.</p>
+          <div className="landing-insight-card missing-link">
+            <span>Missing link</span>
+            <p>You connected eosinophils to inflammation, but not yet to the mediators they release.</p>
           </div>
-          <div className="landing-insight-card">
-            <span>What to fix</span>
-            <p>Frank-Starling law still needs another explanation loop.</p>
+          <div className="landing-insight-card why">
+            <span>Why it matters</span>
+            <p>The mechanism explains why eosinophils actively worsen airway inflammation.</p>
           </div>
-          <div className="landing-insight-card amber">
-            <span>Socratic question</span>
-            <p>How does preload affect stroke volume?</p>
+          <div className="landing-insight-card socratic">
+            <span>Socratic follow-up</span>
+            <p>What do activated eosinophils release that can damage airway tissue?</p>
           </div>
           <div className="landing-score-card compact is-active">
             <span>Clarity</span>
@@ -166,17 +166,17 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 5) {
       return (
         <>
-          <div className="landing-insight-card main-gap">
-            <span>Main gap</span>
-            <p>Cardiac output = heart rate × stroke volume</p>
+          <div className="landing-insight-card missing-link">
+            <span>Missing link</span>
+            <p>Eosinophils release granule proteins and inflammatory mediators.</p>
           </div>
-          <div className="landing-insight-card">
-            <span>What to fix</span>
-            <p>Practise explaining how the formula changes when stroke volume falls.</p>
+          <div className="landing-insight-card retry">
+            <span>Try again</span>
+            <p>Practise the link between mediator release, tissue damage, and airway reactivity.</p>
           </div>
-          <div className="landing-insight-card amber">
-            <span>Socratic question</span>
-            <p>If heart rate cannot rise, what happens to cardiac output?</p>
+          <div className="landing-insight-card socratic">
+            <span>Socratic follow-up</span>
+            <p>Why are eosinophils more than just a marker of allergy?</p>
           </div>
           <div className="landing-score-card compact">
             <span>Clarity</span>
@@ -188,17 +188,17 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
 
     return (
       <>
-        <div className="landing-insight-card main-gap">
-          <span>Main gap</span>
-          <p>You did not connect cardiac output to the formula: heart rate × stroke volume.</p>
+        <div className="landing-insight-card missing-link">
+          <span>Missing link</span>
+          <p>You said eosinophils are involved in allergy, but did not explain what they release.</p>
         </div>
-        <div className="landing-insight-card">
-          <span>What to fix</span>
-          <p>Explain how increasing heart rate can compensate when stroke volume falls.</p>
+        <div className="landing-insight-card why">
+          <span>Why it matters</span>
+          <p>The release step shows how eosinophils actively drive airway inflammation.</p>
         </div>
-        <div className="landing-insight-card amber">
-          <span>Socratic question</span>
-          <p>If stroke volume decreases, what must happen to heart rate to keep cardiac output stable?</p>
+        <div className="landing-insight-card socratic">
+          <span>Socratic follow-up</span>
+          <p>What do activated eosinophils release that can damage or irritate airway tissue?</p>
         </div>
         <div className="landing-score-card compact">
           <span>Clarity</span>
@@ -212,12 +212,12 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     <div className="landing-tool-panel">
       <div className="landing-tool-kicker">Question 1 of 3</div>
       <div className="landing-quiz-card">
-        <p>If stroke volume decreases while heart rate stays unchanged, what happens to cardiac output?</p>
+        <p>What makes eosinophils active drivers of allergic airway inflammation?</p>
         <ol type="A">
-          <li>It increases</li>
-          <li className="selected">It decreases</li>
-          <li>It stays unchanged</li>
-          <li>It becomes unrelated to heart rate</li>
+          <li>They only mark that allergy is present</li>
+          <li className="selected">They release mediators that irritate airway tissue</li>
+          <li>They stop all immune inflammation</li>
+          <li>They directly carry oxygen into the airway</li>
         </ol>
         <div className="landing-tool-nav" aria-label="Quiz question navigation">
           <button type="button" aria-label="Previous question">←</button>
@@ -233,12 +233,12 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       <div className="landing-tool-kicker">Card 1 of 5</div>
       <div className="landing-flashcard">
         <span>Front</span>
-        <p>What determines cardiac output?</p>
+        <p>What do activated eosinophils release?</p>
         <small>Flip card</small>
       </div>
       <div className="landing-flashcard answer">
         <span>Back</span>
-        <p>Heart rate × stroke volume</p>
+        <p>Granule proteins and inflammatory mediators</p>
       </div>
       <div className="landing-tool-nav" aria-label="Flashcard navigation">
         <button type="button" aria-label="Previous flashcard">←</button>
@@ -256,9 +256,9 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
             <Duck />
             <strong>Feynduck</strong>
           </div>
-          <div className="landing-dashboard-room">
-            <span>Medicine Finals</span>
-            <b>Cardiac output</b>
+          <div className="landing-dashboard-room breadcrumb">
+            <span>Asthma</span>
+            <b>Role of eosinophils</b>
           </div>
           <div className="landing-dashboard-status">{status}</div>
         </div>
@@ -303,8 +303,8 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                     <FileText size={18} />
                   </span>
                   <div>
-                    <strong>Cardiac Output Lecture.pdf</strong>
-                    <small>PDF · 12 pages</small>
+                  <strong>Asthma Inflammation Lecture.pdf</strong>
+                  <small>PDF · 12 pages</small>
                   </div>
                   <em>Ready</em>
                 </div>
@@ -337,14 +337,13 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
               <div className="landing-source-card">
                 <span>Source notes</span>
                 <p>
-                  Cardiac output is the amount of blood the heart pumps per minute.
+                  Eosinophils are granulocytic white blood cells involved in allergic airway inflammation.
                 </p>
                 <p>
-                  It equals heart rate multiplied by stroke volume.
+                  When activated, they release granule proteins and inflammatory mediators.
                 </p>
                 <p>
-                  If stroke volume falls, the body may compensate by increasing heart rate to
-                  maintain cardiac output.
+                  These substances can irritate airway tissue, increase swelling, and worsen airway reactivity.
                 </p>
               </div>
             )}
@@ -370,26 +369,25 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                 <div className="landing-chat-scroll">
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>What are you trying to understand from this material?</p>
+                  <p>What are you trying to understand from this material?</p>
                   </div>
                   <div className="landing-selected-focus">
                     <div>
                       <span>Selected focus</span>
-                      <strong>Cardiac output</strong>
-                      <p>How heart rate compensates when stroke volume decreases</p>
+                      <strong>Role of eosinophils</strong>
+                      <p>How eosinophils drive allergic airway inflammation</p>
                     </div>
                     <button type="button">Change</button>
                   </div>
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>Got it. Explain cardiac output in your own words. Don&apos;t worry about getting it perfect.</p>
+                    <p>Got it. Explain the role of eosinophils in your own words. Don&apos;t worry about getting it perfect.</p>
                   </div>
                   <div className="landing-message student-message">
                     <span>You</span>
                     <p>
-                      Cardiac output is the amount of blood the heart pumps each minute. It depends on heart
-                      rate and stroke volume. If stroke volume falls, the heart may beat faster to help
-                      maintain the same output.
+                      Eosinophils are white blood cells involved in allergies and infections. They release
+                      chemicals that affect inflammation and are often mentioned in asthma.
                     </p>
                   </div>
                 </div>
@@ -400,36 +398,41 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                 <div className="landing-chat-scroll">
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>Explain cardiac output in your own words.</p>
+                    <p>Explain the role of eosinophils in your own words.</p>
                   </div>
                   <div className="landing-message student-message">
                     <span>You</span>
                     <p>
-                      Cardiac output is how much blood the heart pumps. If stroke volume goes down,
-                      the heart beats faster to make up for it.
+                      Eosinophils are immune cells involved in allergic inflammation and parasite defence.
+                      In the airway, they can collect during allergic inflammation and irritate the airway.
                     </p>
                   </div>
                   <div className="landing-message duck-message">
                     <Duck />
                     <div className="landing-message-stack">
-                      <p>You&apos;re close — you named the compensation, but skipped the mechanism.</p>
+                      <p>You&apos;re close — you named the inflammation, but skipped the release mechanism.</p>
                       <div className="landing-try-card">
                         <span>Try this</span>
-                        <p>If stroke volume decreases, what must happen to heart rate to keep cardiac output stable?</p>
+                        <p>What do activated eosinophils release that can damage airway tissue?</p>
                       </div>
                     </div>
+                  </div>
+                  <div className="landing-next-step">
+                    <span />
+                    <p>Use the feedback to rebuild the answer</p>
+                    <span />
                   </div>
                   <div className="landing-message student-message is-active">
                     <span>You</span>
                     <p>
-                      Cardiac output depends on both stroke volume and heart rate. If stroke volume falls,
-                      the heart must increase its rate so that it can still pump roughly the same total amount
-                      of blood each minute.
+                      Eosinophils are granulocytic white blood cells that release toxic granule proteins
+                      and inflammatory mediators. These substances can damage airway tissue, increase
+                      swelling, and make the airway more reactive.
                     </p>
                   </div>
                 </div>
                 {renderComposer({
-                  placeholder: "Re-explain the concept in your own words...",
+                  placeholder: "Re-explain Role of eosinophils...",
                   micLabel: "Re-explain by voice",
                   helper: "Use Feynduck's question to rebuild your explanation.",
                 })}
@@ -440,15 +443,16 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                   <div className="landing-message student-message">
                     <span>You</span>
                     <p>
-                      Cardiac output equals heart rate multiplied by stroke volume. If stroke volume falls,
-                      increasing heart rate can help maintain cardiac output.
+                      Eosinophils defend against parasites and drive allergic airway inflammation by
+                      releasing granule proteins and inflammatory mediators that damage tissue and
+                      increase airway reactivity.
                     </p>
                   </div>
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>Exactly — you connected the compensation to the formula clearly.</p>
+                    <p>Exactly — you connected eosinophils to the mechanism that worsens airway inflammation.</p>
                   </div>
-                  <div className="landing-context-chip">Clarity improved: 68 → 86</div>
+                  <div className="landing-context-chip">Clarity improved: 60 → 85</div>
                 </div>
                 {renderComposer({
                   placeholder: "Start another explanation...",
@@ -460,7 +464,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                 <div className="landing-chat-scroll">
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>You skipped the link between cardiac output, heart rate, and stroke volume.</p>
+                    <p>You skipped the link between eosinophil activation and mediator release.</p>
                   </div>
                   <div className="landing-context-chip">This gap was used to build focused study tools.</div>
                 </div>
@@ -475,21 +479,21 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                 <div className="landing-chat-scroll">
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>Explain cardiac output in your own words.</p>
+                    <p>Explain the role of eosinophils in your own words.</p>
                   </div>
                   <div className={`landing-message student-message ${activeStep === 1 ? "is-active" : ""}`}>
                     <span>You</span>
                     <p>
-                      Cardiac output is how much blood the heart pumps. If stroke volume goes down,
-                      the heart beats faster to make up for it.
+                      Eosinophils are white blood cells that help the immune system. They are involved
+                      in allergies and sometimes infections.
                     </p>
                   </div>
                   {showFeedback ? (
                     <div className="landing-message duck-message">
                       <Duck />
                       <p>
-                        You&apos;re close — you named the compensation, but skipped the mechanism.
-                        How does increasing heart rate help maintain cardiac output when stroke volume falls?
+                        You&apos;re close — you named the association, but skipped the mechanism.
+                        What do eosinophils release that can irritate airway tissue?
                       </p>
                     </div>
                   ) : null}
@@ -500,7 +504,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
           </section>
 
           <aside className={panelClass("insights", activeStep)}>
-            <div className="landing-panel-title">Study panel</div>
+            <div className="landing-panel-title">Support</div>
             <div className="landing-study-tools">
               <div className="landing-tool-tabs" role="tablist" aria-label="Study panel tabs">
                 {studyToolTabs.map((tab) => (

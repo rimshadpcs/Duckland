@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, KeyboardEvent, useRef, useEffect } from "react";
+import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect } from "react";
 import { GapResultPanel } from "@src/features/gap-analysis";
-import { ArrowUp, CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react";
 import {
   clearRoomSessionStateAction,
+  saveRoomPdfSourceAction,
   saveRoomSessionStateAction,
   saveRoomSourceAction,
   startRoomConceptAction,
@@ -12,6 +13,7 @@ import {
   updateRoomSelectedConceptAction,
 } from "@src/app/study/actions";
 import { cn } from "@src/lib/utils";
+import { createSupabaseBrowserClient } from "@src/lib/supabase/browser";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { RoomConceptRow } from "@src/lib/repositories/study-path";
@@ -23,6 +25,9 @@ const initialRequest: ExplanationRequest = {
   notes: "",
   explanation: "",
 };
+
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
+const PDF_UNREADABLE_MESSAGE = "We couldn't read this PDF. Try a different file or paste the text instead.";
 
 const conceptQuestionMessage: ConversationMessage = {
   id: "concept-selection-question",
@@ -82,6 +87,20 @@ type PersistedSessionSnapshot = {
 
 function getSessionStorageKey(roomId: string | null) {
   return `feynduck-session-${roomId || "quick"}`;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function sanitizePdfFileName(name: string) {
+  const baseName = name.replace(/\.pdf$/i, "").trim() || "study-material";
+  return `${baseName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "study-material"}.pdf`;
 }
 
 function getConceptTrackIndexKey(roomId: string | null) {
@@ -538,7 +557,15 @@ export function ExplainForm({
   const [isSourceFreshlySaved, setIsSourceFreshlySaved] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(true);
+  const [isSupportPanelOpen, setIsSupportPanelOpen] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [sourceInputMode, setSourceInputMode] = useState<"paste" | "pdf" | null>(null);
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<string | null>(null);
+  const [pdfProgress, setPdfProgress] = useState<{ currentPage: number; totalPages: number } | null>(null);
+  const [isPdfBusy, setIsPdfBusy] = useState(false);
+  const [showExtractedText, setShowExtractedText] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [previousExplanations, setPreviousExplanations] = useState<string[]>([]);
   const [previousMainGaps, setPreviousMainGaps] = useState<string[]>([]);
@@ -747,6 +774,11 @@ export function ExplainForm({
       title: result.data.title,
       content: sourceMaterial,
       metadata: current?.metadata || {},
+      original_file_name: null,
+      storage_path: null,
+      page_count: null,
+      extracted_text_length: sourceMaterial.length,
+      extraction_status: null,
       created_at: current?.created_at || new Date().toISOString(),
       updated_at: savedAt,
     }));
@@ -765,6 +797,7 @@ export function ExplainForm({
     );
     setRequest(prev => ({ ...prev, notes: sourceMaterial }));
     setIsSavingSource(false);
+    setSourceInputMode(null);
     void mapLearningPath(sourceMaterial, result.data.title);
     window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
     if (onRoomLoaded) {
@@ -775,6 +808,173 @@ export function ExplainForm({
   const handleCancelNotesEdit = () => {
     setRequest(prev => ({ ...prev, notes: savedSourceMaterial }));
     setIsEditingNotes(false);
+  };
+
+  const resetPdfSelection = () => {
+    setSelectedPdfFile(null);
+    setPdfError(null);
+    setPdfStatus(null);
+    setPdfProgress(null);
+  };
+
+  const openPasteMode = () => {
+    resetPdfSelection();
+    setSourceInputMode("paste");
+    setIsEditingNotes(true);
+  };
+
+  const openPdfMode = () => {
+    setIsEditingNotes(false);
+    setSourceInputMode("pdf");
+    setPdfError(null);
+    setPdfStatus(null);
+  };
+
+  const handlePdfFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedPdfFile(null);
+    setPdfError(null);
+    setPdfStatus(null);
+    setPdfProgress(null);
+
+    if (!file) return;
+
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+      setPdfError("Please upload a PDF file.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > PDF_MAX_BYTES) {
+      setPdfError("This PDF is larger than 10 MB. Choose a smaller file for now.");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedPdfFile(file);
+  };
+
+  const handleCancelPdfUpload = () => {
+    if (isPdfBusy) return;
+    resetPdfSelection();
+    setSourceInputMode(null);
+  };
+
+  const handleSavePdfSource = async () => {
+    if (isPdfBusy || !selectedPdfFile) return;
+
+    if (!roomId || !room) {
+      setPdfError("Create or open a study room before uploading a PDF.");
+      return;
+    }
+
+    setIsPdfBusy(true);
+    setPdfError(null);
+    setPdfProgress(null);
+    setPdfStatus("Uploading your PDF...");
+
+    const supabase = createSupabaseBrowserClient();
+    let uploadedPath: string | null = null;
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error("You must be signed in to upload a PDF.");
+
+      const storagePath = `${user.id}/${roomId}/${Date.now()}-${sanitizePdfFileName(selectedPdfFile.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from("study-files")
+        .upload(storagePath, selectedPdfFile, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+
+      if (uploadError) throw new Error(uploadError.message || "Could not upload this PDF.");
+      uploadedPath = storagePath;
+
+      setPdfStatus("Reading page 1...");
+      const { extractPdfText } = await import("@src/lib/pdf/extractPdfText");
+      const extraction = await extractPdfText(selectedPdfFile, (currentPage, totalPages) => {
+        setPdfProgress({ currentPage, totalPages });
+        setPdfStatus(`Reading page ${currentPage} of ${totalPages}...`);
+      });
+
+      setPdfStatus(`${extraction.pageCount} pages · ${extraction.extractedTextLength.toLocaleString()} characters extracted`);
+      resetEvaluationSession();
+      setServerConcepts([]);
+
+      const result = await saveRoomPdfSourceAction({
+        roomId,
+        roomTitle: room.title,
+        title: selectedPdfFile.name,
+        content: extraction.text,
+        originalFileName: selectedPdfFile.name,
+        storagePath,
+        pageCount: extraction.pageCount,
+        extractedTextLength: extraction.extractedTextLength,
+      });
+
+      if (!result.ok) throw new Error(result.error);
+
+      uploadedPath = null;
+      const savedAt = new Date().toISOString();
+      setSource((current) => ({
+        id: result.data.sourceId,
+        room_id: roomId,
+        user_id: current?.user_id || room.user_id,
+        source_type: "pdf",
+        title: result.data.title,
+        content: extraction.text,
+        metadata: current?.metadata || {},
+        original_file_name: result.data.originalFileName,
+        storage_path: result.data.storagePath,
+        page_count: result.data.pageCount,
+        extracted_text_length: result.data.extractedTextLength,
+        extraction_status: "complete",
+        created_at: current?.created_at || new Date().toISOString(),
+        updated_at: savedAt,
+      }));
+      setSavedSourceMaterial(extraction.text);
+      setSourceSavedAt(savedAt);
+      setIsSourceFreshlySaved(true);
+      setShowExtractedText(false);
+      setRoom((current) =>
+        current
+          ? {
+              ...current,
+              title: result.data.roomTitle || current.title,
+              status: "in_progress",
+              last_activity_at: savedAt,
+            }
+          : current,
+      );
+      setRequest(prev => ({ ...prev, notes: extraction.text }));
+      setSelectedPdfFile(null);
+      setSourceInputMode(null);
+      setPdfStatus("PDF added · Learning path ready");
+      void mapLearningPath(extraction.text, result.data.title);
+      window.setTimeout(() => setIsSourceFreshlySaved(false), 3200);
+      if (onRoomLoaded) {
+        onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
+      }
+    } catch (caught) {
+      if (uploadedPath) {
+        const { error: cleanupError } = await supabase.storage.from("study-files").remove([uploadedPath]);
+        if (cleanupError && process.env.NODE_ENV === "development") {
+          console.warn("[Study] could not remove failed PDF upload", cleanupError);
+        }
+      }
+
+      const message = caught instanceof Error ? caught.message : PDF_UNREADABLE_MESSAGE;
+      setPdfError(message);
+      setPdfStatus(null);
+    } finally {
+      setPdfProgress(null);
+      setIsPdfBusy(false);
+    }
   };
 
   // Resize State
@@ -1300,13 +1500,6 @@ export function ExplainForm({
   ].filter((concept, index, all) => (
     all.findIndex((item) => item.id === concept.id) === index
   ));
-  const conversationMessages = getRenderableMessages(
-    history,
-    result,
-    isLoading,
-    hasSavedMaterial,
-    selectedConcept,
-  );
   const composerPlaceholder = !hasSavedMaterial
     ? "Add study material first..."
     : !selectedConcept
@@ -1316,6 +1509,86 @@ export function ExplainForm({
       : result
         ? `Re-explain ${selectedConcept}...`
         : `Explain ${selectedConcept}...`;
+  const assistantFeedback = result ? getAssistantFeedback(result) : "";
+  const assistantQuestion = result ? getAssistantQuestion(result) : "";
+  const latestMainGap = result ? readResultField(result, ["mainGap", "gapSummary", "gap", "feedback"]) : "";
+  const latestWhyItMatters = result ? readResultField(result, ["whyItMatters"]) : "";
+  const latestRetryPrompt = result ? readResultField(result, ["suggestedReExplanationPrompt", "tryAgain"]) : "";
+  const latestAttempt = previousExplanations[previousExplanations.length - 1] || "";
+  const completedConceptCount = panelConcepts.filter((concept) => concept.status === "clear").length;
+  const gapConceptCount = panelConcepts.filter((concept) => concept.status === "gap_found" || concept.status === "improving").length;
+  const roomProgressLabel = panelConcepts.length
+    ? `${completedConceptCount}/${panelConcepts.length} clear`
+    : hasSavedMaterial
+      ? "Concepts pending"
+      : "Add material";
+  const isPdfSource = source?.source_type === "pdf";
+  const pdfFileName = source?.original_file_name || source?.title || "PDF source";
+  const pdfMeta = isPdfSource
+    ? [
+        "PDF",
+        source?.page_count ? `${source.page_count} pages` : null,
+        sourceSavedAt ? "Saved" : null,
+      ].filter(Boolean).join(" · ")
+    : null;
+  const hasExistingSource = !!source || hasSavedMaterial;
+
+  const renderPdfUploadPanel = () => (
+    <div className="pdf-upload-panel" aria-live="polite">
+      {hasExistingSource ? (
+        <div className="replace-source-confirm">
+          <strong>Replace current study material?</strong>
+          <p>Your existing learning path may no longer match this source.</p>
+        </div>
+      ) : null}
+
+      <label className="pdf-file-picker">
+        <span>Upload PDF</span>
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={handlePdfFileChange}
+          disabled={isPdfBusy}
+        />
+      </label>
+
+      {selectedPdfFile ? (
+        <div className="pdf-selected-file">
+          <strong>{selectedPdfFile.name}</strong>
+          <span>{formatFileSize(selectedPdfFile.size)}</span>
+        </div>
+      ) : (
+        <p className="pdf-helper-text">Choose a selectable-text PDF up to 10 MB and 100 pages.</p>
+      )}
+
+      {pdfStatus ? <p className="pdf-status" role="status">{pdfStatus}</p> : null}
+      {pdfProgress ? (
+        <div className="pdf-progress" aria-label={`Reading page ${pdfProgress.currentPage} of ${pdfProgress.totalPages}`}>
+          <span style={{ width: `${Math.round((pdfProgress.currentPage / pdfProgress.totalPages) * 100)}%` }} />
+        </div>
+      ) : null}
+      {pdfError ? <div className="pdf-error" role="alert">{pdfError}</div> : null}
+
+      <div className="pdf-actions">
+        <button
+          type="button"
+          className="source-action-btn"
+          onClick={handleCancelPdfUpload}
+          disabled={isPdfBusy}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="source-action-btn source-action-btn-primary"
+          onClick={handleSavePdfSource}
+          disabled={!selectedPdfFile || isPdfBusy}
+        >
+          {isPdfBusy ? "Working..." : hasExistingSource ? "Replace material" : "Add PDF"}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className={`dashboard-container ${!isSourcePanelOpen ? 'left-closed' : ''}`}>
@@ -1342,9 +1615,11 @@ export function ExplainForm({
             <div>
               <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--ink)' }}>{room ? room.title : "Quick explain"}</h4>
               <div className="source-meta">
-                {hasSavedMaterial
-                  ? `Pasted text · ${isSourceFreshlySaved ? "Saved just now" : sourceSavedAt ? "Saved" : "Saved"}`
-                  : room?.description || "No material yet"}
+                {isPdfSource && pdfMeta
+                  ? pdfMeta
+                  : hasSavedMaterial
+                    ? `Pasted text · ${isSourceFreshlySaved ? "Saved just now" : sourceSavedAt ? "Saved" : "Saved"}`
+                    : room?.description || "No material yet"}
               </div>
               {selectedConcept && (
                 <div className="current-focus-pill">
@@ -1355,21 +1630,27 @@ export function ExplainForm({
             </div>
           </div>
 
-          {!request.notes && !isEditingNotes ? (
+          {sourceInputMode === "pdf" ? (
+            renderPdfUploadPanel()
+          ) : !request.notes && !isEditingNotes ? (
             <div className="empty-insights" style={{ alignItems: 'flex-start', textAlign: 'left', padding: '0', height: 'auto' }}>
               <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--ink)' }}>No study material added yet</h4>
               <p style={{ marginBottom: '24px' }}>Add source material for Feynduck to use as the source.</p>
-              <button 
-                className="app-start-btn" 
-                style={{ background: 'var(--duck)', color: '#1a1612', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
-                onClick={() => setIsEditingNotes(true)}
-              >
-                Add material
-              </button>
-              <p style={{ fontSize: '0.75rem', marginTop: '12px', opacity: 0.6 }}>PDF upload coming later</p>
+              <div className="source-choice-actions">
+                <button className="source-action-btn source-action-btn-primary" type="button" onClick={openPasteMode}>
+                  Paste text
+                </button>
+                <button className="source-action-btn" type="button" onClick={openPdfMode}>
+                  Upload PDF
+                </button>
+              </div>
             </div>
           ) : isEditingNotes ? (
             <div>
+              <div className="source-choice-tabs" aria-label="Source type">
+                <button className="active" type="button" onClick={openPasteMode}>Paste text</button>
+                <button type="button" onClick={openPdfMode}>Upload PDF</button>
+              </div>
               <textarea
                 className="notes-textarea-minimal"
                 placeholder="Add your study material here..."
@@ -1397,20 +1678,83 @@ export function ExplainForm({
             </div>
           ) : (
             <>
-              <div className="metadata-pills">
-                <span className="metadata-pill">{source?.title || "Source material"}</span>
-              </div>
+              {isPdfSource ? (
+                <>
+                  <div className="pdf-source-summary">
+                    <strong>{pdfFileName}</strong>
+                    <span>{pdfMeta}</span>
+                    {source?.extracted_text_length ? (
+                      <em>{source.extracted_text_length.toLocaleString()} characters extracted</em>
+                    ) : null}
+                  </div>
+                  <div className="source-actions">
+                    <button className="source-action-btn" type="button" onClick={openPdfMode}>Replace PDF</button>
+                    <button className="source-action-btn" type="button" onClick={() => setShowExtractedText((current) => !current)}>
+                      {showExtractedText ? "Hide extracted text" : "View extracted text"}
+                    </button>
+                    {selectedConcept && (
+                      <button className="source-action-btn" type="button" onClick={handleChangeTopic}>Change topic</button>
+                    )}
+                  </div>
+                  {showExtractedText ? (
+                    <div style={{ marginTop: '16px', position: 'relative' }}>
+                      <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
+                        {request.notes}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="metadata-pills">
+                    <span className="metadata-pill">{source?.title || "Source material"}</span>
+                  </div>
 
-              <div style={{ marginTop: '24px', position: 'relative' }}>
-                <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
-                  {request.notes}
+                  <div style={{ marginTop: '24px', position: 'relative' }}>
+                    <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
+                      {request.notes}
+                    </div>
+                  </div>
+                  <div className="source-actions">
+                    <button className="source-action-btn" type="button" onClick={() => setIsEditingNotes(true)}>Edit source</button>
+                    <button className="source-action-btn" type="button" onClick={openPdfMode}>Replace with PDF</button>
+                    {selectedConcept && (
+                      <button className="source-action-btn" type="button" onClick={handleChangeTopic}>Change topic</button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="study-context-block">
+                <div className="study-context-heading">
+                  <span>Room progress</span>
+                  <strong>{roomProgressLabel}</strong>
                 </div>
-              </div>
-              <div className="source-actions">
-                <button className="source-action-btn" onClick={() => setIsEditingNotes(true)}>Edit source</button>
-                {selectedConcept && (
-                  <button className="source-action-btn" onClick={handleChangeTopic}>Change topic</button>
-                )}
+                <div className="study-context-stats">
+                  <span>{gapConceptCount} weak spots</span>
+                  <span>{previousExplanations.length} explanations</span>
+                </div>
+                {panelConcepts.length ? (
+                  <div className="study-context-list" aria-label="Concept progress">
+                    {panelConcepts.slice(0, 6).map((concept) => (
+                      <button
+                        key={concept.id}
+                        type="button"
+                        className={cn("study-context-item", concept.id === (selectedConcept ? getConceptId(selectedConcept) : "") && "active")}
+                        onClick={() => selectConcept(concept.title)}
+                      >
+                        <span>{concept.title}</span>
+                        <em>{concept.latestClarityScore != null ? concept.latestClarityScore : concept.status.replace("_", " ")}</em>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {previousMainGaps.length ? (
+                  <div className="study-weakspot-card">
+                    <span>Latest weak spot</span>
+                    <p>{previousMainGaps[previousMainGaps.length - 1]}</p>
+                  </div>
+                ) : null}
               </div>
             </>
           )}
@@ -1427,7 +1771,7 @@ export function ExplainForm({
         />
       )}
 
-      {/* Center Panel: Conversation */}
+      {/* Center Panel: Explanation workspace */}
       <main className="dashboard-panel center-panel">
         {!isSourcePanelOpen && (
           <button 
@@ -1438,8 +1782,17 @@ export function ExplainForm({
             <PanelLeftOpen size={20} />
           </button>
         )}
+        {!isSupportPanelOpen && (
+          <button
+            className="panel-toggle-btn support-open-btn"
+            onClick={() => setIsSupportPanelOpen(true)}
+            aria-label="Open support panel"
+          >
+            <PanelRightOpen size={20} />
+          </button>
+        )}
         
-        <div className="conversation-area" ref={conversationRef}>
+        <div className="conversation-area explain-workspace" ref={conversationRef}>
           {!hasSavedMaterial ? (
             <div className="empty-insights" style={{ height: '100%' }}>
               <h4 style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>
@@ -1510,76 +1863,28 @@ export function ExplainForm({
               </div>
             </div>
           ) : (
-            <>
-              <div className="conversation-kicker">Conversation</div>
-              {conversationMessages.map((msg) => {
-                const content = msg.content?.trim() || "Looking for the missing link...";
-                const visualRole = msg.role === "assistant" ? "assistant" : "student";
-                const avatar = (
-                  <div className="avatar">
-                    {msg.role === "assistant" ? (
-                      <img src="/feynduckhead.png" alt="Duck" />
-                    ) : (
-                      <span style={{ fontSize: "12px", fontWeight: "bold" }}>You</span>
-                    )}
-                  </div>
-                );
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={cn(
-                      "message",
-                      visualRole,
-                      msg.kind === "loading" && "typing",
-                      msg.kind === "question" && "question",
-                    )}
-                  >
-                    {msg.role === "assistant" ? avatar : null}
-                    <div className="message-content">
-                      <div className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
-                        {msg.kind === "loading" ? (
-                          <span aria-live="polite">{content}</span>
-                        ) : (
-                          content
-                        )}
-                      </div>
-                    </div>
-                    {msg.role === "user" ? avatar : null}
-                  </div>
-                );
-              })}
-              {isConceptClear && selectedConcept ? (
-                <div className="concept-complete-card">
-                  <div className="concept-complete-icon"><CheckCircle2 size={22} /></div>
-                  <div>
-                    <h3>You can explain {selectedConcept} clearly.</h3>
-                    <p>
-                      {result.chatMessage ||
-                        result.whyItMatters ||
-                        "You connected the central mechanism clearly enough to move on or review it later."}
-                    </p>
-                    <div className="concept-complete-chips">
-                      <span>Clarity {result.clarityScore}</span>
-                      <span>Quiz ready</span>
-                      <span>Flashcards ready</span>
-                    </div>
-                    <div className="concept-complete-actions">
-                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
-                        Choose another concept
-                      </button>
-                      <button type="button" className="source-action-btn" onClick={handleReviewThisConcept}>
-                        Review this concept
-                      </button>
-                      <button type="button" className="source-action-btn" onClick={handleAskFollowUp}>
-                        Ask a follow-up
-                      </button>
-                    </div>
-                  </div>
+            <section className="explain-loop-surface" aria-label="Explanation workspace">
+              <div className="explain-loop-header">
+                <div>
+                  <span className="conversation-kicker">Main loop</span>
+                  <h1>{selectedConcept ? selectedConcept : "Choose the concept you want to explain"}</h1>
+                  <p>
+                    {selectedConcept
+                      ? "Explain the mechanism in your own words. Feynduck will find the missing reasoning link."
+                      : "Pick a concept from your material, or type one below to start the explanation loop."}
+                  </p>
                 </div>
-              ) : null}
+                <div
+                  className={cn("explain-loop-score", result?.status === "topic_mismatch" && "is-mismatch")}
+                  aria-label="Current clarity score"
+                >
+                  <span>{result?.status === "topic_mismatch" ? "Status" : "Clarity"}</span>
+                  <strong>{result?.status === "topic_mismatch" ? "Topic mismatch" : result?.clarityScore ?? "--"}</strong>
+                </div>
+              </div>
+
               {hasSavedMaterial && !selectedConcept && (
-                <div className="concept-suggestions" aria-label="Suggested concepts">
+                <div className="concept-suggestions explain-concept-suggestions" aria-label="Suggested concepts">
                   {conceptsLoading && (
                     <div className="concept-loading" aria-live="polite">
                       <Loader2 className="icon-spin" size={16} />
@@ -1612,99 +1917,174 @@ export function ExplainForm({
                     </button>
                   ))}
                   {!conceptsLoading && !conceptsError ? (
-                    <button
-                      type="button"
-                      className="concept-chip"
-                      onClick={focusCustomConceptInput}
-                    >
+                    <button type="button" className="concept-chip" onClick={focusCustomConceptInput}>
                       Add your own concept
                     </button>
                   ) : null}
                 </div>
               )}
+
+              {(result || isLoading || latestAttempt) && (
+                <div className="explain-feedback-grid" aria-label="Latest feedback">
+                  <article className={cn("explain-feedback-card missing-link", isLoading && "loading-pulse")}>
+                    <span>{result?.status === "clear" ? "Clear" : result?.status === "topic_mismatch" ? "Topic mismatch" : "Missing link"}</span>
+                    <p>{isLoading ? "Analyzing the reasoning chain..." : assistantFeedback || latestMainGap || "No feedback yet."}</p>
+                  </article>
+                  {assistantQuestion && !isConceptClear ? (
+                    <article className="explain-feedback-card socratic">
+                      <span>Socratic follow-up</span>
+                      <p>{assistantQuestion}</p>
+                    </article>
+                  ) : null}
+                  {latestWhyItMatters && result?.status !== "clear" ? (
+                    <article className="explain-feedback-card why">
+                      <span>Why it matters</span>
+                      <p>{latestWhyItMatters}</p>
+                    </article>
+                  ) : null}
+                  {latestRetryPrompt && result?.status !== "clear" ? (
+                    <article className="explain-feedback-card retry">
+                      <span>Try again</span>
+                      <p>{latestRetryPrompt}</p>
+                    </article>
+                  ) : null}
+                  {latestAttempt ? (
+                    <article className="explain-feedback-card attempt">
+                      <span>Latest attempt</span>
+                      <p>{latestAttempt}</p>
+                    </article>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="explain-next-step">
+                <span />
+                <p>Use the feedback above to rebuild the answer below.</p>
+                <span />
+              </div>
+
+              {isConceptClear && selectedConcept ? (
+                <div className="concept-complete-card explain-complete-card">
+                  <div className="concept-complete-icon"><CheckCircle2 size={22} /></div>
+                  <div>
+                    <h3>You can explain {selectedConcept} clearly.</h3>
+                    <p>
+                      {result.chatMessage ||
+                        result.whyItMatters ||
+                        "You connected the central mechanism clearly enough to move on or review it later."}
+                    </p>
+                    <div className="concept-complete-chips">
+                      <span>Clarity {result.clarityScore}</span>
+                      <span>Quiz ready</span>
+                      <span>Flashcards ready</span>
+                    </div>
+                    <div className="concept-complete-actions">
+                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
+                        Choose another concept
+                      </button>
+                      <button type="button" className="source-action-btn" onClick={handleReviewThisConcept}>
+                        Review this concept
+                      </button>
+                      <button type="button" className="source-action-btn" onClick={handleAskFollowUp}>
+                        Ask a follow-up
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className={cn("explain-answer-card", isLoading && "loading")}>
+                <div className="composer-label-icon">
+                  <MessageSquareText size={14} />
+                  <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
+                </div>
+                <textarea
+                  ref={composerTextareaRef}
+                  className="explain-answer-textarea"
+                  placeholder={composerPlaceholder}
+                  value={request.explanation}
+                  onChange={(e) => updateField("explanation", e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={!hasSavedMaterial}
+                />
+                <div className="explain-answer-actions">
+                  <p>
+                    <span className="kb-shortcut">Cmd + Enter</span>
+                    {selectedConcept ? " to check your explanation" : " to start this concept"}
+                  </p>
+                  <div>
+                    <button
+                      className="composer-mic-btn"
+                      type="button"
+                      aria-label="Explain by voice"
+                      disabled={!hasSavedMaterial}
+                    >
+                      <Mic size={20} />
+                    </button>
+                    <button
+                      className="explain-check-btn"
+                      onClick={handleSubmit}
+                      disabled={isLoading || !request.explanation.trim() || !hasSavedMaterial}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="icon-spin" size={18} />
+                          Checking
+                        </>
+                      ) : selectedConcept ? (
+                        "Check explanation"
+                      ) : (
+                        "Start concept"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
               {notice && <div className="app-notice">{notice}</div>}
               {error && <div className="app-error">{error}</div>}
-            </>
+            </section>
           )}
-        </div>
-
-        <div className={cn("composer-container", isConceptClear && "secondary")}>
-          <div className="composer-label-icon">
-            <MessageSquareText size={14} />
-            <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
-          </div>
-          <div className={`composer-wrapper ${isLoading ? "loading" : ""}`}>
-            <textarea
-              ref={composerTextareaRef}
-              className="composer-textarea"
-              placeholder={composerPlaceholder}
-              value={request.explanation}
-              onChange={(e) => updateField("explanation", e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={2}
-              disabled={!hasSavedMaterial}
-            />
-            <div className="composer-actions">
-              <button
-                className="composer-mic-btn"
-                type="button"
-                aria-label="Explain by voice"
-                disabled={!hasSavedMaterial}
-              >
-                <Mic size={22} />
-              </button>
-              <button
-                className="composer-send-btn"
-                onClick={handleSubmit}
-                disabled={isLoading || !request.explanation.trim() || !hasSavedMaterial}
-                aria-label="Send explanation"
-              >
-                {isLoading ? (
-                  <Loader2 className="icon-spin" size={20} />
-                ) : (
-                  <ArrowUp size={20} />
-                )}
-              </button>
-            </div>
-          </div>
-          <p className="composer-hint">
-            <span className="kb-shortcut">Cmd + Enter to send</span>
-          </p>
         </div>
       </main>
 
-      <div
-        className={cn("resize-handle", isDraggingRight && "active")}
-        onPointerDown={(e) => { e.preventDefault(); setIsDraggingRight(true); }}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize session insights panel"
-      />
+      {isSupportPanelOpen && (
+        <>
+          <div
+            className={cn("resize-handle", isDraggingRight && "active")}
+            onPointerDown={(e) => { e.preventDefault(); setIsDraggingRight(true); }}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize support panel"
+          />
 
-      {/* Right Panel: Insights */}
-      <GapResultPanel
-        result={result}
-        isLoading={isLoading}
-        width={rightWidth}
-        isDragging={isDraggingRight}
-        hasNotes={hasSavedMaterial}
-        hasSelectedConcept={!!selectedConcept}
-        sourceMaterial={hasSavedMaterial ? savedSourceMaterial : ""}
-        selectedConcept={selectedConcept}
-        explanationAttempts={previousExplanations}
-        sessionId={roomId || "quick"}
-        initialStudyToolsState={studyToolsState}
-        onStudyToolsStateChange={setStudyToolsState}
-        concepts={panelConcepts.map((concept) => ({
-          id: concept.id,
-          title: concept.title,
-          status: concept.status,
-          latestClarityScore: concept.latestClarityScore,
-        }))}
-        activeConceptId={selectedConcept ? getConceptId(selectedConcept) : null}
-        onConceptSelect={selectConcept}
-      />
+          {/* Right Panel: Support */}
+          <GapResultPanel
+            result={result}
+            isLoading={isLoading}
+            width={rightWidth}
+            isDragging={isDraggingRight}
+            hasNotes={hasSavedMaterial}
+            hasSelectedConcept={!!selectedConcept}
+            sourceMaterial={hasSavedMaterial ? savedSourceMaterial : ""}
+            selectedConcept={selectedConcept}
+            explanationAttempts={previousExplanations}
+            sessionId={roomId || "quick"}
+            initialStudyToolsState={studyToolsState}
+            onStudyToolsStateChange={setStudyToolsState}
+            concepts={panelConcepts.map((concept) => ({
+              id: concept.id,
+              title: concept.title,
+              status: concept.status,
+              latestClarityScore: concept.latestClarityScore,
+            }))}
+            activeConceptId={selectedConcept ? getConceptId(selectedConcept) : null}
+            onConceptSelect={selectConcept}
+            onClose={() => setIsSupportPanelOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 }
