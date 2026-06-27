@@ -129,6 +129,27 @@ function formatSourceMeta(source: SourceRow) {
   return `Pasted text · ${characters}`;
 }
 
+function getSourcePreviewSections(source: SourceRow) {
+  const content = source.content.trim();
+  if (!content) return [];
+
+  const pageSections = content.split(/--- Page (\d+) ---/g);
+  if (pageSections.length > 1) {
+    const sections: Array<{ title: string; body: string }> = [];
+    for (let index = 1; index < pageSections.length; index += 2) {
+      const pageNumber = pageSections[index];
+      const body = (pageSections[index + 1] || "").trim();
+      if (body) sections.push({ title: `Page ${pageNumber}`, body });
+    }
+    return sections;
+  }
+
+  return content
+    .split(/\n{2,}/)
+    .map((body, index) => ({ title: index === 0 ? "Preview" : `Section ${index + 1}`, body: body.trim() }))
+    .filter((section) => section.body);
+}
+
 function getConceptTrackIndexKey(roomId: string | null) {
   return `feynduck-concepts-${roomId || "quick"}`;
 }
@@ -367,7 +388,7 @@ function getConceptId(title: string) {
 }
 
 function getConceptStatus(result: ExplanationResult | null, hasHistory: boolean): ConceptStatus {
-  if (result?.status === "clear") return "clear";
+  if (result?.status === "clear" && !(result.missingClaims?.length)) return "clear";
   if (result && result.status !== "topic_mismatch") {
     if (typeof result.clarityScore === "number" && result.clarityScore >= 60) return "improving";
     return "gap_found";
@@ -431,7 +452,7 @@ function mentionsCardiacFormulaGap(value: string) {
 }
 
 function getAssistantFeedback(result: ExplanationResult) {
-  if (result.status === "clear") {
+  if (result.status === "clear" && !(result.missingClaims?.length)) {
     return (
       result.chatMessage ||
       "You've now explained the central mechanism clearly. That explanation is clear."
@@ -462,7 +483,7 @@ function getAssistantFeedback(result: ExplanationResult) {
 }
 
 function getAssistantQuestion(result: ExplanationResult) {
-  if (result.status === "clear") {
+  if (result.status === "clear" && !(result.missingClaims?.length)) {
     return "";
   }
 
@@ -589,6 +610,7 @@ export function ExplainForm({
   const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
   const [sourceActionError, setSourceActionError] = useState<string | null>(null);
   const [pathUpdateNotice, setPathUpdateNotice] = useState<string | null>(null);
+  const [isSourcePreviewExpanded, setIsSourcePreviewExpanded] = useState(false);
   const [openSourceMenuId, setOpenSourceMenuId] = useState<string | null>(null);
   const [renamingSourceId, setRenamingSourceId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -848,6 +870,8 @@ export function ExplainForm({
     setRequest(prev => ({ ...prev, notes: savedSourceMaterial }));
     setIsEditingNotes(false);
     setSourceInputMode(null);
+    setIsAddMaterialOpen(false);
+    setPasteTitle("");
   };
 
   const resetPdfSelection = () => {
@@ -871,6 +895,17 @@ export function ExplainForm({
     setIsAddMaterialOpen(true);
     setPdfError(null);
     setPdfStatus(null);
+  };
+
+  const openAddMaterialSheet = () => {
+    if (isAddMaterialOpen) {
+      handleCancelNotesEdit();
+      return;
+    }
+
+    setSourceActionError(null);
+    setPasteTitle("");
+    openPasteMode();
   };
 
   const handlePdfFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1063,6 +1098,11 @@ export function ExplainForm({
     setRenameDraft(getSourceDisplayTitle(target));
     setOpenSourceMenuId(null);
     setSourceActionError(null);
+  };
+
+  const openSourcePreview = (sourceId: string) => {
+    setOpenSourceId(sourceId);
+    setIsSourcePreviewExpanded(false);
   };
 
   const handleRenameSource = async (target: SourceRow) => {
@@ -1570,12 +1610,15 @@ export function ExplainForm({
 
   const activeSources = sources.filter((item) => item.is_active);
   const openSource = sources.find((item) => item.id === openSourceId) || sources[0] || null;
+  const openSourcePreviewSections = openSource ? getSourcePreviewSections(openSource) : [];
+  const visiblePreviewSections = isSourcePreviewExpanded ? openSourcePreviewSections : openSourcePreviewSections.slice(0, 1);
   const activeCharacterCount = activeSources.reduce((total, item) => total + getSourceCharacterCount(item), 0);
   const sourceCountLabel = sources.length
     ? `${sources.length} source${sources.length === 1 ? "" : "s"} · ${activeCharacterCount.toLocaleString()} characters`
     : "No study material yet";
   const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
-  const isConceptClear = result?.status === "clear" && (result.clarityScore ?? 0) >= 90;
+  const hasMissingClaims = Boolean(result?.missingClaims?.length);
+  const isConceptClear = result?.status === "clear" && (result.clarityScore ?? 0) >= 90 && !hasMissingClaims;
   const conceptSuggestionOptions = serverConcepts.filter(
     (concept) => getConceptId(concept.title) !== (selectedConcept ? getConceptId(selectedConcept) : ""),
   );
@@ -1723,7 +1766,7 @@ export function ExplainForm({
                 </div>
               )}
             </div>
-            <button className="source-action-btn source-action-btn-primary" type="button" onClick={() => setIsAddMaterialOpen((current) => !current)}>
+            <button className="source-action-btn source-action-btn-primary" type="button" onClick={openAddMaterialSheet}>
               Add material
             </button>
           </div>
@@ -1785,7 +1828,7 @@ export function ExplainForm({
             <div className="source-list" aria-label="Room sources">
               {sources.map((item) => (
                 <div key={item.id} className={cn("source-list-item", openSourceId === item.id && "active", !item.is_active && "inactive")}>
-                  <button type="button" className="source-row-main" onClick={() => setOpenSourceId(item.id)}>
+                  <button type="button" className="source-row-main" onClick={() => openSourcePreview(item.id)}>
                     <strong>{getSourceDisplayTitle(item)}</strong>
                     <span>{formatSourceMeta(item)}</span>
                     <em>{item.is_active ? "Included in learning path" : "Excluded from learning path"}</em>
@@ -1801,7 +1844,7 @@ export function ExplainForm({
                   </button>
                   {openSourceMenuId === item.id ? (
                     <div className="source-menu" role="menu">
-                      <button type="button" role="menuitem" onClick={() => { setOpenSourceId(item.id); setOpenSourceMenuId(null); }}>View source</button>
+                      <button type="button" role="menuitem" onClick={() => { openSourcePreview(item.id); setOpenSourceMenuId(null); }}>View source</button>
                       <button type="button" role="menuitem" onClick={() => startRenameSource(item)}>Rename</button>
                       <button type="button" role="menuitem" onClick={() => handleToggleSourceActive(item)}>
                         {item.is_active ? "Exclude from learning path" : "Include in learning path"}
@@ -1836,11 +1879,29 @@ export function ExplainForm({
           {openSource ? (
             <div className="source-preview-block">
               <div className="source-preview-heading">
-                <span>{openSource.source_type === "pdf" ? "Extracted PDF text" : "Pasted source"}</span>
-                <strong>{getSourceDisplayTitle(openSource)}</strong>
+                <div>
+                  <span>{openSource.source_type === "pdf" ? "Extracted PDF text" : "Pasted source"}</span>
+                  <strong>{getSourceDisplayTitle(openSource)}</strong>
+                </div>
+                <div className="source-preview-actions">
+                  <button type="button" onClick={() => setIsSourcePreviewExpanded((current) => !current)}>
+                    {isSourcePreviewExpanded ? "Collapse" : "Expand"}
+                  </button>
+                  <button type="button" onClick={() => setOpenSourceId(null)}>Close</button>
+                </div>
               </div>
-              <div className="notes-preview-card" style={{ whiteSpace: 'pre-wrap' }}>
-                {openSource.content}
+              <div className={cn("source-formatted-preview", isSourcePreviewExpanded && "expanded")}>
+                {visiblePreviewSections.map((section) => (
+                  <section key={`${openSource.id}-${section.title}`} className="source-preview-section">
+                    <h5>{section.title}</h5>
+                    <p>{section.body}</p>
+                  </section>
+                ))}
+                {!isSourcePreviewExpanded && openSourcePreviewSections.length > 1 ? (
+                  <button type="button" className="source-preview-more" onClick={() => setIsSourcePreviewExpanded(true)}>
+                    Show all {openSourcePreviewSections.length} sections
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -2045,7 +2106,7 @@ export function ExplainForm({
               {(result || isLoading || latestAttempt) && (
                 <div className="explain-feedback-grid" aria-label="Latest feedback">
                   <article className={cn("explain-feedback-card missing-link", isLoading && "loading-pulse")}>
-                    <span>{result?.status === "clear" ? "Clear" : result?.status === "topic_mismatch" ? "Topic mismatch" : "Missing link"}</span>
+                    <span>{isConceptClear ? "Clear" : result?.status === "topic_mismatch" ? "Topic mismatch" : "Missing link"}</span>
                     <p>{isLoading ? "Analyzing the reasoning chain..." : assistantFeedback || latestMainGap || "No feedback yet."}</p>
                   </article>
                   {assistantQuestion && !isConceptClear ? (
@@ -2087,9 +2148,11 @@ export function ExplainForm({
                   <div>
                     <h3>You can explain {selectedConcept} clearly.</h3>
                     <p>
-                      {result.chatMessage ||
-                        result.whyItMatters ||
-                        "You connected the central mechanism clearly enough to move on or review it later."}
+                      {result.clarityScore === 100
+                        ? "You included the complete core mechanism from the material."
+                        : result.chatMessage && !/consider adding|try again/i.test(result.chatMessage)
+                          ? result.chatMessage
+                          : "You can explain this clearly."}
                     </p>
                     <div className="concept-complete-chips">
                       <span>Clarity {result.clarityScore}</span>

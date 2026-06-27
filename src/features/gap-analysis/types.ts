@@ -1,5 +1,5 @@
 export type GapAnalysisResult = {
-  status: "ok" | "gap_found" | "clear" | "topic_mismatch";
+  status: "ok" | "gap_found" | "improving" | "clear" | "topic_mismatch";
   sourceTopic: string;
   explanationTopic: string;
   clarityScore: number | null;
@@ -13,5 +13,6 @@ export type GapAnalysisResult = {
   scoreReason?: string;
   coveredClaims?: string[];
   missingClaims?: string[];
+  coreClaims?: string[];
   resolvedGaps?: string[];
 };

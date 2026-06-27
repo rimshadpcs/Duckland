@@ -161,7 +161,7 @@ function InsightsTab({
   hasNotes: boolean;
   hasSelectedConcept: boolean;
 }) {
-  const isClear = result?.status === "clear";
+  const isClear = result?.status === "clear" && !(result.missingClaims?.length);
   const mainGap = result?.mainGap ?? result?.gapSummary;
 
   if (!result && !isLoading) {

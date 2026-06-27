@@ -22,6 +22,75 @@ function cleanPageText(value: string) {
     .trim();
 }
 
+type PdfTextItem = {
+  str: string;
+  width?: number;
+  transform?: number[];
+};
+
+function getTextItemX(item: PdfTextItem) {
+  return Array.isArray(item.transform) && typeof item.transform[4] === "number" ? item.transform[4] : 0;
+}
+
+function getTextItemY(item: PdfTextItem) {
+  return Array.isArray(item.transform) && typeof item.transform[5] === "number" ? item.transform[5] : 0;
+}
+
+function buildReadablePageText(items: unknown[]) {
+  const textItems = items
+    .filter((item): item is PdfTextItem => {
+      if (!item || typeof item !== "object" || !("str" in item)) return false;
+      const textItem = item as PdfTextItem;
+      return typeof textItem.str === "string" && textItem.str.length > 0;
+    })
+    .map((item) => ({
+      str: item.str,
+      width: typeof item.width === "number" ? item.width : item.str.length * 4,
+      x: getTextItemX(item),
+      y: getTextItemY(item),
+    }))
+    .sort((a, b) => {
+      const yDifference = b.y - a.y;
+      return Math.abs(yDifference) > 2 ? yDifference : a.x - b.x;
+    });
+
+  const lines: typeof textItems[] = [];
+  for (const item of textItems) {
+    const currentLine = lines[lines.length - 1];
+    if (!currentLine || Math.abs(currentLine[0].y - item.y) > 2) {
+      lines.push([item]);
+    } else {
+      currentLine.push(item);
+    }
+  }
+
+  const lineTexts = lines.map((line) => {
+    const sortedLine = [...line].sort((a, b) => a.x - b.x);
+    let text = "";
+    let previousEnd: number | null = null;
+
+    for (const item of sortedLine) {
+      const clean = item.str.replace(/\s+/g, " ");
+      if (!clean.trim()) continue;
+
+      if (previousEnd != null) {
+        const gap = item.x - previousEnd;
+        const averageGlyphWidth = Math.max(2.5, item.width / Math.max(clean.length, 1));
+        if (gap > averageGlyphWidth * 0.75 && !text.endsWith(" ")) {
+          text += " ";
+        }
+      }
+
+      text += clean;
+      previousEnd = item.x + item.width;
+    }
+
+    return text.trim();
+  });
+
+  return cleanPageText(lineTexts.filter(Boolean).join("\n"));
+}
+
 function getMeaningfulLength(value: string) {
   return value.replace(/\s+/g, "").length;
 }
@@ -61,10 +130,7 @@ export async function extractPdfText(
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const textContent = await page.getTextContent();
-      const textItems = textContent.items
-        .map((item) => ("str" in item && typeof item.str === "string" ? item.str : ""))
-        .filter(Boolean);
-      const pageText = cleanPageText(textItems.join(" "));
+      const pageText = buildReadablePageText(textContent.items);
 
       if (pageText) {
         pages.push(`--- Page ${pageNumber} ---\n${pageText}`);

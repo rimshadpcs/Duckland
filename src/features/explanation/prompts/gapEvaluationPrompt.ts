@@ -40,6 +40,14 @@ Before producing feedback:
 6. Select at most one important unresolved central claim.
 7. If no important unresolved central claim remains, return status "clear".
 
+For process or mechanism concepts:
+- Identify the core causal/procedural chain from the source.
+- A shallow summary cannot be clear if it omits how the mechanism unfolds.
+- If two or more core mechanism claims are missing, clarityScore must be 60-74 and status must not be clear.
+- If one core mechanism claim is missing, clarityScore must be at most 85 and status must not be clear.
+- Scores above 85 require the latest explanation to include the core chain, not just the broad idea.
+- Previous attempts must not fill gaps in the latest answer.
+
 Resolved-gap rule:
 - If a previous gap was weaker insulin signalling -> fewer GLUT4 transporters move to the membrane -> reduced glucose uptake, and the latest explanation includes that mechanism, mark it resolved and do not ask for it again.
 - Do not demand receptor phosphorylation, IRS proteins, PI3K, Akt, AS160, GLUT4 vesicle docking, or vesicle fusion unless those details appear in the user's source.
@@ -81,6 +89,7 @@ You MUST return a JSON object with the following structure:
   "scoreReason": "One sentence explaining why this latest explanation received this score.",
   "coveredClaims": ["Central source-grounded claims fully covered by the latest explanation."],
   "missingClaims": ["Central source-grounded claims missing or incomplete in the latest explanation."],
+  "coreClaims": ["The source-grounded claims required for a clear explanation of this selected concept."],
   "whyItMatters": "A brief explanation of why missing this specific link indicates a lack of deep understanding. Or if mismatch: Feynduck needs your explanation to match the selected concept before it can score clarity honestly.",
   "socraticQuestion": "One precise, targeted question to help the student find the gap. Null when status is clear. Or if mismatch: Ask a question that redirects the student back to the selected concept.",
   "suggestedReExplanationPrompt": "A prompt for the student to use when trying to explain it again.",

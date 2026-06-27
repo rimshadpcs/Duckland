@@ -17,12 +17,19 @@ You create a structured learning path for Feynduck from a student's source mater
 
 Rules:
 - Use only concepts explicitly supported by the supplied source.
-- Create 3-6 units.
-- Each unit must contain 3-7 concrete concepts.
+- For a short source under 15 pages, target 5-10 total concepts.
+- Create 2-5 units.
+- Each unit must contain 2-4 concrete concepts.
 - Order units from foundational ideas to dependent ideas.
 - Do not use generic labels like "Main definition", "Key mechanism", or "Cause and effect".
+- Concepts must be concrete, student-readable, source-grounded, independently explainable, and named after the actual term, process, mechanism, or question in the source.
 - Keep unit titles between 2 and 7 words.
-- Keep concept titles between 2 and 6 words.
+- Keep concept titles between 2 and 7 words.
+- Prefer noun phrases or direct questions: "Next-token prediction", "Transformer architecture", "Why LLMs can perform many tasks".
+- Avoid vague abstraction labels such as "Role of Predictions", "Parameter Significance", "Layer Refinement", "General Structure Learning", "Performing Multiple Tasks", "Scaling and Reliability", or "Adaptive Outputs".
+- Avoid titles starting with generic phrases like "Role of", "General", "Significance", "Adaptive", "Performing", "Scaling", "Understanding", or "Learning" unless those exact terms are central source terms.
+- Merge closely related claims and avoid near-duplicate concepts.
+- Do not create a concept for every sentence or every downstream outcome.
 - Descriptions must be one sentence and grounded in the source.
 - Include prerequisites only when the dependency is directly supported by the source.
 - Do not add external knowledge.
@@ -49,7 +56,67 @@ function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
 }
 
-function cleanStudyPath(value: unknown): GeneratedStudyPath {
+const vagueTitlePrefixes = [
+  "role of",
+  "general",
+  "significance",
+  "adaptive",
+  "performing",
+  "scaling",
+  "understanding",
+  "learning",
+];
+
+function normalizeTitle(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function countSourcePages(source: string) {
+  const matches = source.match(/--- Page \d+ ---/g);
+  return matches?.length || 1;
+}
+
+function rewriteConceptTitle(title: string, source: string) {
+  const normalized = normalizeTitle(title);
+  const lowerSource = source.toLowerCase();
+
+  if (
+    normalized === "role of predictions" ||
+    (normalized.includes("prediction") && lowerSource.includes("next token"))
+  ) {
+    return "Next-token prediction";
+  }
+
+  if (normalized === "performing multiple tasks" && lowerSource.includes("many tasks")) {
+    return "Why LLMs can perform many tasks";
+  }
+
+  if (normalized === "parameter significance" && lowerSource.includes("parameter")) {
+    return "Parameters in LLMs";
+  }
+
+  if (normalized === "layer refinement" && lowerSource.includes("transformer layer")) {
+    return "Transformer layers";
+  }
+
+  if (normalized === "general structure learning" && lowerSource.includes("transformer")) {
+    return "Transformer architecture";
+  }
+
+  return title;
+}
+
+function isVagueConceptTitle(title: string, source: string) {
+  const normalized = normalizeTitle(title);
+  const lowerSource = source.toLowerCase();
+
+  if (normalized === "large language model" || normalized === "what is a large language model") return false;
+  if (normalized.includes("token") || normalized.includes("transformer") || normalized.includes("parameter")) return false;
+
+  return vagueTitlePrefixes.some((prefix) => normalized.startsWith(prefix) && !lowerSource.includes(normalized));
+}
+
+function cleanStudyPath(value: unknown, source: string): GeneratedStudyPath {
   if (!value || typeof value !== "object") return { units: [] };
   const rawUnits = (value as { units?: unknown }).units;
   if (!Array.isArray(rawUnits)) return { units: [] };
@@ -72,8 +139,9 @@ function cleanStudyPath(value: unknown): GeneratedStudyPath {
             .map((rawConcept) => {
               if (!rawConcept || typeof rawConcept !== "object") return null;
               const conceptRecord = rawConcept as Record<string, unknown>;
-              const conceptTitle = cleanText(conceptRecord.title, 80);
+              const conceptTitle = rewriteConceptTitle(cleanText(conceptRecord.title, 80), source);
               if (conceptTitle.length < 2) return null;
+              if (isVagueConceptTitle(conceptTitle, source)) return null;
               const conceptKey = conceptTitle.toLowerCase();
               if (conceptTitles.has(conceptKey)) return null;
               conceptTitles.add(conceptKey);
@@ -90,7 +158,7 @@ function cleanStudyPath(value: unknown): GeneratedStudyPath {
               };
             })
             .filter((concept): concept is NonNullable<typeof concept> => Boolean(concept))
-            .slice(0, 7)
+            .slice(0, 4)
         : [];
 
       if (!concepts.length) return null;
@@ -102,7 +170,20 @@ function cleanStudyPath(value: unknown): GeneratedStudyPath {
       };
     })
     .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
-    .slice(0, 6);
+    .slice(0, 5);
+
+  if (countSourcePages(source) < 15) {
+    let remainingConcepts = 10;
+    return {
+      units: units
+        .map((unit) => {
+          const concepts = unit.concepts.slice(0, remainingConcepts);
+          remainingConcepts -= concepts.length;
+          return { ...unit, concepts };
+        })
+        .filter((unit) => unit.concepts.length),
+    };
+  }
 
   return { units };
 }
@@ -168,7 +249,7 @@ export async function POST(request: Request) {
 
       const content = response.choices[0].message.content;
       if (!content) throw new Error("Empty study path response.");
-      path = cleanStudyPath(JSON.parse(content));
+      path = cleanStudyPath(JSON.parse(content), source);
     } catch (error) {
       if (isLocalDevelopment()) {
         console.error("[OpenAI] study path generation failed", error);

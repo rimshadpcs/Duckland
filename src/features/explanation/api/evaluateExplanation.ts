@@ -3,6 +3,7 @@ import { createMockExplanationResult } from "./mockResult";
 import { getOpenAIClient, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
 import { gapEvaluationPrompt } from "../prompts/gapEvaluationPrompt";
 import { evaluateInsulinResistanceCoverage, isInsulinResistanceSource } from "./insulinCoverage.mjs";
+import { evaluateNextTokenPredictionCoverage } from "./nextTokenCoverage.mjs";
 
 export type EvaluationErrorCode =
   | "openai_not_configured"
@@ -287,6 +288,96 @@ function applyInsulinResistanceCoverage(
   };
 }
 
+function applyNextTokenPredictionCoverage(
+  result: ExplanationResult,
+  request: ExplanationRequest,
+): ExplanationResult | null {
+  const coverage = evaluateNextTokenPredictionCoverage(request.notes, request.explanation, request.selectedConcept);
+  if (!coverage) return null;
+
+  if (coverage.status === "topic_mismatch") {
+    return {
+      ...result,
+      status: "topic_mismatch",
+      clarityScore: null,
+      gapType: "topic_mismatch",
+      gapSummary: coverage.mainGap,
+      mainGap: coverage.mainGap,
+      whyItMatters: "Feynduck needs your explanation to match the selected concept before it can score clarity honestly.",
+      socraticQuestion: coverage.socraticQuestion,
+      suggestedReExplanationPrompt: "Try explaining how an LLM predicts the next token from the existing token sequence.",
+      chatMessage: coverage.mainGap || "This explanation is about a different topic.",
+      scoreReason: coverage.scoreReason,
+      coveredClaims: coverage.coveredClaims,
+      missingClaims: coverage.missingClaims,
+      coreClaims: coverage.coreClaims,
+    };
+  }
+
+  const isClear = coverage.status === "clear" && coverage.missingClaims.length === 0;
+
+  return {
+    ...result,
+    status: (isClear ? "clear" : coverage.status) as ExplanationResult["status"],
+    clarityScore: coverage.clarityScore,
+    gapType: "incomplete_sequence",
+    gapSummary: coverage.mainGap,
+    mainGap: coverage.mainGap,
+    whyItMatters: isClear
+      ? "You included the complete core mechanism from the material."
+      : "This matters because next-token prediction is a repeated token-by-token process, not just a broad idea that models guess words.",
+    socraticQuestion: coverage.socraticQuestion,
+    suggestedReExplanationPrompt: isClear
+      ? "You can now try explaining the concept again from memory, keeping the token-by-token sequence intact."
+      : "Try explaining tokens, context, next-token prediction, and how repeating that step builds a full response.",
+    chatMessage: isClear
+      ? "You can explain this clearly. You included the complete core mechanism from the material."
+      : "You have the main idea. One important mechanism is still missing.",
+    scoreReason: coverage.scoreReason,
+    coveredClaims: coverage.coveredClaims,
+    missingClaims: coverage.missingClaims,
+    coreClaims: coverage.coreClaims,
+  };
+}
+
+function applyCoreClaimScoreGuard(result: ExplanationResult): ExplanationResult {
+  if (result.status === "topic_mismatch") return result;
+
+  const missingClaims = Array.isArray(result.missingClaims) ? result.missingClaims.filter(Boolean) : [];
+  if (!missingClaims.length) {
+    if (result.status === "clear" && typeof result.clarityScore === "number" && result.clarityScore >= 100) {
+      return {
+        ...result,
+        chatMessage: "You can explain this clearly. You included the complete core mechanism from the material.",
+      };
+    }
+
+    return result;
+  }
+
+  const currentScore = typeof result.clarityScore === "number" ? result.clarityScore : 70;
+  const nextScore = missingClaims.length >= 2 ? Math.min(currentScore, 74) : Math.min(currentScore, 85);
+
+  return {
+    ...result,
+    status: nextScore >= 60 ? "improving" : "gap_found",
+    clarityScore: nextScore,
+    gapType: result.gapType === "topic_mismatch" ? "missing_mechanism" : result.gapType,
+    gapSummary: result.gapSummary || result.mainGap || `You have the main idea, but this source-grounded claim is still missing: ${missingClaims[0]}`,
+    mainGap: result.mainGap || result.gapSummary || `Explain this missing source-grounded claim: ${missingClaims[0]}`,
+    whyItMatters:
+      result.whyItMatters ||
+      "This matters because a shallow summary can sound right while still skipping the mechanism the source expects.",
+    socraticQuestion:
+      result.socraticQuestion ||
+      "What exact source-grounded step connects your current explanation to the full mechanism?",
+    suggestedReExplanationPrompt:
+      result.suggestedReExplanationPrompt ||
+      "Try again by adding the missing source-grounded mechanism.",
+    chatMessage: "You have the main idea. One important mechanism is still missing.",
+  };
+}
+
 function normaliseEvaluationResult(
   result: ExplanationResult,
   request: ExplanationRequest,
@@ -301,7 +392,12 @@ function normaliseEvaluationResult(
 
   const insulinCoverageResult = applyInsulinResistanceCoverage(result, request);
   if (insulinCoverageResult) {
-    return insulinCoverageResult;
+    return applyCoreClaimScoreGuard(insulinCoverageResult);
+  }
+
+  const nextTokenCoverageResult = applyNextTokenPredictionCoverage(result, request);
+  if (nextTokenCoverageResult) {
+    return applyCoreClaimScoreGuard(nextTokenCoverageResult);
   }
 
   const isInsulinResistance =
@@ -366,7 +462,7 @@ function normaliseEvaluationResult(
       };
     }
 
-    return {
+    return applyCoreClaimScoreGuard({
       ...result,
       clarityScore: typeof result.clarityScore === "number" ? Math.max(result.clarityScore, 90) : 92,
       gapSummary: null,
@@ -376,17 +472,17 @@ function normaliseEvaluationResult(
       chatMessage:
         result.chatMessage ||
         "You've now explained the central mechanism clearly. That explanation is clear.",
-    };
+    });
   }
 
   if (result.status !== "gap_found" || typeof result.clarityScore !== "number") {
-    return result;
+    return applyCoreClaimScoreGuard(result);
   }
 
   if (isInsulinResistance && latestExplainsGlut4 && latestExplainsLiver && latestExplainsCompensation) {
-    return {
-      ...result,
-      status: "clear",
+      return applyCoreClaimScoreGuard({
+        ...result,
+        status: "clear",
       clarityScore: Math.max(result.clarityScore, 92),
       gapSummary: null,
       mainGap: null,
@@ -395,15 +491,15 @@ function normaliseEvaluationResult(
         ...(result.resolvedGaps || []),
         "weaker insulin signalling -> fewer GLUT4 transporters move to the membrane -> reduced glucose uptake",
       ])),
-      chatMessage:
-        "You've now explained the central mechanism clearly: weaker insulin signalling reduces GLUT4 movement and glucose uptake, while the liver continues releasing glucose. You also connected pancreatic compensation.",
-    };
+        chatMessage:
+          "You've now explained the central mechanism clearly: weaker insulin signalling reduces GLUT4 movement and glucose uptake, while the liver continues releasing glucose. You also connected pancreatic compensation.",
+      });
   }
 
   const proposedGap = `${result.mainGap || ""} ${result.gapSummary || ""} ${result.socraticQuestion || ""}`;
   if (isInsulinResistance && latestExplainsGlut4 && /glut4/i.test(proposedGap) && !latestExplainsLiver) {
-    return {
-      ...result,
+      return applyCoreClaimScoreGuard({
+        ...result,
       clarityScore: Math.min(Math.max(result.clarityScore, 72), 84),
       gapSummary:
         "You explained the GLUT4 mechanism, but did not explain that insulin resistance also prevents insulin from suppressing liver glucose production.",
@@ -411,21 +507,21 @@ function normaliseEvaluationResult(
         "You explained the GLUT4 mechanism, but did not connect insulin resistance to continued liver glucose production.",
       socraticQuestion:
         "What happens to glucose production by the liver when insulin signalling is weaker?",
-      resolvedGaps: Array.from(new Set([
+        resolvedGaps: Array.from(new Set([
         ...(result.resolvedGaps || []),
-        "weaker insulin signalling -> fewer GLUT4 transporters move to the membrane -> reduced glucose uptake",
-      ])),
-    };
+          "weaker insulin signalling -> fewer GLUT4 transporters move to the membrane -> reduced glucose uptake",
+        ])),
+      });
   }
 
   const notesHaveCentralFormula = includesCardiacOutputFormula(request.notes);
   const explanationHasCentralFormula = includesCardiacOutputFormula(request.explanation);
 
   if (!notesHaveCentralFormula || explanationHasCentralFormula || result.clarityScore < 75) {
-    return result;
+    return applyCoreClaimScoreGuard(result);
   }
 
-  return {
+  return applyCoreClaimScoreGuard({
     ...result,
     clarityScore: 68,
     gapType: "missing_mechanism",
@@ -439,7 +535,7 @@ function normaliseEvaluationResult(
       "Try explaining cardiac output using the relationship between heart rate and stroke volume.",
     chatMessage:
       "You identified the compensation, but skipped the formula linking heart rate and stroke volume to cardiac output. If stroke volume falls, what must happen to heart rate for cardiac output to remain stable?",
-  };
+  });
 }
 
 export async function evaluateExplanation(
