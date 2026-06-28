@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect } from "react";
+import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { GapResultPanel } from "@src/features/gap-analysis";
 import { CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react";
@@ -19,6 +19,8 @@ import {
 import { cn } from "@src/lib/utils";
 import { createSupabaseBrowserClient } from "@src/lib/supabase/browser";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
+import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
+import type { AsyncActionState } from "@src/lib/ui/asyncState";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { RoomConceptRow } from "@src/lib/repositories/study-path";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
@@ -850,6 +852,8 @@ export function ExplainForm({
   const [pasteTitle, setPasteTitle] = useState("");
   const [isAddMaterialOpen, setIsAddMaterialOpen] = useState(false);
   const [sourceActionError, setSourceActionError] = useState<string | null>(null);
+  const [sourceActionState, setSourceActionState] = useState<AsyncActionState<{ sourceId?: string }>>({ status: "idle" });
+  const [pendingSourceIds, setPendingSourceIds] = useState<string[]>([]);
   const [pathUpdateNotice, setPathUpdateNotice] = useState<string | null>(null);
   const [isSourcePreviewExpanded, setIsSourcePreviewExpanded] = useState(false);
   const [openSourceMenuId, setOpenSourceMenuId] = useState<string | null>(null);
@@ -882,6 +886,7 @@ export function ExplainForm({
   const [nextRecommendation, setNextRecommendation] = useState<NextRecommendationState>(null);
   const [freshRecallBaseline, setFreshRecallBaseline] = useState<{ concept: string; score: number | null; attempt: string } | null>(null);
   const [showPreviousAttempt, setShowPreviousAttempt] = useState(false);
+  const [isConceptSwitchPending, startConceptTransition] = useTransition();
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const buildCurrentConceptTrack = (
@@ -957,6 +962,7 @@ export function ExplainForm({
     const material = (sourceOverride || savedSourceMaterial).trim();
     if (!roomId || material.length < 10) return;
 
+    const endTiming = startInteractionTiming("learning-path-generation");
     setConceptsLoading(true);
     setConceptsError(null);
     try {
@@ -983,6 +989,7 @@ export function ExplainForm({
       setConceptsError(caught instanceof Error ? caught.message : "We couldn’t map the concepts in this material yet.");
     } finally {
       setConceptsLoading(false);
+      endTiming();
     }
   };
 
@@ -1073,9 +1080,11 @@ export function ExplainForm({
     setError(null);
     setNotice(null);
     setSourceActionError(null);
+    setSourceActionState({ status: "pending" });
     setIsSavingSource(true);
     setIsEditingNotes(false);
 
+    const endTiming = startInteractionTiming("source-save");
     const result = await saveRoomSourceAction({
       roomId,
       roomTitle: room.title,
@@ -1085,8 +1094,10 @@ export function ExplainForm({
 
     if (!result.ok) {
       setError(result.error);
+      setSourceActionState({ status: "error", error: result.error });
       setIsEditingNotes(true);
       setIsSavingSource(false);
+      endTiming();
       return;
     }
 
@@ -1111,6 +1122,8 @@ export function ExplainForm({
     setSourceInputMode(null);
     setIsAddMaterialOpen(false);
     setPasteTitle("");
+    setSourceActionState({ status: "success", data: { sourceId: result.data.source.id } });
+    window.setTimeout(() => setSourceActionState({ status: "idle" }), 1600);
     if (serverConcepts.length) {
       setPathUpdateNotice(`New material added. Your learning path is based on ${Math.max(1, sources.filter((item) => item.is_active).length)} source${sources.filter((item) => item.is_active).length === 1 ? "" : "s"}. Update it to include ${nextSources.filter((item) => item.is_active).length} sources?`);
     } else {
@@ -1119,6 +1132,7 @@ export function ExplainForm({
     if (onRoomLoaded) {
       onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
     }
+    endTiming();
   };
 
   const handleCancelNotesEdit = () => {
@@ -1204,9 +1218,11 @@ export function ExplainForm({
     }
 
     setIsPdfBusy(true);
+    setSourceActionState({ status: "pending" });
     setPdfError(null);
     setPdfProgress(null);
     setPdfStatus("Uploading your PDF...");
+    const endTiming = startInteractionTiming("pdf-upload-and-extraction");
 
     const supabase = createSupabaseBrowserClient();
     let uploadedPath: string | null = null;
@@ -1237,6 +1253,7 @@ export function ExplainForm({
       });
 
       setPdfStatus(`${extraction.pageCount} pages · ${extraction.extractedTextLength.toLocaleString()} characters extracted`);
+      window.setTimeout(() => setPdfStatus("Saving extracted text..."), 80);
 
       const result = await saveRoomPdfSourceAction({
         roomId,
@@ -1272,7 +1289,9 @@ export function ExplainForm({
       setSelectedPdfFile(null);
       setSourceInputMode(null);
       setIsAddMaterialOpen(false);
-      setPdfStatus("PDF added · Learning path ready");
+      setPdfStatus(serverConcepts.length ? "PDF added · Saved" : "PDF added · Mapping concepts...");
+      setSourceActionState({ status: "success", data: { sourceId: result.data.source.id } });
+      window.setTimeout(() => setSourceActionState({ status: "idle" }), 1600);
       if (serverConcepts.length) {
         setPathUpdateNotice(`New material added. Your learning path is based on ${Math.max(1, sources.filter((item) => item.is_active).length)} source${sources.filter((item) => item.is_active).length === 1 ? "" : "s"}. Update it to include ${nextSources.filter((item) => item.is_active).length} sources?`);
       } else {
@@ -1291,10 +1310,12 @@ export function ExplainForm({
 
       const message = caught instanceof Error ? caught.message : PDF_UNREADABLE_MESSAGE;
       setPdfError(message);
+      setSourceActionState({ status: "error", error: message });
       setPdfStatus(null);
     } finally {
       setPdfProgress(null);
       setIsPdfBusy(false);
+      endTiming();
     }
   };
 
@@ -1309,29 +1330,54 @@ export function ExplainForm({
   const handleToggleSourceActive = async (target: SourceRow) => {
     if (!roomId) return;
     setSourceActionError(null);
+    setSourceActionState({ status: "pending", data: { sourceId: target.id } });
+    setPendingSourceIds((current) => Array.from(new Set([...current, target.id])));
+    const previousSources = sources;
+    const optimisticSources = sources.map((item) =>
+      item.id === target.id ? { ...item, is_active: !target.is_active, updated_at: new Date().toISOString() } : item,
+    );
+    const optimisticMaterial = combineSourceContent(optimisticSources);
+    setSources(optimisticSources);
+    setSavedSourceMaterial(optimisticMaterial);
+    setRequest((prev) => ({ ...prev, notes: optimisticMaterial }));
+    setOpenSourceMenuId(null);
+    setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+
+    const endTiming = startInteractionTiming("source-include-toggle");
     const result = await toggleRoomSourceActiveAction(target.id, roomId, !target.is_active);
     if (!result.ok) {
+      const previousMaterial = combineSourceContent(previousSources);
+      setSources(previousSources);
+      setSavedSourceMaterial(previousMaterial);
+      setRequest((prev) => ({ ...prev, notes: previousMaterial }));
       setSourceActionError(result.error);
+      setSourceActionState({ status: "error", error: result.error, data: { sourceId: target.id } });
+      setPendingSourceIds((current) => current.filter((id) => id !== target.id));
+      endTiming();
       return;
     }
 
-    const nextSources = sources.map((item) =>
+    const nextSources = optimisticSources.map((item) =>
       item.id === target.id ? { ...item, is_active: result.data.isActive, updated_at: new Date().toISOString() } : item,
     );
     const nextMaterial = combineSourceContent(nextSources);
     setSources(nextSources);
     setSavedSourceMaterial(nextMaterial);
     setRequest((prev) => ({ ...prev, notes: nextMaterial }));
-    setOpenSourceMenuId(null);
-    setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+    setPendingSourceIds((current) => current.filter((id) => id !== target.id));
+    setSourceActionState({ status: "success", data: { sourceId: target.id } });
+    window.setTimeout(() => setSourceActionState({ status: "idle" }), 1400);
+    endTiming();
   };
 
   const handleDeleteSource = async (target: SourceRow) => {
     if (!roomId) return;
     setSourceActionError(null);
+    const endTiming = startInteractionTiming("source-delete");
     const result = await deleteRoomSourceAction(target.id, roomId);
     if (!result.ok) {
       setSourceActionError(result.error);
+      endTiming();
       return;
     }
 
@@ -1346,6 +1392,7 @@ export function ExplainForm({
       setOpenSourceId(nextSources[0]?.id || null);
     }
     setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+    endTiming();
   };
 
   const startRenameSource = (target: SourceRow) => {
@@ -1368,22 +1415,44 @@ export function ExplainForm({
       return;
     }
 
+    const previousSources = sources;
+    const optimisticSources = sources.map((item) =>
+      item.id === target.id ? { ...item, title: cleanTitle, updated_at: new Date().toISOString() } : item,
+    );
+    const optimisticMaterial = combineSourceContent(optimisticSources);
+    setSources(optimisticSources);
+    setSavedSourceMaterial(optimisticMaterial);
+    setRequest((prev) => ({ ...prev, notes: optimisticMaterial }));
+    setRenamingSourceId(null);
+    setRenameDraft("");
+    setSourceActionState({ status: "pending", data: { sourceId: target.id } });
+
+    const endTiming = startInteractionTiming("source-rename");
     const result = await renameRoomSourceAction(target.id, cleanTitle, roomId);
     if (!result.ok) {
+      const previousMaterial = combineSourceContent(previousSources);
+      setSources(previousSources);
+      setSavedSourceMaterial(previousMaterial);
+      setRequest((prev) => ({ ...prev, notes: previousMaterial }));
+      setRenamingSourceId(target.id);
+      setRenameDraft(cleanTitle);
       setSourceActionError(result.error);
+      setSourceActionState({ status: "error", error: result.error, data: { sourceId: target.id } });
+      endTiming();
       return;
     }
 
-    const nextSources = sources.map((item) =>
+    const nextSources = optimisticSources.map((item) =>
       item.id === target.id ? { ...item, title: result.data.title, updated_at: new Date().toISOString() } : item,
     );
     const nextMaterial = combineSourceContent(nextSources);
     setSources(nextSources);
     setSavedSourceMaterial(nextMaterial);
     setRequest((prev) => ({ ...prev, notes: nextMaterial }));
-    setRenamingSourceId(null);
-    setRenameDraft("");
+    setSourceActionState({ status: "success", data: { sourceId: target.id } });
+    window.setTimeout(() => setSourceActionState({ status: "idle" }), 1400);
     setPathUpdateNotice("Your study material changed. Update your learning path when you're ready.");
+    endTiming();
   };
 
   // Resize State
@@ -1627,15 +1696,28 @@ export function ExplainForm({
       return;
     }
 
+    const endTiming = startInteractionTiming("concept-switch");
     const currentTracks = saveCurrentConceptTrack();
     const conceptId = getConceptId(nextConcept);
     const existingTrack = currentTracks[conceptId];
     const serverConcept = serverConcepts.find((item) => getConceptId(item.title) === conceptId) || null;
     setActiveServerConceptId(serverConcept?.id || null);
+    setSelectedConcept(nextConcept);
+    setIsChoosingNextConcept(false);
+    setError(null);
+    setNotice(null);
+    setPostClearMode(null);
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+    setFreshRecallBaseline(null);
+    setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (existingTrack) {
-      restoreConceptTrack(existingTrack);
+      startConceptTransition(() => {
+        restoreConceptTrack(existingTrack);
+      });
       if (serverConcept?.id && roomId) void startRoomConceptAction(roomId, serverConcept.id);
+      endTiming();
       return;
     }
 
@@ -1653,34 +1735,28 @@ export function ExplainForm({
       snapshot: emptySnapshot,
     };
 
-    setConceptTracks({
-      ...currentTracks,
-      [conceptId]: nextTrack,
+    startConceptTransition(() => {
+      setConceptTracks({
+        ...currentTracks,
+        [conceptId]: nextTrack,
+      });
+      setResult(null);
+      setPreviousExplanations([]);
+      setPreviousMainGaps([]);
+      setPreviousSocraticQuestions([]);
+      setResolvedGaps([]);
+      setStudyToolsState(null);
+      setHistory(emptySnapshot.history);
     });
-    setSelectedConcept(nextConcept);
     if (roomId) {
       void updateRoomSelectedConceptAction(roomId, nextConcept);
       if (serverConcept?.id) void startRoomConceptAction(roomId, serverConcept.id);
     }
-    setResult(null);
-    setError(null);
-    setNotice(null);
-    setPreviousExplanations([]);
-    setPreviousMainGaps([]);
-    setPreviousSocraticQuestions([]);
-    setResolvedGaps([]);
-    setStudyToolsState(null);
-    setHistory(emptySnapshot.history);
-    setIsChoosingNextConcept(false);
-    setPostClearMode(null);
-    setFollowUpAnswer(null);
-    setNextRecommendation(null);
-    setFreshRecallBaseline(null);
-    setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (onRoomLoaded) {
       onRoomLoaded(room ? room.title : "Quick explain", nextConcept);
     }
+    endTiming();
   };
 
   const handleChooseAnotherConcept = () => {
@@ -1767,6 +1843,7 @@ export function ExplainForm({
   const handleFollowUpSubmit = async (question: string) => {
     if (!selectedConcept || isAnsweringFollowUp) return;
 
+    const endTiming = startInteractionTiming("follow-up-answer");
     setIsAnsweringFollowUp(true);
     setError(null);
     setNotice(null);
@@ -1797,6 +1874,7 @@ export function ExplainForm({
       setError(caught instanceof Error ? caught.message : "Could not answer that follow-up.");
     } finally {
       setIsAnsweringFollowUp(false);
+      endTiming();
     }
   };
 
@@ -1831,6 +1909,7 @@ export function ExplainForm({
     }
 
     submitLockRef.current = true;
+    const endTiming = startInteractionTiming("explanation-evaluation");
     const submissionId = createMessageId("submission");
     const studentMessage: ConversationMessage = {
       id: `${submissionId}-student`,
@@ -1947,6 +2026,7 @@ export function ExplainForm({
     } finally {
       submitLockRef.current = false;
       setIsLoading(false);
+      endTiming();
     }
   };
 
@@ -2213,12 +2293,23 @@ export function ExplainForm({
 
           {sources.length ? (
             <div className="source-list" aria-label="Room sources">
-              {sources.map((item) => (
-                <div key={item.id} className={cn("source-list-item", openSourceId === item.id && "active", !item.is_active && "inactive")}>
+              {sources.map((item) => {
+                const isSourcePending = pendingSourceIds.includes(item.id) ||
+                  (sourceActionState.status === "pending" && sourceActionState.data?.sourceId === item.id);
+                const isSourceSaved = sourceActionState.status === "success" && sourceActionState.data?.sourceId === item.id;
+
+                return (
+                <div key={item.id} className={cn("source-list-item", openSourceId === item.id && "active", !item.is_active && "inactive", isSourcePending && "pending")}>
                   <button type="button" className="source-row-main" onClick={() => openSourcePreview(item.id)}>
                     <strong>{getSourceDisplayTitle(item)}</strong>
                     <span>{formatSourceMeta(item)}</span>
-                    <em>{item.is_active ? "Included in learning path" : "Excluded from learning path"}</em>
+                    <em>
+                      {isSourcePending
+                        ? "Saving..."
+                        : isSourceSaved
+                          ? "Saved just now"
+                          : item.is_active ? "Included in learning path" : "Excluded from learning path"}
+                    </em>
                   </button>
                   <button
                     ref={(element) => {
@@ -2261,7 +2352,7 @@ export function ExplainForm({
                   {renamingSourceId === item.id ? (
                     <div className="source-inline-edit">
                       <input value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} aria-label="Source title" />
-                      <button type="button" onClick={() => handleRenameSource(item)}>Save</button>
+                      <button type="button" onClick={() => handleRenameSource(item)} disabled={sourceActionState.status === "pending"}>Save</button>
                       <button type="button" onClick={() => setRenamingSourceId(null)}>Cancel</button>
                     </div>
                   ) : null}
@@ -2273,7 +2364,7 @@ export function ExplainForm({
                     </div>
                   ) : null}
                 </div>
-              ))}
+              )})}
             </div>
           ) : (
             <div className="empty-insights" style={{ alignItems: 'flex-start', textAlign: 'left', padding: '0', height: 'auto' }}>
@@ -2448,7 +2539,7 @@ export function ExplainForm({
               </div>
             </div>
           ) : (
-            <section className="explain-loop-surface" aria-label="Explanation workspace">
+            <section className={cn("explain-loop-surface", isConceptSwitchPending && "is-switching")} aria-label="Explanation workspace">
               <div className="explain-loop-header">
                 <div>
                   <span className="conversation-kicker">Main loop</span>
@@ -2467,6 +2558,15 @@ export function ExplainForm({
                   <strong>{result?.status === "topic_mismatch" ? "Topic mismatch" : result?.clarityScore ?? "--"}</strong>
                 </div>
               </div>
+
+              {isConceptSwitchPending && selectedConcept ? (
+                <div className="concept-switch-loading skeleton-block" aria-live="polite">
+                  <Loader2 className="icon-spin" size={18} />
+                  <span>Loading {selectedConcept}...</span>
+                  <i />
+                  <i />
+                </div>
+              ) : null}
 
               {hasSavedMaterial && !selectedConcept && (
                 <div className="concept-suggestions explain-concept-suggestions" aria-label="Suggested concepts">
@@ -2733,6 +2833,7 @@ export function ExplainForm({
             sessionId={roomId || "quick"}
             initialStudyToolsState={studyToolsState}
             onStudyToolsStateChange={setStudyToolsState}
+            isConceptSwitching={isConceptSwitchPending}
             concepts={panelConcepts.map((concept) => ({
               id: concept.id,
               title: concept.title,

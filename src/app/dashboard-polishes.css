@@ -204,6 +204,7 @@
 }
 
 .source-action-btn {
+  min-width: 92px;
   min-height: 34px;
   border-radius: 999px;
   padding: 0 12px;
@@ -213,7 +214,13 @@
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 160ms ease,
+    transform 120ms ease,
+    box-shadow 180ms ease;
 }
 
 .source-action-btn:hover {
@@ -234,6 +241,17 @@
   border-color: var(--amber);
   color: #1a1612;
   transform: translateY(-1px);
+}
+
+.source-action-btn:active,
+.source-action-btn-primary:active {
+  transform: translateY(1px);
+}
+
+.source-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
 }
 
 /* Chat Message distinct styles */
@@ -960,7 +978,11 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   justify-content: space-between;
   min-height: 220px;
   cursor: default;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
   box-shadow: 0 4px 16px rgba(0,0,0,0.02);
 }
 
@@ -1115,7 +1137,14 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 120ms ease;
+}
+
+.room-menu-trigger:active {
+  transform: translateY(1px);
 }
 
 .room-menu-trigger:hover,
@@ -1134,6 +1163,7 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   background: #fffdf8;
   box-shadow: 0 18px 40px rgba(26, 22, 18, 0.14);
   padding: 7px;
+  animation: popover-enter 150ms ease both;
 }
 
 .room-menu-popover button {
@@ -1148,6 +1178,9 @@ html[data-theme="obsidian"] .app-start-btn:hover {
   font-weight: 800;
   padding: 9px 10px;
   text-align: left;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
 .room-menu-popover button:hover {
@@ -1536,4 +1569,24 @@ html[data-theme="obsidian"] .modal-btn-cancel:hover {
 html[data-theme="obsidian"] .modal-btn-create {
   background: #e8a020;
   color: #1b1d20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-action-btn,
+  .room-card,
+  .room-card-arrow,
+  .room-menu-trigger,
+  .room-menu-popover,
+  .room-menu-popover button {
+    animation: none;
+    transition: none;
+  }
+
+  .source-action-btn-primary:hover,
+  .room-card:hover,
+  .room-card-link:hover .room-card-arrow,
+  .source-action-btn:active,
+  .room-menu-trigger:active {
+    transform: none;
+  }
 }

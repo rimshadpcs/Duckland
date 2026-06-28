@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronDown, Lightbulb, Loader2, PanelRightClose, RotateCcw } from "lucide-react";
 import type { GapAnalysisResult } from "../types";
 import type { Json } from "@src/types/database";
+import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
 
 type StudyPanelTab = "insights" | "quiz" | "flashcards";
 
@@ -62,6 +63,7 @@ type GapResultPanelProps = {
   onStudyToolsStateChange?: (state: Json | null) => void;
   concepts?: PanelConcept[];
   activeConceptId?: string | null;
+  isConceptSwitching?: boolean;
   onConceptSelect?: (title: string) => void;
   onClose?: () => void;
 };
@@ -268,6 +270,7 @@ export function GapResultPanel({
   onStudyToolsStateChange,
   concepts = [],
   activeConceptId = null,
+  isConceptSwitching = false,
   onConceptSelect,
   onClose,
 }: GapResultPanelProps) {
@@ -291,6 +294,7 @@ export function GapResultPanel({
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [flashcardReviewState, setFlashcardReviewState] = useState<Record<string, FlashcardReviewState>>({});
   const [isConceptSwitcherOpen, setIsConceptSwitcherOpen] = useState(false);
+  const [isTabPending, startTabTransition] = useTransition();
   const hydratedStudyToolsKeyRef = useRef<string | null>(null);
 
   const latestEvaluation = useMemo(() => getLatestEvaluation(result), [result]);
@@ -421,6 +425,7 @@ export function GapResultPanel({
   const generateQuiz = async () => {
     if (!selectedConcept || !sourceMaterial || !latestEvaluation) return;
 
+    const endTiming = startInteractionTiming("quiz-generation");
     setQuizLoading(true);
     setQuizError(null);
     setSelectedAnswerIndex(null);
@@ -450,12 +455,14 @@ export function GapResultPanel({
       setQuizError(caught instanceof Error ? caught.message : "Could not generate a quiz.");
     } finally {
       setQuizLoading(false);
+      endTiming();
     }
   };
 
   const generateFlashcards = async () => {
     if (!selectedConcept || !sourceMaterial || !latestEvaluation) return;
 
+    const endTiming = startInteractionTiming("flashcard-generation");
     setFlashcardsLoading(true);
     setFlashcardsError(null);
     setIsCardRevealed(false);
@@ -491,6 +498,7 @@ export function GapResultPanel({
       setFlashcardsError(caught instanceof Error ? caught.message : "Could not generate flashcards.");
     } finally {
       setFlashcardsLoading(false);
+      endTiming();
     }
   };
 
@@ -512,12 +520,14 @@ export function GapResultPanel({
       [currentCard.id]: state,
     }));
 
-    window.setTimeout(() => {
-      if (cardIndex < flashcards.length - 1) {
-        setCardIndex((current) => Math.min(flashcards.length - 1, current + 1));
-        setIsCardRevealed(false);
-      }
-    }, 240);
+    if (cardIndex < flashcards.length - 1) {
+      setCardIndex((current) => Math.min(flashcards.length - 1, current + 1));
+      setIsCardRevealed(false);
+    }
+  };
+
+  const handleTabChange = (tab: StudyPanelTab) => {
+    startTabTransition(() => setActiveTab(tab));
   };
 
   useEffect(() => {
@@ -586,11 +596,20 @@ export function GapResultPanel({
             ) : null}
           </div>
         ) : null}
-        <PanelTabs activeTab={activeTab} onChange={setActiveTab} />
+        <PanelTabs activeTab={activeTab} onChange={handleTabChange} />
       </div>
 
-      <div className="panel-content study-panel-content">
-        {activeTab === "insights" && (
+      <div className={`panel-content study-panel-content ${isTabPending || isConceptSwitching ? "is-pending" : ""}`}>
+        {isConceptSwitching ? (
+          <div className="study-tool-loading skeleton-block local-panel-loading" aria-live="polite">
+            <Loader2 className="icon-spin" size={18} />
+            Loading {selectedConcept || "concept"}...
+            <span />
+            <span />
+          </div>
+        ) : null}
+
+        {!isConceptSwitching && activeTab === "insights" && (
           <InsightsTab
             result={result}
             isLoading={isLoading}
@@ -599,7 +618,7 @@ export function GapResultPanel({
           />
         )}
 
-        {activeTab === "quiz" && (
+        {!isConceptSwitching && activeTab === "quiz" && (
           <div className="study-tool">
             <div>
               <span className="study-tool-label">Built from your gaps</span>
@@ -714,7 +733,7 @@ export function GapResultPanel({
           </div>
         )}
 
-        {activeTab === "flashcards" && (
+        {!isConceptSwitching && activeTab === "flashcards" && (
           <div className="study-tool">
             <div>
               <span className="study-tool-label">Focused on your weak spots</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   createStudyRoomAction,
   deleteStudyRoomAction,
@@ -11,6 +12,7 @@ import { useThemeMode } from "@src/lib/useThemeMode";
 import type { AuthenticatedUser } from "@src/lib/auth";
 import type { StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
 import { MoreVertical } from "lucide-react";
+import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
 
 const PINNED_ROOMS_KEY = "feynduck-pinned-room-ids";
 const MAX_PINNED_ROOMS = 4;
@@ -44,6 +46,7 @@ export function StudyRoomsDashboard({
   loadError?: string | null;
 }) {
   const { themeMode, toggleTheme, mounted } = useThemeMode();
+  const router = useRouter();
   const [rooms, setRooms] = useState<StudyRoomWithSourceCount[]>(initialRooms);
   const [pinnedRoomIds, setPinnedRoomIds] = useState<string[]>([]);
   const [openMenuRoomId, setOpenMenuRoomId] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export function StudyRoomsDashboard({
     }
 
     setError(null);
+    const endTiming = startInteractionTiming("room-create");
     startTransition(async () => {
       const result = await createStudyRoomAction({
         title,
@@ -87,15 +91,21 @@ export function StudyRoomsDashboard({
 
       if (!result.ok) {
         setError(result.error);
+        endTiming();
         return;
       }
 
-      window.location.href = `/study/room/${result.data.id}`;
+      router.push(`/study/room/${result.data.id}`);
+      endTiming();
     });
   };
 
   const openRoom = (roomId: string) => {
-    window.location.href = `/study/room/${roomId}`;
+    const endTiming = startInteractionTiming("room-open");
+    startTransition(() => {
+      router.push(`/study/room/${roomId}`);
+      endTiming();
+    });
   };
 
   const updatePinnedRooms = (nextPinnedRoomIds: string[]) => {
@@ -127,6 +137,7 @@ export function StudyRoomsDashboard({
     const nextTitle = window.prompt("Rename study room", room.title)?.trim();
     if (!nextTitle || nextTitle === room.title) return;
 
+    const endTiming = startInteractionTiming("room-rename");
     startTransition(async () => {
       const previousRooms = rooms;
       setRooms((current) => current.map((item) => (item.id === room.id ? { ...item, title: nextTitle } : item)));
@@ -135,6 +146,7 @@ export function StudyRoomsDashboard({
         setRooms(previousRooms);
         setError(result.error);
       }
+      endTiming();
     });
   };
 
@@ -146,15 +158,18 @@ export function StudyRoomsDashboard({
   const confirmDeleteRoom = () => {
     if (!pendingDeleteRoom) return;
     const room = pendingDeleteRoom;
+    const endTiming = startInteractionTiming("room-delete");
     startTransition(async () => {
       const result = await deleteStudyRoomAction(room.id);
       if (!result.ok) {
         setError(result.error);
+        endTiming();
         return;
       }
       setRooms((current) => current.filter((item) => item.id !== room.id));
       updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
       setPendingDeleteRoom(null);
+      endTiming();
     });
   };
 
@@ -180,6 +195,8 @@ export function StudyRoomsDashboard({
         role="button"
         tabIndex={0}
         onClick={() => openRoom(room.id)}
+        onMouseEnter={() => router.prefetch(`/study/room/${room.id}`)}
+        onFocus={() => router.prefetch(`/study/room/${room.id}`)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();

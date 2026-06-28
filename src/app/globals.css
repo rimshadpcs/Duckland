@@ -4473,6 +4473,11 @@ html[data-theme="obsidian"] .footer .theme-switch {
   gap: 8px;
   padding: 8px;
   position: relative;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease,
+    opacity 160ms ease;
 }
 
 .source-list-item.active {
@@ -4484,6 +4489,11 @@ html[data-theme="obsidian"] .footer .theme-switch {
   opacity: 0.68;
 }
 
+.source-list-item.pending {
+  border-color: #ead28a;
+  box-shadow: inset 0 0 0 1px rgba(245, 197, 66, 0.22);
+}
+
 .source-row-main {
   background: transparent;
   border: 0;
@@ -4492,6 +4502,7 @@ html[data-theme="obsidian"] .footer .theme-switch {
   display: grid;
   gap: 3px;
   min-width: 0;
+  min-height: 54px;
   padding: 0 28px 0 0;
   text-align: left;
 }
@@ -4513,6 +4524,7 @@ html[data-theme="obsidian"] .footer .theme-switch {
   font-size: 0.72rem;
   font-style: normal;
   line-height: 1.35;
+  min-height: 1em;
 }
 
 .source-menu-trigger {
@@ -4542,6 +4554,7 @@ html[data-theme="obsidian"] .footer .theme-switch {
   padding: 6px;
   position: fixed;
   z-index: 80;
+  animation: popover-enter 150ms ease both;
 }
 
 .source-menu-portal button,
@@ -4632,6 +4645,10 @@ html[data-theme="obsidian"] .footer .theme-switch {
   max-height: 220px;
   overflow: hidden;
   padding: 12px;
+  transition:
+    max-height 180ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
 }
 
 .source-formatted-preview.expanded {
@@ -4894,6 +4911,11 @@ html[data-theme="obsidian"] .footer .theme-switch {
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 9px 10px;
   text-align: left;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
 }
 
 .study-context-item:hover,
@@ -4961,6 +4983,36 @@ html[data-theme="obsidian"] .footer .theme-switch {
   max-width: 900px;
   min-height: 100%;
   width: 100%;
+}
+
+.explain-loop-surface.is-switching {
+  min-height: 620px;
+}
+
+.concept-switch-loading {
+  align-items: center;
+  background: #fffaf1;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--muted);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+  min-height: 132px;
+  padding: 16px;
+}
+
+.concept-switch-loading i {
+  background: linear-gradient(90deg, #eee6d8 0%, #fbf6eb 45%, #eee6d8 100%);
+  background-size: 220% 100%;
+  border-radius: 999px;
+  grid-column: 1 / -1;
+  height: 10px;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.concept-switch-loading i:nth-of-type(2) {
+  width: 68%;
 }
 
 .explain-loop-header {
@@ -5042,6 +5094,10 @@ html[data-theme="obsidian"] .footer .theme-switch {
   gap: 12px;
   margin-top: 4px;
   padding: 18px;
+  transition:
+    border-color 150ms ease,
+    box-shadow 180ms ease,
+    opacity 160ms ease;
 }
 
 .explain-answer-card:focus-within {
@@ -5105,11 +5161,21 @@ html[data-theme="obsidian"] .footer .theme-switch {
   font-weight: 900;
   gap: 8px;
   min-height: 44px;
+  min-width: 156px;
   padding: 0 18px;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 160ms ease,
+    transform 120ms ease;
 }
 
 .explain-check-btn:hover {
   background: var(--amber);
+}
+
+.explain-check-btn:active {
+  transform: translateY(1px);
 }
 
 .explain-check-btn:disabled {
@@ -5157,6 +5223,13 @@ html[data-theme="obsidian"] .footer .theme-switch {
   overflow: hidden;
   padding: 14px;
   position: relative;
+  animation: subtle-content-enter 170ms ease both;
+  transition:
+    opacity 160ms ease,
+    transform 180ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease;
 }
 
 .explain-feedback-card::before {
@@ -6552,6 +6625,14 @@ html[data-theme="obsidian"] .add-custom-concept input {
   animation: panel-fade 160ms ease both;
 }
 
+.study-panel-content.is-pending {
+  min-height: 360px;
+}
+
+.local-panel-loading {
+  min-height: 210px;
+}
+
 .insights-card {
   display: flex;
   flex-direction: column;
@@ -6741,6 +6822,32 @@ html[data-theme="obsidian"] .add-custom-concept input {
   margin: 10px 0 14px;
 }
 
+.study-tool-card,
+.flashcard,
+.quiz-option,
+.study-tool-primary,
+.study-tool-secondary,
+.flashcard-actions button,
+.study-panel-tabs button,
+.concept-switcher-trigger,
+.concept-switcher-popover button {
+  transition:
+    opacity 160ms ease,
+    transform 180ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease;
+}
+
+.study-tool-primary:active,
+.study-tool-secondary:active,
+.flashcard-actions button:active,
+.study-panel-tabs button:active,
+.concept-switcher-trigger:active,
+.concept-switcher-popover button:active {
+  transform: translateY(1px);
+}
+
 .study-tool-focus {
   color: var(--amber-dark);
   font-size: 0.72rem;
@@ -6894,6 +7001,17 @@ html[data-theme="obsidian"] .add-custom-concept input {
   }
 }
 
+@keyframes subtle-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes skeleton-shimmer {
   from {
     background-position: 100% 0;
@@ -6907,9 +7025,76 @@ html[data-theme="obsidian"] .add-custom-concept input {
   .message,
   .concept-switcher-popover,
   .study-panel-content,
+  .source-menu-portal,
+  .explain-feedback-card,
+  .concept-switch-loading i,
+  .route-skeleton,
   .skeleton-block span {
     animation: none;
   }
+
+  .source-list-item,
+  .source-formatted-preview,
+  .study-context-item,
+  .explain-answer-card,
+  .explain-check-btn,
+  .study-tool-card,
+  .flashcard,
+  .quiz-option,
+  .study-tool-primary,
+  .study-tool-secondary,
+  .flashcard-actions button,
+  .study-panel-tabs button,
+  .concept-switcher-trigger,
+  .concept-switcher-popover button {
+    transition: none;
+  }
+}
+
+.room-loading-shell,
+.session-loading-shell {
+  min-height: 100vh;
+}
+
+.room-loading-shell {
+  padding: 96px clamp(20px, 5vw, 72px);
+}
+
+.room-loading-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 18px;
+}
+
+.route-skeleton {
+  background: linear-gradient(90deg, #eee6d8 0%, #fbf6eb 45%, #eee6d8 100%);
+  background-size: 220% 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.route-skeleton-line {
+  height: 24px;
+  max-width: 220px;
+}
+
+.route-skeleton-wide {
+  height: 132px;
+  max-width: 760px;
+}
+
+.route-skeleton-hero {
+  height: 168px;
+}
+
+.route-skeleton-card {
+  min-height: 220px;
+}
+
+.route-skeleton-card.compact {
+  min-height: 132px;
 }
 
 .priority-pill {

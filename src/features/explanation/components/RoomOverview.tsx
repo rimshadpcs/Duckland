@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { AppNavbar } from "./AppNavbar";
 import { createCustomRoomConceptAction } from "@src/app/study/actions";
 import { useThemeMode } from "@src/lib/useThemeMode";
@@ -8,6 +9,7 @@ import type { AuthenticatedUser } from "@src/lib/auth";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { StudyRoomRow } from "@src/lib/repositories/study-rooms";
 import type { RoomConceptRow, StudyUnitWithConcepts } from "@src/lib/repositories/study-path";
+import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
 
 type RoomOverviewProps = {
   authUser?: AuthenticatedUser;
@@ -109,6 +111,7 @@ export function RoomOverview({
   loadError,
 }: RoomOverviewProps) {
   const { themeMode, toggleTheme, mounted } = useThemeMode();
+  const router = useRouter();
   const [customConcept, setCustomConcept] = useState("");
   const [error, setError] = useState<string | null>(loadError || null);
   const [isPending, startTransition] = useTransition();
@@ -120,7 +123,12 @@ export function RoomOverview({
 
   const openConcept = (conceptId?: string) => {
     const conceptParam = conceptId ? `&conceptId=${encodeURIComponent(conceptId)}` : "";
-    window.location.href = `/study/session?roomId=${encodeURIComponent(room.id)}${conceptParam}`;
+    const href = `/study/session?roomId=${encodeURIComponent(room.id)}${conceptParam}`;
+    const endTiming = startInteractionTiming("concept-session-open");
+    startTransition(() => {
+      router.push(href);
+      endTiming();
+    });
   };
 
   const createCustomConcept = () => {
@@ -131,19 +139,23 @@ export function RoomOverview({
     }
 
     setError(null);
+    const endTiming = startInteractionTiming("custom-concept-create");
     startTransition(async () => {
       const result = await createCustomRoomConceptAction(room.id, title);
       if (!result.ok) {
         setError(result.error);
+        endTiming();
         return;
       }
 
       if (result.data?.id) {
-        window.location.href = `/study/session?roomId=${encodeURIComponent(room.id)}&conceptId=${encodeURIComponent(result.data.id)}`;
+        router.push(`/study/session?roomId=${encodeURIComponent(room.id)}&conceptId=${encodeURIComponent(result.data.id)}`);
+        endTiming();
         return;
       }
 
-      window.location.href = `/study/session?roomId=${encodeURIComponent(room.id)}`;
+      router.push(`/study/session?roomId=${encodeURIComponent(room.id)}`);
+      endTiming();
     });
   };
 
