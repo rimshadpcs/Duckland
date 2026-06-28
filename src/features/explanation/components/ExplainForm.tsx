@@ -52,6 +52,8 @@ type ConversationMessage = {
 };
 
 type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
+type PostClearIntent = "follow_up_question" | "next_recommendation" | "fresh_recall" | "unknown";
+type PostClearMode = "follow_up" | "fresh_recall" | null;
 
 type ConceptTrackSnapshot = {
   result: ExplanationResult | null;
@@ -69,11 +71,34 @@ type RoomConceptTrack = {
   title: string;
   status: ConceptStatus;
   latestClarityScore: number | null;
+  bestClarityScore?: number | null;
+  latestReviewScore?: number | null;
   startedAt: string | null;
   completedAt: string | null;
   lastActivityAt: string | null;
   snapshot: ConceptTrackSnapshot;
 };
+
+type FollowUpAnswerState = {
+  question: string;
+  answer: string;
+  thinking: string;
+} | null;
+
+type NextRecommendationState = {
+  concept: RoomConceptTrack | null;
+  reason: string;
+  allClear: boolean;
+} | null;
+
+const nextStudyPatterns = [
+  /what should i learn next/i,
+  /what do i study next/i,
+  /what concept should i (learn|study|do) next/i,
+  /what should i focus on/i,
+  /what topic comes next/i,
+  /recommend.*next/i,
+];
 
 type PersistedSessionSnapshot = {
   selectedConcept: string | null;
@@ -387,6 +412,67 @@ function getConceptId(title: string) {
   return slug || "concept";
 }
 
+function classifyPostClearIntent(value: string, mode: PostClearMode): PostClearIntent {
+  const text = value.trim();
+  if (!text) return "unknown";
+  if (mode === "fresh_recall") return "fresh_recall";
+  if (nextStudyPatterns.some((pattern) => pattern.test(text))) return "next_recommendation";
+  return "follow_up_question";
+}
+
+function getConceptTime(value: string | null) {
+  return value ? new Date(value).getTime() || 0 : 0;
+}
+
+function getRecommendedNextConcept(concepts: RoomConceptTrack[], selectedConcept: string | null): NextRecommendationState {
+  const byRecent = (items: RoomConceptTrack[]) =>
+    [...items].sort((a, b) => getConceptTime(b.lastActivityAt) - getConceptTime(a.lastActivityAt));
+
+  const gap = byRecent(concepts.filter((concept) => concept.status === "gap_found"))[0];
+  if (gap) {
+    return {
+      concept: gap,
+      allClear: false,
+      reason: "It has the most recent unresolved gap, so repairing it gives you the fastest progress.",
+    };
+  }
+
+  const improving = byRecent(concepts.filter((concept) => concept.status === "improving"))[0];
+  if (improving) {
+    return {
+      concept: improving,
+      allClear: false,
+      reason: "You are close on this one, so it is a good next target.",
+    };
+  }
+
+  const notStarted = concepts.find((concept) => concept.status === "not_started");
+  if (notStarted) {
+    return {
+      concept: notStarted,
+      allClear: false,
+      reason: selectedConcept
+        ? `It builds on your current progress after ${selectedConcept}.`
+        : "It is the next untouched concept in this room's learning path.",
+    };
+  }
+
+  const inProgress = byRecent(concepts.filter((concept) => concept.status === "in_progress"))[0];
+  if (inProgress) {
+    return {
+      concept: inProgress,
+      allClear: false,
+      reason: "You started this concept already, so finishing it is the cleanest next step.",
+    };
+  }
+
+  return {
+    concept: null,
+    allClear: true,
+    reason: "You've explained every concept in this room clearly.",
+  };
+}
+
 function getConceptStatus(result: ExplanationResult | null, hasHistory: boolean): ConceptStatus {
   if (result?.status === "clear" && !(result.missingClaims?.length)) return "clear";
   if (result && result.status !== "topic_mismatch") {
@@ -635,6 +721,12 @@ export function ExplainForm({
   const [conceptTracks, setConceptTracks] = useState<Record<string, RoomConceptTrack>>({});
   const [isChoosingNextConcept, setIsChoosingNextConcept] = useState(false);
   const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [postClearMode, setPostClearMode] = useState<PostClearMode>(null);
+  const [followUpAnswer, setFollowUpAnswer] = useState<FollowUpAnswerState>(null);
+  const [isAnsweringFollowUp, setIsAnsweringFollowUp] = useState(false);
+  const [nextRecommendation, setNextRecommendation] = useState<NextRecommendationState>(null);
+  const [freshRecallBaseline, setFreshRecallBaseline] = useState<{ concept: string; score: number | null; attempt: string } | null>(null);
+  const [showPreviousAttempt, setShowPreviousAttempt] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const buildCurrentConceptTrack = (
@@ -652,7 +744,15 @@ export function ExplainForm({
       roomId,
       title: concept,
       status,
-      latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : existing?.latestClarityScore ?? null,
+        latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : existing?.latestClarityScore ?? null,
+        bestClarityScore:
+          typeof result?.clarityScore === "number"
+            ? Math.max(existing?.bestClarityScore ?? existing?.latestClarityScore ?? 0, result.clarityScore)
+            : existing?.bestClarityScore ?? existing?.latestClarityScore ?? null,
+        latestReviewScore:
+          postClearMode === "fresh_recall" && typeof result?.clarityScore === "number"
+            ? result.clarityScore
+            : existing?.latestReviewScore ?? null,
       startedAt: existing?.startedAt || now,
       completedAt: status === "clear" ? existing?.completedAt || now : existing?.completedAt || null,
       lastActivityAt: now,
@@ -1304,7 +1404,6 @@ export function ExplainForm({
     const conceptId = getConceptId(selectedConcept);
     const cleanHistory = history.filter((message) => message.kind !== "loading");
     const now = new Date().toISOString();
-    const status = getConceptStatus(result, cleanHistory.length > 0);
     const snapshot: ConceptTrackSnapshot = {
       result,
       history: cleanHistory,
@@ -1317,6 +1416,9 @@ export function ExplainForm({
 
     setConceptTracks((current) => {
       const existing = current[conceptId];
+      const status = postClearMode === "fresh_recall" && !result
+        ? existing?.status || "clear"
+        : getConceptStatus(result, cleanHistory.length > 0);
       const nextTrack: RoomConceptTrack = {
         id: conceptId,
         roomId,
@@ -1346,6 +1448,7 @@ export function ExplainForm({
     previousSocraticQuestions,
     resolvedGaps,
     studyToolsState,
+    postClearMode,
   ]);
 
   useEffect(() => {
@@ -1413,6 +1516,10 @@ export function ExplainForm({
     setStudyToolsState(null);
     setHistory(emptySnapshot.history);
     setIsChoosingNextConcept(false);
+    setPostClearMode(null);
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+    setFreshRecallBaseline(null);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (onRoomLoaded) {
@@ -1423,6 +1530,9 @@ export function ExplainForm({
   const handleChooseAnotherConcept = () => {
     saveCurrentConceptTrack();
     setIsChoosingNextConcept(true);
+    setPostClearMode(null);
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
     setError(null);
     setNotice(null);
     if (!serverConcepts.length && savedSourceMaterial) void mapLearningPath(false);
@@ -1430,14 +1540,33 @@ export function ExplainForm({
 
   const handleAskFollowUp = () => {
     setIsChoosingNextConcept(false);
+    setPostClearMode("follow_up");
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+    setRequest(prev => ({ ...prev, explanation: "" }));
     window.setTimeout(() => {
       composerTextareaRef.current?.focus();
     }, 0);
   };
 
-  const handleReviewThisConcept = () => {
+  const handleTestMyselfAgain = () => {
     setIsChoosingNextConcept(false);
-    setNotice("Quiz and flashcards are ready in the study panel.");
+    setPostClearMode("fresh_recall");
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+    setFreshRecallBaseline({
+      concept: selectedConcept || "this concept",
+      score: typeof result?.clarityScore === "number" ? result.clarityScore : null,
+      attempt: previousExplanations[previousExplanations.length - 1] || "",
+    });
+    setShowPreviousAttempt(false);
+    setResult(null);
+    setNotice(null);
+    setError(null);
+    setRequest(prev => ({ ...prev, explanation: "" }));
+    window.setTimeout(() => {
+      composerTextareaRef.current?.focus();
+    }, 0);
   };
 
   const focusCustomConceptInput = () => {
@@ -1460,10 +1589,58 @@ export function ExplainForm({
     setResolvedGaps([]);
     setStudyToolsState(null);
     setHistory([]);
+    setPostClearMode(null);
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+    setFreshRecallBaseline(null);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
     if (onRoomLoaded) {
       onRoomLoaded(room ? room.title : "Quick explain", room?.description || "");
+    }
+  };
+
+  const showNextRecommendation = () => {
+    const recommendation = getRecommendedNextConcept(panelConcepts, selectedConcept);
+    setNextRecommendation(recommendation);
+    setFollowUpAnswer(null);
+    setPostClearMode("follow_up");
+    setRequest(prev => ({ ...prev, explanation: "" }));
+  };
+
+  const handleFollowUpSubmit = async (question: string) => {
+    if (!selectedConcept || isAnsweringFollowUp) return;
+
+    setIsAnsweringFollowUp(true);
+    setError(null);
+    setNotice(null);
+    setFollowUpAnswer(null);
+    setNextRecommendation(null);
+
+    try {
+      const response = await fetch("/api/follow-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceMaterial: savedSourceMaterial,
+          selectedConcept,
+          question,
+        }),
+      });
+
+      const payload = (await response.json()) as { answer?: string; thinking?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not answer that follow-up.");
+
+      setFollowUpAnswer({
+        question,
+        answer: payload.answer || "The source does not give enough detail to answer that confidently.",
+        thinking: payload.thinking || "Try connecting the question back to the source's central mechanism.",
+      });
+      setRequest(prev => ({ ...prev, explanation: "" }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not answer that follow-up.");
+    } finally {
+      setIsAnsweringFollowUp(false);
     }
   };
 
@@ -1477,6 +1654,20 @@ export function ExplainForm({
     }
 
     const currentExplanation = request.explanation.trim();
+
+    const postClearIntent = isConceptClear || postClearMode
+      ? classifyPostClearIntent(currentExplanation, postClearMode)
+      : "unknown";
+
+    if (postClearIntent === "next_recommendation") {
+      showNextRecommendation();
+      return;
+    }
+
+    if (postClearIntent === "follow_up_question") {
+      await handleFollowUpSubmit(currentExplanation);
+      return;
+    }
 
     if (!selectedConcept) {
       selectConcept(currentExplanation);
@@ -1515,7 +1706,7 @@ export function ExplainForm({
           notes: savedSourceMaterial,
           selectedConcept,
           explanation: currentExplanation,
-          previousExplanations,
+          previousExplanations: postClearMode === "fresh_recall" ? [] : previousExplanations,
           previousMainGaps,
           previousSocraticQuestions,
           resolvedGaps,
@@ -1561,6 +1752,7 @@ export function ExplainForm({
           clarityScore: resultPayload.status === "topic_mismatch" ? null : resultPayload.clarityScore,
           mainGap: readResultField(resultPayload, ["mainGap", "gapSummary"]),
           status: nextStatus,
+          isReviewAttempt: postClearMode === "fresh_recall",
         });
         setServerConcepts((current) =>
           current.map((concept) =>
@@ -1570,6 +1762,16 @@ export function ExplainForm({
                   status: nextStatus,
                   latest_clarity_score:
                     resultPayload.status === "topic_mismatch" ? concept.latest_clarity_score : resultPayload.clarityScore,
+                  best_clarity_score:
+                    resultPayload.status === "topic_mismatch" || typeof resultPayload.clarityScore !== "number"
+                      ? concept.best_clarity_score
+                      : Math.max(concept.best_clarity_score ?? concept.latest_clarity_score ?? 0, resultPayload.clarityScore),
+                  latest_review_score:
+                    postClearMode === "fresh_recall" && typeof resultPayload.clarityScore === "number"
+                      ? resultPayload.clarityScore
+                      : concept.latest_review_score,
+                  last_reviewed_at:
+                    postClearMode === "fresh_recall" ? new Date().toISOString() : concept.last_reviewed_at,
                   main_gap: nextStatus === "clear" ? null : readResultField(resultPayload, ["mainGap", "gapSummary"]) || concept.main_gap,
                   completed_at: nextStatus === "clear" ? new Date().toISOString() : null,
                   last_activity_at: new Date().toISOString(),
@@ -1631,6 +1833,8 @@ export function ExplainForm({
         title: concept.title,
         status: localTrack?.status || concept.status,
         latestClarityScore: localTrack?.latestClarityScore ?? concept.latest_clarity_score,
+        bestClarityScore: localTrack?.bestClarityScore ?? concept.best_clarity_score,
+        latestReviewScore: localTrack?.latestReviewScore ?? concept.latest_review_score,
         startedAt: localTrack?.startedAt || concept.started_at,
         completedAt: localTrack?.completedAt || concept.completed_at,
         lastActivityAt: localTrack?.lastActivityAt || concept.last_activity_at,
@@ -1645,6 +1849,8 @@ export function ExplainForm({
           title: selectedConcept,
           status: getConceptStatus(result, history.length > 0),
           latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : null,
+          bestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : null,
+          latestReviewScore: null,
           startedAt: null,
           completedAt: result?.status === "clear" ? new Date().toISOString() : null,
           lastActivityAt: null,
@@ -1666,11 +1872,30 @@ export function ExplainForm({
     ? "Add study material first..."
     : !selectedConcept
       ? "Enter a concept or topic..."
+      : postClearMode === "follow_up" || (isConceptClear && postClearMode !== "fresh_recall")
+        ? `Ask a question about ${selectedConcept}...`
+      : postClearMode === "fresh_recall"
+        ? `Explain ${selectedConcept} in your own words...`
       : isConceptClear
         ? `Ask a follow-up about ${selectedConcept}...`
       : result
         ? `Re-explain ${selectedConcept}...`
         : `Explain ${selectedConcept}...`;
+  const currentPostClearIntent = (isConceptClear || postClearMode)
+    ? classifyPostClearIntent(request.explanation, postClearMode)
+    : "unknown";
+  const submitButtonLabel = isLoading || isAnsweringFollowUp
+    ? currentPostClearIntent === "follow_up_question" ? "Sending" : "Checking"
+    : currentPostClearIntent === "next_recommendation"
+      ? "Find my next concept"
+      : currentPostClearIntent === "follow_up_question"
+        ? "Send question"
+        : selectedConcept
+          ? "Check explanation"
+          : "Start concept";
+  const showEvaluationFeedback = !followUpAnswer && !nextRecommendation && !isAnsweringFollowUp && (
+    postClearMode !== "fresh_recall" || Boolean(result) || isLoading
+  );
   const assistantFeedback = result ? getAssistantFeedback(result) : "";
   const assistantQuestion = result ? getAssistantQuestion(result) : "";
   const latestMainGap = result ? readResultField(result, ["mainGap", "gapSummary", "gap", "feedback"]) : "";
@@ -1765,6 +1990,12 @@ export function ExplainForm({
                   <strong>{selectedConcept}</strong>
                 </div>
               )}
+              {postClearMode === "fresh_recall" ? (
+                <div className="current-focus-pill recall-note">
+                  <span>Recall mode</span>
+                  <strong>Try without checking your notes</strong>
+                </div>
+              ) : null}
             </div>
             <button className="source-action-btn source-action-btn-primary" type="button" onClick={openAddMaterialSheet}>
               Add material
@@ -2103,7 +2334,72 @@ export function ExplainForm({
                 </div>
               )}
 
-              {(result || isLoading || latestAttempt) && (
+              {postClearMode === "fresh_recall" && selectedConcept ? (
+                <div className="fresh-recall-card">
+                  <span>Fresh recall</span>
+                  <h3>One more time — without looking back.</h3>
+                  <p>Explain {selectedConcept} in your own words.</p>
+                  {freshRecallBaseline?.attempt ? (
+                    <div className="previous-attempt-toggle">
+                      <button type="button" onClick={() => setShowPreviousAttempt((current) => !current)}>
+                        {showPreviousAttempt ? "Hide previous attempt" : "Previous attempt"}
+                      </button>
+                      {showPreviousAttempt ? <p>{freshRecallBaseline.attempt}</p> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {nextRecommendation ? (
+                <div className="next-recommendation-card">
+                  <span>Recommended next</span>
+                  {nextRecommendation.allClear ? (
+                    <>
+                      <h3>You’ve explained every concept in this room clearly.</h3>
+                      <p>{nextRecommendation.reason}</p>
+                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
+                        Choose a concept to revisit
+                      </button>
+                    </>
+                  ) : nextRecommendation.concept ? (
+                    <>
+                      <h3>{nextRecommendation.concept.title}</h3>
+                      <em>{nextRecommendation.concept.status.replace("_", " ")}</em>
+                      <p>{nextRecommendation.reason}</p>
+                      <div>
+                        <button type="button" className="source-action-btn source-action-btn-primary" onClick={() => selectConcept(nextRecommendation.concept!.title)}>
+                          Start explaining {nextRecommendation.concept.title}
+                        </button>
+                        <button type="button" className="source-action-btn" onClick={handleChooseAnotherConcept}>
+                          See all concepts
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {followUpAnswer ? (
+                <div className="follow-up-answer-card">
+                  <span>Follow-up answer</span>
+                  <h3>Answer</h3>
+                  <p>{followUpAnswer.answer}</p>
+                  <h4>Try thinking about it this way</h4>
+                  <p>{followUpAnswer.thinking}</p>
+                </div>
+              ) : null}
+
+              {postClearMode === "fresh_recall" && freshRecallBaseline && result ? (
+                <div className={cn("review-status-card", isConceptClear ? "is-clear" : "is-improving")}>
+                  <strong>{isConceptClear ? "Strongly understood" : "Previously clear · Latest review: Improving"}</strong>
+                  <span>
+                    First clear explanation: {freshRecallBaseline.score ?? "--"}
+                    {typeof result.clarityScore === "number" ? ` · Fresh recall: ${result.clarityScore}` : ""}
+                  </span>
+                </div>
+              ) : null}
+
+              {showEvaluationFeedback && (result || isLoading || latestAttempt) && (
                 <div className="explain-feedback-grid" aria-label="Latest feedback">
                   <article className={cn("explain-feedback-card missing-link", isLoading && "loading-pulse")}>
                     <span>{isConceptClear ? "Clear" : result?.status === "topic_mismatch" ? "Topic mismatch" : "Missing link"}</span>
@@ -2136,11 +2432,13 @@ export function ExplainForm({
                 </div>
               )}
 
+              {showEvaluationFeedback ? (
               <div className="explain-next-step">
                 <span />
                 <p>Use the feedback above to rebuild the answer below.</p>
                 <span />
               </div>
+              ) : null}
 
               {isConceptClear && selectedConcept ? (
                 <div className="concept-complete-card explain-complete-card">
@@ -2148,11 +2446,7 @@ export function ExplainForm({
                   <div>
                     <h3>You can explain {selectedConcept} clearly.</h3>
                     <p>
-                      {result.clarityScore === 100
-                        ? "You included the complete core mechanism from the material."
-                        : result.chatMessage && !/consider adding|try again/i.test(result.chatMessage)
-                          ? result.chatMessage
-                          : "You can explain this clearly."}
+                      Clarity {result.clarityScore}. Want to make it stick? Try explaining it once more without looking back.
                     </p>
                     <div className="concept-complete-chips">
                       <span>Clarity {result.clarityScore}</span>
@@ -2163,8 +2457,8 @@ export function ExplainForm({
                       <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
                         Choose another concept
                       </button>
-                      <button type="button" className="source-action-btn" onClick={handleReviewThisConcept}>
-                        Review this concept
+                      <button type="button" className="source-action-btn" onClick={handleTestMyselfAgain}>
+                        Test myself again
                       </button>
                       <button type="button" className="source-action-btn" onClick={handleAskFollowUp}>
                         Ask a follow-up
@@ -2177,7 +2471,15 @@ export function ExplainForm({
               <div className={cn("explain-answer-card", isLoading && "loading")}>
                 <div className="composer-label-icon">
                   <MessageSquareText size={14} />
-                  <span>{selectedConcept ? "Your explanation" : "Concept to study"}</span>
+                  <span>
+                    {currentPostClearIntent === "follow_up_question" || postClearMode === "follow_up" || (isConceptClear && postClearMode !== "fresh_recall")
+                      ? "FOLLOW-UP QUESTION"
+                      : postClearMode === "fresh_recall"
+                        ? "FRESH RECALL"
+                        : selectedConcept
+                          ? "Your explanation"
+                          : "Concept to study"}
+                  </span>
                 </div>
                 <textarea
                   ref={composerTextareaRef}
@@ -2191,7 +2493,11 @@ export function ExplainForm({
                 <div className="explain-answer-actions">
                   <p>
                     <span className="kb-shortcut">Cmd + Enter</span>
-                    {selectedConcept ? " to check your explanation" : " to start this concept"}
+                    {currentPostClearIntent === "follow_up_question"
+                      ? " to send your question"
+                      : isConceptClear && postClearMode !== "fresh_recall"
+                        ? " Ask about this concept, or ask what to learn next."
+                        : selectedConcept ? " to check your explanation" : " to start this concept"}
                   </p>
                   <div>
                     <button
@@ -2205,17 +2511,15 @@ export function ExplainForm({
                     <button
                       className="explain-check-btn"
                       onClick={handleSubmit}
-                      disabled={isLoading || !request.explanation.trim() || !hasSavedMaterial}
+                      disabled={isLoading || isAnsweringFollowUp || !request.explanation.trim() || !hasSavedMaterial}
                     >
-                      {isLoading ? (
+                      {isLoading || isAnsweringFollowUp ? (
                         <>
                           <Loader2 className="icon-spin" size={18} />
-                          Checking
+                          {isAnsweringFollowUp ? "Sending" : "Checking"}
                         </>
-                      ) : selectedConcept ? (
-                        "Check explanation"
                       ) : (
-                        "Start concept"
+                        submitButtonLabel
                       )}
                     </button>
                   </div>

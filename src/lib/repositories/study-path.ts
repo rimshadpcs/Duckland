@@ -189,6 +189,7 @@ export async function updateRoomConceptProgress(
     clarityScore?: number | null;
     mainGap?: string | null;
     status?: ConceptStatus | null;
+    isReviewAttempt?: boolean;
   },
 ) {
   const { supabase, userId } = await getAuthenticatedUserId();
@@ -196,15 +197,47 @@ export async function updateRoomConceptProgress(
   const score = typeof input.clarityScore === "number" ? Math.max(0, Math.min(100, Math.round(input.clarityScore))) : null;
   const status = input.status || (score == null ? "in_progress" : score >= 90 ? "clear" : score >= 60 ? "improving" : "gap_found");
 
+  const { data: existingConcept, error: loadError } = await supabase
+    .from("room_concepts")
+    .select("best_clarity_score, latest_clarity_score")
+    .eq("id", conceptId)
+    .eq("room_id", roomId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (loadError) {
+    if (isMissingStudyPathTableError(loadError)) return null;
+    throw new Error(getErrorMessage("Could not load concept progress", loadError));
+  }
+
+  const previousBest = Math.max(
+    existingConcept?.best_clarity_score ?? 0,
+    existingConcept?.latest_clarity_score ?? 0,
+  );
+  const nextBest = score == null ? previousBest || null : Math.max(previousBest, score);
+
+  const update: Database["public"]["Tables"]["room_concepts"]["Update"] = {
+    status,
+    latest_clarity_score: score,
+    best_clarity_score: nextBest,
+    main_gap: status === "clear" ? null : input.mainGap || null,
+    last_activity_at: now,
+  };
+
+  if (status === "clear") {
+    update.completed_at = now;
+  } else if (!input.isReviewAttempt) {
+    update.completed_at = null;
+  }
+
+  if (input.isReviewAttempt) {
+    update.latest_review_score = score;
+    update.last_reviewed_at = now;
+  }
+
   const { data, error } = await supabase
     .from("room_concepts")
-    .update({
-      status,
-      latest_clarity_score: score,
-      main_gap: status === "clear" ? null : input.mainGap || null,
-      completed_at: status === "clear" ? now : null,
-      last_activity_at: now,
-    })
+    .update(update)
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .eq("user_id", userId)

@@ -287,6 +287,7 @@ export async function updateRoomConceptProgressAction(
     clarityScore?: number | null;
     mainGap?: string | null;
     status?: ConceptStatus | null;
+    isReviewAttempt?: boolean;
   },
 ): Promise<StudyActionResult> {
   try {
