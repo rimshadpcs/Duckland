@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { GapResultPanel } from "@src/features/gap-analysis";
 import { CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react";
 import {
@@ -91,6 +92,18 @@ type NextRecommendationState = {
   allClear: boolean;
 } | null;
 
+type SourceMenuAction = {
+  label: string;
+  destructive?: boolean;
+  onSelect: () => void;
+};
+
+type SourceMenuPosition = {
+  top: number;
+  left: number;
+  transformOrigin: string;
+};
+
 const nextStudyPatterns = [
   /what should i learn next/i,
   /what do i study next/i,
@@ -99,6 +112,148 @@ const nextStudyPatterns = [
   /what topic comes next/i,
   /recommend.*next/i,
 ];
+
+function getSourceMenuPosition(trigger: HTMLElement): SourceMenuPosition | null {
+  const rect = trigger.getBoundingClientRect();
+  const viewportPadding = 8;
+  const menuWidth = 210;
+  const estimatedMenuHeight = 180;
+  const gap = 8;
+  const belowTop = rect.bottom + gap;
+  const aboveTop = rect.top - estimatedMenuHeight - gap;
+  const hasRoomBelow = belowTop + estimatedMenuHeight <= window.innerHeight - viewportPadding;
+  const top = hasRoomBelow ? belowTop : Math.max(viewportPadding, aboveTop);
+  const preferredLeft = rect.right - menuWidth;
+  const left = Math.min(
+    window.innerWidth - menuWidth - viewportPadding,
+    Math.max(viewportPadding, preferredLeft),
+  );
+
+  return {
+    top,
+    left,
+    transformOrigin: hasRoomBelow ? "top right" : "bottom right",
+  };
+}
+
+function SourceActionMenuPortal({
+  triggerElement,
+  actions,
+  onClose,
+}: {
+  triggerElement: HTMLButtonElement | null;
+  actions: SourceMenuAction[];
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [position, setPosition] = useState<SourceMenuPosition | null>(null);
+
+  useEffect(() => {
+    const updatePosition = () => {
+      const trigger = triggerElement;
+      if (!trigger) {
+        onClose();
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      if (
+        rect.bottom < 0 ||
+        rect.top > window.innerHeight ||
+        rect.right < 0 ||
+        rect.left > window.innerWidth
+      ) {
+        onClose();
+        return;
+      }
+
+      setPosition(getSourceMenuPosition(trigger));
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [onClose, triggerElement]);
+
+  useEffect(() => {
+    itemRefs.current[0]?.focus();
+
+    const handlePointerDown = (event: MouseEvent | PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menuRef.current?.contains(target) || triggerElement?.contains(target)) return;
+      onClose();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [onClose, triggerElement]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const currentIndex = itemRefs.current.findIndex((item) => item === document.activeElement);
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      triggerElement?.focus();
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % actions.length;
+      itemRefs.current[nextIndex]?.focus();
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const nextIndex = currentIndex <= 0 ? actions.length - 1 : currentIndex - 1;
+      itemRefs.current[nextIndex]?.focus();
+      return;
+    }
+  };
+
+  if (!position || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="source-menu-portal"
+      role="menu"
+      style={{
+        top: position.top,
+        left: position.left,
+        transformOrigin: position.transformOrigin,
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      {actions.map((action, index) => (
+        <button
+          key={action.label}
+          ref={(element) => {
+            itemRefs.current[index] = element;
+          }}
+          type="button"
+          role="menuitem"
+          className={cn(action.destructive && "destructive")}
+          onClick={() => {
+            action.onSelect();
+            onClose();
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
 
 type PersistedSessionSnapshot = {
   selectedConcept: string | null;
@@ -1286,6 +1441,7 @@ export function ExplainForm({
   const conversationRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const submitLockRef = useRef(false);
+  const sourceMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     const persistedSession = parsePersistedSession(initialSessionState) || readPersistedSession(sessionStorageKey, roomId);
@@ -2065,23 +2221,42 @@ export function ExplainForm({
                     <em>{item.is_active ? "Included in learning path" : "Excluded from learning path"}</em>
                   </button>
                   <button
+                    ref={(element) => {
+                      sourceMenuTriggerRefs.current[item.id] = element;
+                    }}
                     type="button"
                     className="source-menu-trigger"
                     aria-label={`Actions for ${getSourceDisplayTitle(item)}`}
+                    aria-haspopup="menu"
                     aria-expanded={openSourceMenuId === item.id}
                     onClick={() => setOpenSourceMenuId((current) => current === item.id ? null : item.id)}
                   >
                     ...
                   </button>
                   {openSourceMenuId === item.id ? (
-                    <div className="source-menu" role="menu">
-                      <button type="button" role="menuitem" onClick={() => { openSourcePreview(item.id); setOpenSourceMenuId(null); }}>View source</button>
-                      <button type="button" role="menuitem" onClick={() => startRenameSource(item)}>Rename</button>
-                      <button type="button" role="menuitem" onClick={() => handleToggleSourceActive(item)}>
-                        {item.is_active ? "Exclude from learning path" : "Include in learning path"}
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => { setPendingDeleteSourceId(item.id); setOpenSourceMenuId(null); }}>Delete</button>
-                    </div>
+                    <SourceActionMenuPortal
+                      triggerElement={sourceMenuTriggerRefs.current[item.id]}
+                      onClose={() => setOpenSourceMenuId(null)}
+                      actions={[
+                        {
+                          label: "View source",
+                          onSelect: () => openSourcePreview(item.id),
+                        },
+                        {
+                          label: "Rename",
+                          onSelect: () => startRenameSource(item),
+                        },
+                        {
+                          label: item.is_active ? "Exclude from learning path" : "Include in learning path",
+                          onSelect: () => handleToggleSourceActive(item),
+                        },
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: () => setPendingDeleteSourceId(item.id),
+                        },
+                      ]}
+                    />
                   ) : null}
                   {renamingSourceId === item.id ? (
                     <div className="source-inline-edit">

@@ -4530,21 +4530,21 @@ html[data-theme="obsidian"] .footer .theme-switch {
   width: 24px;
 }
 
-.source-menu {
+.source-menu-portal {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 14px 30px rgba(31, 31, 29, 0.12);
   display: grid;
   gap: 2px;
+  max-width: 240px;
+  min-width: 190px;
   padding: 6px;
-  position: absolute;
-  right: 8px;
-  top: 36px;
-  z-index: 5;
+  position: fixed;
+  z-index: 80;
 }
 
-.source-menu button,
+.source-menu-portal button,
 .source-inline-edit button,
 .source-delete-confirm button {
   background: transparent;
@@ -4553,16 +4553,28 @@ html[data-theme="obsidian"] .footer .theme-switch {
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   font-weight: 800;
-  padding: 7px 9px;
+  min-height: 40px;
+  padding: 9px 10px;
   text-align: left;
 }
 
-.source-menu button:hover,
+.source-menu-portal button:hover,
+.source-menu-portal button:focus-visible,
 .source-inline-edit button:hover,
 .source-delete-confirm button:hover {
   background: #fff4c8;
+  outline: none;
+}
+
+.source-menu-portal button.destructive {
+  color: #8f1d12;
+}
+
+.source-menu-portal button.destructive:hover,
+.source-menu-portal button.destructive:focus-visible {
+  background: #fff0ed;
 }
 
 .source-delete-confirm {
@@ -5266,7 +5278,7 @@ html[data-theme="obsidian"] .pdf-file-picker,
 html[data-theme="obsidian"] .pdf-selected-file,
 html[data-theme="obsidian"] .pdf-source-summary,
 html[data-theme="obsidian"] .source-list-item,
-html[data-theme="obsidian"] .source-menu,
+html[data-theme="obsidian"] .source-menu-portal,
 html[data-theme="obsidian"] .study-context-item,
 html[data-theme="obsidian"] .study-weakspot-card,
 html[data-theme="obsidian"] .explain-loop-score,
@@ -5368,7 +5380,7 @@ html[data-theme="obsidian"] .fresh-recall-card h3,
 html[data-theme="obsidian"] .follow-up-answer-card h3,
 html[data-theme="obsidian"] .next-recommendation-card h3,
 html[data-theme="obsidian"] .review-status-card strong,
-html[data-theme="obsidian"] .source-menu button,
+html[data-theme="obsidian"] .source-menu-portal button,
 html[data-theme="obsidian"] .source-inline-edit button,
 html[data-theme="obsidian"] .source-delete-confirm button {
   color: #f7f1df;
@@ -5403,7 +5415,8 @@ html[data-theme="obsidian"] .explain-next-step p {
 
 html[data-theme="obsidian"] .study-context-item:hover,
 html[data-theme="obsidian"] .study-context-item.active,
-html[data-theme="obsidian"] .source-menu button:hover,
+html[data-theme="obsidian"] .source-menu-portal button:hover,
+html[data-theme="obsidian"] .source-menu-portal button:focus-visible,
 html[data-theme="obsidian"] .source-inline-edit button:hover,
 html[data-theme="obsidian"] .source-delete-confirm button:hover {
   background: #312817;
