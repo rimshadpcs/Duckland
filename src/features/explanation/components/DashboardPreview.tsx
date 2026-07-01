@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FileText, Link2, Mic, Type, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, FileText, Link2, Loader2, Mic, Type, Upload, X } from "lucide-react";
 import { Duck } from "./Duck";
 
 type DashboardPreviewProps = {
@@ -41,6 +41,20 @@ const panelClass = (panel: "source" | "conversation" | "insights", activeStep: n
 };
 
 type StudyToolTab = "insights" | "quiz" | "flashcards";
+type VoiceDemoStatus = "idle" | "recording" | "transcribing" | "ready_to_edit" | "error";
+
+type DemoEvaluation = {
+  clarityScore: number;
+  scoreLabel: string;
+  summary: string;
+  missingLink: string;
+  followUpQuestion: string;
+  hint: string;
+};
+
+const demoTopic = "Krebs cycle and oxygen";
+const demoQuestion = "Explain why the Krebs cycle needs oxygen, even though oxygen is not directly used in the cycle.";
+const waveformBarCount = 34;
 
 const studyToolTabs: { id: StudyToolTab; label: string }[] = [
   { id: "insights", label: "Feedback" },
@@ -48,14 +62,267 @@ const studyToolTabs: { id: StudyToolTab; label: string }[] = [
   { id: "flashcards", label: "Flashcards" },
 ];
 
+function formatRecordingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60).toString();
+  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function appendTranscript(existingText: string, transcript: string) {
+  const existing = existingText.trim();
+  const next = transcript.trim();
+  if (!existing) return next;
+  if (!next) return existing;
+  return `${existing}\n\n${next}`;
+}
+
 export function DashboardPreview({ activeStep = 0, compact = false }: DashboardPreviewProps) {
   const [activeToolTab, setActiveToolTab] = useState<StudyToolTab>(activeStep === 5 ? "quiz" : "insights");
+  const [voiceStatus, setVoiceStatus] = useState<VoiceDemoStatus>("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [demoTranscript, setDemoTranscript] = useState<string | null>(null);
+  const [demoEvaluation, setDemoEvaluation] = useState<DemoEvaluation | null>(null);
+  const [isDemoEvaluating, setIsDemoEvaluating] = useState(false);
+  const [voiceDraft, setVoiceDraft] = useState("");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [waveformBars, setWaveformBars] = useState<number[]>(() => Array.from({ length: waveformBarCount }, () => 0.18));
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const recordingTimerRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number>(0);
+  const shouldSubmitRecordingRef = useRef(false);
+  const isSubmittingVoiceRef = useRef(false);
   const status = statusLabels[activeStep] ?? statusLabels[0];
   const showFeedback = activeStep >= 2;
+  const hasVoiceDemo = Boolean(demoTranscript || demoEvaluation || voiceStatus !== "idle");
 
   useEffect(() => {
     setActiveToolTab(activeStep === 5 ? "quiz" : "insights");
   }, [activeStep]);
+
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
+      cleanupRecording();
+    };
+  }, []);
+
+  const cleanupRecording = () => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    setRecordingSeconds(0);
+    setWaveformBars(Array.from({ length: waveformBarCount }, () => 0.18));
+  };
+
+  const startLocalAudioMeter = (stream: MediaStream) => {
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const audioContext = new AudioContextCtor();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.72;
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+    audioContextRef.current = audioContext;
+    analyserRef.current = analyser;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data);
+      const bucketSize = Math.max(1, Math.floor(data.length / waveformBarCount));
+      const nextBars = Array.from({ length: waveformBarCount }, (_, index) => {
+        const start = index * bucketSize;
+        const bucket = data.slice(start, start + bucketSize);
+        const average = bucket.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.length);
+        return Math.max(0.14, Math.min(1, average / 150));
+      });
+      setWaveformBars(nextBars);
+      animationFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    tick();
+    recordingStartedAtRef.current = Date.now();
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000));
+    }, 250);
+  };
+
+  const submitVoiceRecording = async (audioBlob: Blob) => {
+    if (isSubmittingVoiceRef.current) return;
+    isSubmittingVoiceRef.current = true;
+    setVoiceError(null);
+
+    try {
+      if (audioBlob.size < 512) {
+        throw new Error("Recording was empty. Try speaking for a little longer.");
+      }
+
+      setVoiceStatus("transcribing");
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "feynduck-demo.webm");
+      const transcribeResponse = await fetch("/api/demo-transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const transcribePayload = (await transcribeResponse.json()) as { transcript?: string; error?: string };
+
+      if (!transcribeResponse.ok || !transcribePayload.transcript) {
+        throw new Error(transcribePayload.error || "Feynduck could not transcribe that recording.");
+      }
+
+      const transcript = transcribePayload.transcript.trim();
+      setVoiceDraft((current) => appendTranscript(current, transcript));
+      setVoiceStatus("ready_to_edit");
+    } catch (error) {
+      setVoiceStatus("error");
+      setVoiceError(error instanceof Error ? error.message : "Voice explanation failed. Try again.");
+    } finally {
+      isSubmittingVoiceRef.current = false;
+    }
+  };
+
+  const evaluateDemoAnswer = async () => {
+    const transcript = voiceDraft.trim();
+    if (!transcript || isDemoEvaluating) return;
+
+    try {
+      setIsDemoEvaluating(true);
+      setVoiceError(null);
+      setDemoTranscript(transcript);
+      const evaluateResponse = await fetch("/api/demo-evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          topic: demoTopic,
+          question: demoQuestion,
+        }),
+      });
+      const evaluationPayload = (await evaluateResponse.json()) as Partial<DemoEvaluation> & { error?: string };
+
+      if (!evaluateResponse.ok || typeof evaluationPayload.clarityScore !== "number") {
+        throw new Error(evaluationPayload.error || "Feynduck could not evaluate that explanation.");
+      }
+
+      setDemoEvaluation({
+        clarityScore: evaluationPayload.clarityScore,
+        scoreLabel: evaluationPayload.scoreLabel || "Getting there",
+        summary: evaluationPayload.summary || "Feynduck found the main gap in your explanation.",
+        missingLink: evaluationPayload.missingLink || "The missing link is how oxygen keeps NAD+ regeneration going.",
+        followUpQuestion: evaluationPayload.followUpQuestion || "What happens to NADH when oxygen is unavailable?",
+        hint: evaluationPayload.hint || "Think about where NADH normally delivers its electrons.",
+      });
+      setActiveToolTab("insights");
+      setVoiceStatus("idle");
+    } catch (error) {
+      setVoiceError(error instanceof Error ? error.message : "Voice evaluation failed. Try again.");
+    } finally {
+      setIsDemoEvaluating(false);
+    }
+  };
+
+  const stopRecording = (shouldSubmit: boolean) => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    shouldSubmitRecordingRef.current = shouldSubmit;
+    recorder.stop();
+  };
+
+  const cancelRecording = () => {
+    if (voiceStatus === "recording") {
+      stopRecording(false);
+      return;
+    }
+
+    cleanupRecording();
+    setVoiceStatus("idle");
+  };
+
+  const confirmRecording = () => {
+    if (voiceStatus !== "recording") return;
+    stopRecording(true);
+    setVoiceStatus("transcribing");
+  };
+
+  const startRecording = async () => {
+    if (voiceStatus === "recording") {
+      return;
+    }
+
+    if (voiceStatus === "transcribing" || isDemoEvaluating) return;
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceStatus("error");
+      setVoiceError("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      setVoiceStatus("recording");
+      setVoiceError(null);
+      setDemoTranscript(null);
+      setDemoEvaluation(null);
+      audioChunksRef.current = [];
+      shouldSubmitRecordingRef.current = false;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      startLocalAudioMeter(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        cleanupRecording();
+        setVoiceStatus("error");
+        setVoiceError("Recording failed. Try again.");
+      };
+      recorder.onstop = () => {
+        const type = recorder.mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type });
+        const shouldSubmit = shouldSubmitRecordingRef.current;
+        cleanupRecording();
+        if (shouldSubmit) {
+          void submitVoiceRecording(blob);
+        } else {
+          setVoiceStatus("idle");
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+    } catch (error) {
+      cleanupRecording();
+      setVoiceStatus("error");
+      const isDenied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
+      setVoiceError(isDenied ? "Microphone permission was denied." : "Could not start the microphone.");
+    }
+  };
 
   const renderComposer = ({
     placeholder,
@@ -69,31 +336,129 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     disabled?: boolean;
     helper?: string;
     secondary?: boolean;
-  }) => (
+  }) => {
+    const isBusy = voiceStatus === "transcribing" || isDemoEvaluating;
+    const isRecording = voiceStatus === "recording";
+    const isReadyToEdit = voiceStatus === "ready_to_edit" && Boolean(voiceDraft.trim());
+    const isVoiceActive = isRecording || voiceStatus === "transcribing";
+    const voiceStatusLabel = voiceStatus === "transcribing" ? "Transcribing" : "Listening";
+    const helperText = voiceError ||
+      (isReadyToEdit
+        ? "Transcript ready. Edit it, add another voice note, or check it."
+        : helper);
+
+    return (
     <div
       className={[
         "landing-composer",
         "is-multiline",
         disabled ? "is-disabled" : "is-active voice-enabled",
+        isVoiceActive && !disabled ? "is-recording" : "",
+        isReadyToEdit && !disabled ? "is-ready-to-check" : "",
         secondary ? "is-secondary" : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <button className="landing-mic-button" type="button" aria-label={micLabel} disabled={disabled}>
-        <Mic size={16} />
+      <button
+        className="landing-mic-button"
+        type="button"
+        aria-label={isRecording ? "Stop recording" : micLabel}
+        aria-pressed={isRecording}
+        disabled={disabled || isVoiceActive}
+        onClick={startRecording}
+      >
+        {isBusy ? <Loader2 className="icon-spin" size={16} /> : <Mic size={16} />}
       </button>
       <div className="landing-composer-copy">
-        <textarea aria-label={placeholder} disabled={disabled} placeholder={placeholder} rows={2} />
-        {helper ? <small>{helper}</small> : null}
+        <textarea
+          key={isVoiceActive ? "voice" : "idle"}
+          aria-label={placeholder}
+          disabled={disabled || isVoiceActive || isDemoEvaluating}
+          value={voiceDraft}
+          onChange={(event) => setVoiceDraft(event.target.value)}
+          placeholder={
+            isRecording && !disabled
+              ? "Listening..."
+              : voiceStatus === "transcribing" && !disabled
+                ? "Transcribing your explanation..."
+                : isDemoEvaluating && !disabled
+                  ? "Feynduck is checking the missing link..."
+                  : placeholder
+          }
+          rows={2}
+        />
+        {isVoiceActive ? (
+          <div className="voice-inline-status" aria-live="polite">
+            <span className="voice-inline-dot" />
+            <small>{voiceStatusLabel} · {formatRecordingTime(recordingSeconds)}</small>
+          </div>
+        ) : helperText ? <small>{helperText}</small> : null}
+        {isVoiceActive ? (
+          <div className="voice-inline-waveform" aria-hidden="true">
+            {waveformBars.slice(0, 18).map((level, index) => (
+              <span key={index} style={{ transform: `scaleY(${0.28 + level})` }} />
+            ))}
+          </div>
+        ) : null}
       </div>
-      <button type="button" aria-label="Send explanation" disabled={disabled}>
-        ↑
-      </button>
+      {isVoiceActive ? (
+        <div className="voice-inline-actions">
+          <button type="button" aria-label="Cancel voice explanation" disabled={isBusy} onClick={cancelRecording}>
+            <X size={14} />
+          </button>
+          <button type="button" aria-label="Use this voice explanation" disabled={!isRecording || isBusy} onClick={confirmRecording}>
+            {isBusy ? <Loader2 className="icon-spin" size={14} /> : <Check size={15} />}
+          </button>
+        </div>
+      ) : (
+        <button
+          className={isReadyToEdit ? "landing-check-button" : ""}
+          type="button"
+          aria-label="Send explanation"
+          disabled={disabled || isDemoEvaluating || !voiceDraft.trim()}
+          onClick={evaluateDemoAnswer}
+        >
+          {isDemoEvaluating ? <Loader2 className="icon-spin" size={14} /> : isReadyToEdit ? "Check" : "↑"}
+        </button>
+      )}
     </div>
-  );
+    );
+  };
 
   const renderInsightsPanel = () => {
+    if (hasVoiceDemo) {
+      const isPending = voiceStatus === "recording" || voiceStatus === "transcribing" || isDemoEvaluating;
+
+      return (
+        <>
+          <div className={`landing-insight-card missing-link ${isPending ? "pending" : ""}`}>
+            <span>Missing link</span>
+            <p>
+              {demoEvaluation?.missingLink ||
+                (voiceStatus === "recording"
+                  ? "Record your explanation, then Feynduck will look for the missing causal link."
+                  : voiceStatus === "ready_to_edit"
+                    ? "Review the transcript, edit it if needed, then send it to Feynduck."
+                  : "Looking for the NADH, electron transport chain, and NAD+ regeneration link.")}
+            </p>
+          </div>
+          <div className={`landing-insight-card why ${isPending ? "pending" : ""}`}>
+            <span>What&apos;s unclear</span>
+            <p>{demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops."}</p>
+          </div>
+          <div className={`landing-insight-card socratic ${isPending ? "pending" : ""}`}>
+            <span>Socratic follow-up</span>
+            <p>{demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis."}</p>
+          </div>
+          <div className={`landing-score-card compact ${demoEvaluation ? "is-active" : "pending"}`}>
+            <span>{demoEvaluation?.scoreLabel || "Clarity"}</span>
+            <strong>{demoEvaluation?.clarityScore ?? "--"}</strong>
+          </div>
+        </>
+      );
+    }
+
     if (activeStep === 0) {
       return (
         <>
@@ -208,6 +573,53 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     );
   };
 
+  const renderVoiceDemoConversation = () => (
+    <div className="landing-chat-panel voice-demo-chat">
+      <div className="landing-chat-scroll" aria-live="polite">
+        <div className="landing-message duck-message">
+          <Duck />
+          <p>{demoQuestion}</p>
+        </div>
+        {voiceStatus === "recording" ? (
+          <div className="landing-context-chip is-recording">Recording... speak your explanation, then confirm.</div>
+        ) : null}
+        {voiceStatus === "ready_to_edit" && voiceDraft.trim() ? (
+          <div className="landing-context-chip is-ready">Transcript ready. You can edit it or add another sentence.</div>
+        ) : null}
+        {demoTranscript ? (
+          <div className="landing-message student-message is-active">
+            <span>You</span>
+            <p>{demoTranscript}</p>
+          </div>
+        ) : null}
+        {voiceStatus === "transcribing" || isDemoEvaluating ? (
+          <div className="landing-message duck-message">
+            <Duck />
+            <p>{voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the missing link..."}</p>
+          </div>
+        ) : null}
+        {demoEvaluation ? (
+          <div className="landing-message duck-message">
+            <Duck />
+            <div className="landing-message-stack">
+              <p>{demoEvaluation.summary}</p>
+              <div className="landing-try-card">
+                <span>Try this</span>
+                <p>{demoEvaluation.followUpQuestion}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {voiceError ? <div className="landing-context-chip is-error">{voiceError}</div> : null}
+      </div>
+      {renderComposer({
+        placeholder: "Explain why the Krebs cycle needs oxygen...",
+        micLabel: "Explain out loud",
+        helper: voiceError || "Use your voice to try the Krebs cycle demo.",
+      })}
+    </div>
+  );
+
   const renderQuizPanel = () => (
     <div className="landing-tool-panel">
       <div className="landing-tool-kicker">Question 1 of 3</div>
@@ -257,16 +669,33 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
             <strong>Feynduck</strong>
           </div>
           <div className="landing-dashboard-room breadcrumb">
-            <span>Asthma</span>
-            <b>Role of eosinophils</b>
+            <span>{hasVoiceDemo ? "Biology" : "Asthma"}</span>
+            <b>{hasVoiceDemo ? "Krebs cycle" : "Role of eosinophils"}</b>
           </div>
-          <div className="landing-dashboard-status">{status}</div>
+          <div className="landing-dashboard-status">
+            {voiceStatus === "recording"
+              ? "Recording"
+              : voiceStatus === "transcribing"
+                ? "Transcribing"
+                : isDemoEvaluating
+                  ? "Analysing"
+                  : voiceStatus === "ready_to_edit"
+                    ? "Transcript ready"
+                    : demoEvaluation ? "Missing link found" : status}
+          </div>
         </div>
 
         <div className="landing-dashboard-body">
           <aside className={panelClass("source", activeStep)}>
             <div className="landing-panel-title">Source material</div>
-            {activeStep === 0 ? (
+            {hasVoiceDemo ? (
+              <div className="landing-source-card">
+                <span>Source notes</span>
+                <p>Oxygen is not directly consumed in the Krebs cycle.</p>
+                <p>NADH delivers electrons to the electron transport chain, where oxygen acts as the final electron acceptor.</p>
+                <p>Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated and the Krebs cycle cannot continue.</p>
+              </div>
+            ) : activeStep === 0 ? (
               <div className="landing-source-import">
                 <div className="landing-source-import-copy">
                   <h3>Add source material</h3>
@@ -351,7 +780,9 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
 
           <section className={panelClass("conversation", activeStep)}>
             <div className="landing-panel-title">Conversation</div>
-            {activeStep === 0 ? (
+            {hasVoiceDemo ? (
+              renderVoiceDemoConversation()
+            ) : activeStep === 0 ? (
               <>
                 <div className="landing-empty-state">
                   <FileText size={22} />

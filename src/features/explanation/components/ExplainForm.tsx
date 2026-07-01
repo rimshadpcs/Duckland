@@ -3,7 +3,7 @@
 import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { GapResultPanel } from "@src/features/gap-analysis";
-import { CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react";
+import { Check, CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen, X } from "lucide-react";
 import {
   clearRoomSessionStateAction,
   deleteRoomSourceAction,
@@ -34,6 +34,7 @@ const initialRequest: ExplanationRequest = {
 
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
 const PDF_UNREADABLE_MESSAGE = "We couldn't read this PDF. Try a different file or paste the text instead.";
+const VOICE_WAVEFORM_BAR_COUNT = 34;
 
 const conceptQuestionMessage: ConversationMessage = {
   id: "concept-selection-question",
@@ -57,6 +58,7 @@ type ConversationMessage = {
 type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
 type PostClearIntent = "follow_up_question" | "next_recommendation" | "fresh_recall" | "unknown";
 type PostClearMode = "follow_up" | "fresh_recall" | null;
+type VoiceInputStatus = "idle" | "recording" | "transcribing" | "ready_to_edit" | "error";
 
 type ConceptTrackSnapshot = {
   result: ExplanationResult | null;
@@ -577,6 +579,14 @@ function classifyPostClearIntent(value: string, mode: PostClearMode): PostClearI
   return "follow_up_question";
 }
 
+function appendTranscript(existingText: string, transcript: string) {
+  const existing = existingText.trim();
+  const next = transcript.trim();
+  if (!existing) return next;
+  if (!next) return existing;
+  return `${existing}\n\n${next}`;
+}
+
 function getConceptTime(value: string | null) {
   return value ? new Date(value).getTime() || 0 : 0;
 }
@@ -886,6 +896,12 @@ export function ExplainForm({
   const [nextRecommendation, setNextRecommendation] = useState<NextRecommendationState>(null);
   const [freshRecallBaseline, setFreshRecallBaseline] = useState<{ concept: string; score: number | null; attempt: string } | null>(null);
   const [showPreviousAttempt, setShowPreviousAttempt] = useState(false);
+  const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>("idle");
+  const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
+  const [voiceWaveformBars, setVoiceWaveformBars] = useState<number[]>(() =>
+    Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, () => 0.18),
+  );
   const [isConceptSwitchPending, startConceptTransition] = useTransition();
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1046,8 +1062,29 @@ export function ExplainForm({
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
       }
+      voiceMediaRecorderRef.current?.state === "recording" && voiceMediaRecorderRef.current.stop();
+      voiceMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  const cleanupVoiceInput = () => {
+    if (voiceAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceAnimationFrameRef.current);
+      voiceAnimationFrameRef.current = null;
+    }
+    if (voiceTimerRef.current) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    void voiceAudioContextRef.current?.close();
+    voiceAudioContextRef.current = null;
+    voiceAnalyserRef.current = null;
+    voiceMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceMediaStreamRef.current = null;
+    voiceMediaRecorderRef.current = null;
+    setVoiceRecordingSeconds(0);
+    setVoiceWaveformBars(Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, () => 0.18));
+  };
 
   useEffect(() => {
     const handleEscape = (event: globalThis.KeyboardEvent) => {
@@ -1510,6 +1547,16 @@ export function ExplainForm({
   const conversationRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const submitLockRef = useRef(false);
+  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceMediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceAudioChunksRef = useRef<BlobPart[]>([]);
+  const voiceAudioContextRef = useRef<AudioContext | null>(null);
+  const voiceAnalyserRef = useRef<AnalyserNode | null>(null);
+  const voiceAnimationFrameRef = useRef<number | null>(null);
+  const voiceTimerRef = useRef<number | null>(null);
+  const voiceRecordingStartedAtRef = useRef(0);
+  const voiceShouldSubmitRef = useRef(false);
+  const voiceInputBeforeRecordingRef = useRef("");
   const sourceMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
@@ -1878,16 +1925,15 @@ export function ExplainForm({
     }
   };
 
-  const handleSubmit = async () => {
-    if (submitLockRef.current || isLoading || !request.explanation.trim()) return;
+  const handleSubmit = async (explanationOverride?: string) => {
+    const currentExplanation = (explanationOverride || request.explanation).trim();
+    if (submitLockRef.current || isLoading || !currentExplanation) return;
     
     if (savedSourceMaterial.trim().length < 10) {
       setError("Please provide study material (min 10 characters).");
       setIsSourcePanelOpen(true);
       return;
     }
-
-    const currentExplanation = request.explanation.trim();
 
     const postClearIntent = isConceptClear || postClearMode
       ? classifyPostClearIntent(currentExplanation, postClearMode)
@@ -2037,6 +2083,171 @@ export function ExplainForm({
     }
   };
 
+  const formatVoiceRecordingTime = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60).toString();
+    const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  };
+
+  const startVoiceMeter = (stream: MediaStream) => {
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const audioContext = new AudioContextCtor();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.72;
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    voiceAudioContextRef.current = audioContext;
+    voiceAnalyserRef.current = analyser;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data);
+      const bucketSize = Math.max(1, Math.floor(data.length / VOICE_WAVEFORM_BAR_COUNT));
+      const nextBars = Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, (_, index) => {
+        const start = index * bucketSize;
+        const bucket = data.slice(start, start + bucketSize);
+        const average = bucket.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.length);
+        return Math.max(0.14, Math.min(1, average / 150));
+      });
+      setVoiceWaveformBars(nextBars);
+      voiceAnimationFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    tick();
+    voiceRecordingStartedAtRef.current = Date.now();
+    voiceTimerRef.current = window.setInterval(() => {
+      setVoiceRecordingSeconds(Math.floor((Date.now() - voiceRecordingStartedAtRef.current) / 1000));
+    }, 250);
+  };
+
+  const submitVoiceInput = async (audioBlob: Blob) => {
+    try {
+      if (audioBlob.size < 512) {
+        throw new Error("Recording was empty. Try speaking for a little longer.");
+      }
+
+      setVoiceInputStatus("transcribing");
+      setVoiceInputError(null);
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "feynduck-study.webm");
+      const response = await fetch("/api/demo-transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as { transcript?: string; error?: string };
+
+      if (!response.ok || !payload.transcript) {
+        throw new Error(payload.error || "Feynduck could not transcribe that recording.");
+      }
+
+      const transcript = payload.transcript.trim();
+      setRequest((current) => ({
+        ...current,
+        explanation: appendTranscript(voiceInputBeforeRecordingRef.current || current.explanation, transcript),
+      }));
+      setVoiceInputStatus("ready_to_edit");
+      setVoiceInputError(null);
+    } catch (error) {
+      setVoiceInputStatus("error");
+      setRequest((current) => ({ ...current, explanation: voiceInputBeforeRecordingRef.current || current.explanation }));
+      setVoiceInputError(error instanceof Error ? error.message : "Voice explanation failed. Try again.");
+    }
+  };
+
+  const stopVoiceInput = (shouldSubmit: boolean) => {
+    const recorder = voiceMediaRecorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    voiceShouldSubmitRef.current = shouldSubmit;
+    recorder.stop();
+  };
+
+  const cancelVoiceInput = () => {
+    const restorePreviousInput = () => {
+      const previous = voiceInputBeforeRecordingRef.current;
+      setRequest((current) => ({ ...current, explanation: previous }));
+    };
+
+    if (voiceInputStatus === "recording") {
+      voiceShouldSubmitRef.current = false;
+      stopVoiceInput(false);
+      restorePreviousInput();
+      return;
+    }
+
+    cleanupVoiceInput();
+    restorePreviousInput();
+    setVoiceInputStatus("idle");
+  };
+
+  const confirmVoiceInput = () => {
+    if (voiceInputStatus !== "recording") return;
+    stopVoiceInput(true);
+    setVoiceInputStatus("transcribing");
+  };
+
+  const startVoiceInput = async () => {
+    if (voiceInputStatus === "recording") {
+      return;
+    }
+
+    if (voiceInputStatus === "transcribing" || isLoading || isAnsweringFollowUp || !hasSavedMaterial) return;
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceInputStatus("error");
+      setVoiceInputError("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      setVoiceInputStatus("recording");
+      setVoiceInputError(null);
+      voiceInputBeforeRecordingRef.current = request.explanation;
+      voiceAudioChunksRef.current = [];
+      voiceShouldSubmitRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceMediaStreamRef.current = stream;
+      startVoiceMeter(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceAudioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        cleanupVoiceInput();
+        setVoiceInputStatus("error");
+        setVoiceInputError("Recording failed. Try again.");
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(voiceAudioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const shouldSubmit = voiceShouldSubmitRef.current;
+        cleanupVoiceInput();
+        if (shouldSubmit) {
+          void submitVoiceInput(blob);
+        } else {
+          setVoiceInputStatus("idle");
+        }
+      };
+
+      voiceMediaRecorderRef.current = recorder;
+      recorder.start();
+    } catch (error) {
+      cleanupVoiceInput();
+      setVoiceInputStatus("error");
+      setRequest((current) => ({ ...current, explanation: voiceInputBeforeRecordingRef.current || current.explanation }));
+      const isDenied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
+      setVoiceInputError(isDenied ? "Microphone permission was denied." : "Could not start the microphone.");
+    }
+  };
+
   if (roomStatus === "not_found") {
     return (
       <div className="empty-insights" style={{ height: '100vh', justifyContent: 'center' }}>
@@ -2120,6 +2331,13 @@ export function ExplainForm({
   const currentPostClearIntent = (isConceptClear || postClearMode)
     ? classifyPostClearIntent(request.explanation, postClearMode)
     : "unknown";
+  const isVoiceInputActive =
+    voiceInputStatus === "recording" ||
+    voiceInputStatus === "transcribing";
+  const voiceInputLabel =
+    voiceInputStatus === "transcribing"
+      ? "Transcribing"
+      : "Listening";
   const submitButtonLabel = isLoading || isAnsweringFollowUp
     ? currentPostClearIntent === "follow_up_question" ? "Sending" : "Checking"
     : currentPostClearIntent === "next_recommendation"
@@ -2743,60 +2961,113 @@ export function ExplainForm({
                 </div>
               ) : null}
 
-              <div className={cn("explain-answer-card", isLoading && "loading")}>
+              <div className={cn("explain-answer-card", isLoading && "loading", isVoiceInputActive && "is-recording-inline")}>
                 <div className="composer-label-icon">
                   <MessageSquareText size={14} />
                   <span>
-                    {currentPostClearIntent === "follow_up_question" || postClearMode === "follow_up" || (isConceptClear && postClearMode !== "fresh_recall")
-                      ? "FOLLOW-UP QUESTION"
-                      : postClearMode === "fresh_recall"
-                        ? "FRESH RECALL"
-                        : selectedConcept
-                          ? "Your explanation"
-                          : "Concept to study"}
+                    {isVoiceInputActive
+                      ? "VOICE EXPLANATION"
+                      : currentPostClearIntent === "follow_up_question" || postClearMode === "follow_up" || (isConceptClear && postClearMode !== "fresh_recall")
+                        ? "FOLLOW-UP QUESTION"
+                        : postClearMode === "fresh_recall"
+                          ? "FRESH RECALL"
+                          : selectedConcept
+                            ? "Your explanation"
+                            : "Concept to study"}
                   </span>
+                  {isVoiceInputActive ? (
+                    <em className="voice-inline-meta">
+                      <span aria-hidden="true" />
+                      {voiceInputLabel} · {formatVoiceRecordingTime(voiceRecordingSeconds)}
+                    </em>
+                  ) : null}
                 </div>
                 <textarea
                   ref={composerTextareaRef}
                   className="explain-answer-textarea"
-                  placeholder={composerPlaceholder}
+                  placeholder={
+                    isVoiceInputActive
+                      ? voiceInputStatus === "transcribing"
+                        ? "Transcribing your explanation..."
+                        : "Listening..."
+                      : composerPlaceholder
+                  }
                   value={request.explanation}
                   onChange={(e) => updateField("explanation", e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={!hasSavedMaterial}
+                  disabled={!hasSavedMaterial || isVoiceInputActive}
                 />
+                {isVoiceInputActive ? (
+                  <div className="voice-inline-waveform explain-inline-waveform" aria-hidden="true">
+                    {voiceWaveformBars.slice(0, 22).map((level, index) => (
+                      <span key={index} style={{ transform: `scaleY(${0.28 + level})` }} />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="explain-answer-actions">
                   <p>
-                    <span className="kb-shortcut">Cmd + Enter</span>
-                    {currentPostClearIntent === "follow_up_question"
-                      ? " to send your question"
-                      : isConceptClear && postClearMode !== "fresh_recall"
-                        ? " Ask about this concept, or ask what to learn next."
-                        : selectedConcept ? " to check your explanation" : " to start this concept"}
+                    {isVoiceInputActive ? (
+                      voiceInputStatus === "transcribing"
+                        ? "Finalising the transcript..."
+                        : "Recording locally. Confirm when you are done."
+                    ) : (
+                      <>
+                        <span className="kb-shortcut">Cmd + Enter</span>
+                        {currentPostClearIntent === "follow_up_question"
+                          ? " to send your question"
+                          : isConceptClear && postClearMode !== "fresh_recall"
+                            ? " Ask about this concept, or ask what to learn next."
+                            : selectedConcept ? " to check your explanation" : " to start this concept"}
+                      </>
+                    )}
                   </p>
                   <div>
-                    <button
-                      className="composer-mic-btn"
-                      type="button"
-                      aria-label="Explain by voice"
-                      disabled={!hasSavedMaterial}
-                    >
-                      <Mic size={20} />
-                    </button>
-                    <button
-                      className="explain-check-btn"
-                      onClick={handleSubmit}
-                      disabled={isLoading || isAnsweringFollowUp || !request.explanation.trim() || !hasSavedMaterial}
-                    >
-                      {isLoading || isAnsweringFollowUp ? (
-                        <>
-                          <Loader2 className="icon-spin" size={18} />
-                          {isAnsweringFollowUp ? "Sending" : "Checking"}
-                        </>
-                      ) : (
-                        submitButtonLabel
-                      )}
-                    </button>
+                    {isVoiceInputActive ? (
+                      <div className="voice-inline-actions">
+                        <button
+                          type="button"
+                          aria-label="Cancel voice explanation"
+                          disabled={voiceInputStatus === "transcribing"}
+                          onClick={cancelVoiceInput}
+                        >
+                          <X size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Use this voice explanation"
+                          disabled={voiceInputStatus !== "recording"}
+                          onClick={confirmVoiceInput}
+                        >
+                          {voiceInputStatus === "transcribing" ? <Loader2 className="icon-spin" size={14} /> : <Check size={16} />}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          className={cn("composer-mic-btn", voiceInputStatus === "error" && "has-error")}
+                          type="button"
+                          aria-label="Explain by voice"
+                          onClick={startVoiceInput}
+                          disabled={!hasSavedMaterial || isLoading || isAnsweringFollowUp}
+                        >
+                          <Mic size={20} />
+                        </button>
+                        <button
+                          className="explain-check-btn"
+                          onClick={() => handleSubmit()}
+                          disabled={isLoading || isAnsweringFollowUp || !request.explanation.trim() || !hasSavedMaterial}
+                        >
+                          {isLoading || isAnsweringFollowUp ? (
+                            <>
+                              <Loader2 className="icon-spin" size={18} />
+                              {isAnsweringFollowUp ? "Sending" : "Checking"}
+                            </>
+                          ) : (
+                            submitButtonLabel
+                          )}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2804,6 +3075,7 @@ export function ExplainForm({
               {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
               {notice && <div className="app-notice">{notice}</div>}
               {error && <div className="app-error">{error}</div>}
+              {voiceInputError && <div className="app-error">{voiceInputError}</div>}
             </section>
           )}
         </div>
