@@ -34,7 +34,9 @@ async function getRequestOrigin() {
   const host = headerStore.get("host");
   const protocol = headerStore.get("x-forwarded-proto") || "http";
 
-  return envOrigin || headerOrigin || (host ? `${protocol}://${host}` : "http://localhost:3000");
+  if (envOrigin && envOrigin !== "null") return envOrigin.replace(/\/$/, "");
+  if (headerOrigin && headerOrigin !== "null") return headerOrigin.replace(/\/$/, "");
+  return host ? `${protocol}://${host}` : "http://localhost:3000";
 }
 
 function mapAuthError(message: string) {

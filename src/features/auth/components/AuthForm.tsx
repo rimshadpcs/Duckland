@@ -29,6 +29,15 @@ function mapAuthError(message: string) {
   return message || "Authentication failed. Please try again.";
 }
 
+function getAuthRedirectOrigin() {
+  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configuredOrigin && configuredOrigin !== "null") {
+    return configuredOrigin.replace(/\/$/, "");
+  }
+
+  return window.location.origin;
+}
+
 export function AuthForm({ mode, next }: AuthFormProps) {
   const isSignup = mode === "signup";
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -72,7 +81,7 @@ export function AuthForm({ mode, next }: AuthFormProps) {
               display_name: displayName,
               full_name: displayName,
             },
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+            emailRedirectTo: `${getAuthRedirectOrigin()}/auth/callback?next=${encodeURIComponent(nextPath)}`,
           },
         });
 
