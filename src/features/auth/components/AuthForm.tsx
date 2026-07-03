@@ -122,7 +122,7 @@ export function AuthForm({ mode, next }: AuthFormProps) {
       {isSignup && (
         <label>
           <span>Display name</span>
-          <input name="displayName" autoComplete="name" placeholder="Rimshad" />
+          <input name="displayName" autoComplete="name" placeholder="Your name" />
           {fieldErrors.displayName && <small>{fieldErrors.displayName}</small>}
         </label>
       )}
