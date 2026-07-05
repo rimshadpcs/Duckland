@@ -7,6 +7,9 @@ import {
 import {
   evaluateNextTokenPredictionCoverage,
 } from "../src/features/explanation/api/nextTokenCoverage.mjs";
+import {
+  evaluateExpirationLimitedCoverage,
+} from "../src/features/explanation/api/expirationCoverage.mjs";
 
 const insulinSource = `
 Insulin resistance occurs when target cells in muscle, adipose tissue, and liver respond less effectively to insulin.
@@ -23,6 +26,14 @@ Large language models process text as tokens. A token can be a word, part of a w
 The model uses the tokens already in the sequence as context to predict the most likely next token.
 It adds the predicted token to the sequence and repeats this next-token prediction process.
 Repeating the process lets the model generate complete answers, explanations, and code.
+`;
+
+const asthmaExpirationSource = `
+During an asthma flare-up, airway smooth muscle can tighten, the airway lining becomes inflamed and swollen, and mucus can build up.
+These changes narrow the airways and increase resistance to airflow.
+Expiration becomes limited because pressure rises in the chest during exhalation and narrowed intrathoracic airways can compress further.
+This makes outward airflow slower, so the lungs may not empty completely before the next breath.
+Air trapping increases the work of breathing and contributes to wheeze, chest tightness, and shortness of breath.
 `;
 
 test("recognises the insulin resistance source and selected concept", () => {
@@ -118,4 +129,19 @@ test("detects next-token topic mismatch", () => {
   assert.ok(result);
   assert.equal(result.status, "topic_mismatch");
   assert.equal(result.clarityScore, null);
+});
+
+test("treats a plain-English asthma expiration mechanism as clear", () => {
+  const result = evaluateExpirationLimitedCoverage(
+    asthmaExpirationSource,
+    "During an asthma flare-up, the muscles around the airways tighten, the airway lining becomes inflamed and swollen, and mucus can build up. These changes narrow the airway and increase resistance to airflow. Breathing out becomes especially difficult because pressure inside the chest rises during exhalation. Healthy airways stay open enough for air to leave, but narrowed airways can compress further as the person breathes out. Air leaves more slowly, so some can remain trapped in the lungs before the next breath begins. This air trapping increases the work of breathing and contributes to wheeze, chest tightness, and shortness of breath.",
+    "Why Expiration is Limited",
+  );
+
+  assert.ok(result);
+  assert.equal(result.status, "clear");
+  assert.equal(result.clarityScore, 94);
+  assert.equal(result.missingClaims.length, 0);
+  assert.equal(result.mainGap, null);
+  assert.equal(result.socraticQuestion, null);
 });

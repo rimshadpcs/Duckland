@@ -2,6 +2,7 @@ import type { ExplanationRequest, ExplanationResult } from "../types";
 import { createMockExplanationResult } from "./mockResult";
 import { getOpenAIClient, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
 import { gapEvaluationPrompt } from "../prompts/gapEvaluationPrompt";
+import { evaluateExpirationLimitedCoverage } from "./expirationCoverage.mjs";
 import { evaluateInsulinResistanceCoverage, isInsulinResistanceSource } from "./insulinCoverage.mjs";
 import { evaluateNextTokenPredictionCoverage } from "./nextTokenCoverage.mjs";
 
@@ -340,6 +341,58 @@ function applyNextTokenPredictionCoverage(
   };
 }
 
+function applyExpirationLimitedCoverage(
+  result: ExplanationResult,
+  request: ExplanationRequest,
+): ExplanationResult | null {
+  const coverage = evaluateExpirationLimitedCoverage(request.notes, request.explanation, request.selectedConcept);
+  if (!coverage) return null;
+
+  if (coverage.status === "topic_mismatch") {
+    return {
+      ...result,
+      status: "topic_mismatch",
+      clarityScore: null,
+      gapType: "topic_mismatch",
+      gapSummary: coverage.mainGap,
+      mainGap: coverage.mainGap,
+      whyItMatters: "Feynduck needs your explanation to match the selected concept before it can score clarity honestly.",
+      socraticQuestion: coverage.socraticQuestion,
+      suggestedReExplanationPrompt: "Try explaining why narrowed airways make breathing out difficult during asthma.",
+      chatMessage: coverage.mainGap || "This explanation is about a different topic.",
+      scoreReason: coverage.scoreReason,
+      coveredClaims: coverage.coveredClaims,
+      missingClaims: coverage.missingClaims,
+      coreClaims: coverage.coreClaims,
+    };
+  }
+
+  const isClear = coverage.status === "clear" && coverage.missingClaims.length === 0;
+
+  return {
+    ...result,
+    status: (isClear ? "clear" : coverage.status) as ExplanationResult["status"],
+    clarityScore: coverage.clarityScore,
+    gapType: "missing_mechanism",
+    gapSummary: coverage.mainGap,
+    mainGap: coverage.mainGap,
+    whyItMatters: isClear
+      ? "You explained the complete causal chain from airway narrowing to expiratory compression, air trapping, and symptoms."
+      : "This matters because limited expiration in asthma is a causal chain, not just a statement that breathing is harder.",
+    socraticQuestion: coverage.socraticQuestion,
+    suggestedReExplanationPrompt: isClear
+      ? "Optional extension: explain how air trapping can place the diaphragm at a mechanical disadvantage."
+      : "Try rebuilding the explanation from airway narrowing to compression during exhalation, slower airflow, and air trapping.",
+    chatMessage: isClear
+      ? "You can explain this clearly: you connected airway narrowing to expiratory compression, air trapping, and symptoms."
+      : "You have the main idea. One important mechanism is still missing.",
+    scoreReason: coverage.scoreReason,
+    coveredClaims: coverage.coveredClaims,
+    missingClaims: coverage.missingClaims,
+    coreClaims: coverage.coreClaims,
+  };
+}
+
 function applyCoreClaimScoreGuard(result: ExplanationResult): ExplanationResult {
   if (result.status === "topic_mismatch") return result;
 
@@ -384,6 +437,11 @@ function normaliseEvaluationResult(
 ): ExplanationResult {
   if (result.status === "ok") {
     result = { ...result, status: "gap_found" };
+  }
+
+  const expirationCoverageResult = applyExpirationLimitedCoverage(result, request);
+  if (expirationCoverageResult) {
+    return applyCoreClaimScoreGuard(expirationCoverageResult);
   }
 
   if (result.status === "topic_mismatch") {
