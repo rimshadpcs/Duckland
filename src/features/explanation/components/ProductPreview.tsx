@@ -63,8 +63,8 @@ export function ProductPreview() {
     <section className="section product-preview" id="preview">
       <SectionHeader
         label="product preview"
-        title="A time-lapsed workspace."
-        copy="The preview cycles through the full loop: source material, explanation, missing link, re-explanation, score, and study tools."
+        title="See the explanation-to-understanding loop."
+        copy="Watch Feynduck move from your source material to the missing link, a better explanation, and a clearer picture of what you have mastered."
       />
       <div className="preview-layout landing-preview-layout reveal">
         <div className="preview-sidebar">

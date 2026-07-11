@@ -6,8 +6,8 @@ export function AudienceSection() {
     <section className="section audience-section">
       <SectionHeader
         label="who it's for"
-        title="For the moment your notes stop helping."
-        copy="Feynduck is for students who put in the hours, then need to prove the understanding can survive a blank page, a harder question, or a new example."
+        title="Good grades can still hide weak understanding."
+        copy="Feynduck is for the moment recognition stops being enough: a blank page, a viva, a harder question, an interview, a placement, or the first day on the job."
       />
       <div className="audience-field-notes reveal">
         <aside className="audience-ledger">

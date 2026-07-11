@@ -6,8 +6,8 @@ export function HowItWorksSection() {
     <section className="section how" id="how">
       <SectionHeader
         label="how it works"
-        title="A simple loop for turning notes into understanding."
-        copy="Feynduck follows the same path as the app: create a room, add source material, explain, inspect the gap, then explain again."
+        title="From “I think I know it” to a clearer explanation."
+        copy="Add your material, choose a concept, explain it in your own words with text or speech, find where the reasoning breaks, then explain it again."
       />
       <div className="steps">
         {steps.map((step, index) => {

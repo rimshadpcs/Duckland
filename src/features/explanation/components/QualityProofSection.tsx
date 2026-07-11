@@ -4,8 +4,8 @@ export function QualityProofSection() {
   return (
     <section className="quality-proof section">
       <SectionHeader
-        label="quality proof"
-        title="The missing step becomes visible."
+        label="see what Feynduck catches"
+        title="The missing step becomes visible—and fixable."
       />
       <div className="diff-board reveal">
         <div className="diff-toolbar">
@@ -31,7 +31,7 @@ export function QualityProofSection() {
             </p>
             <div className="diff-callout">
               <strong>Causal link restored</strong>
-              <small>The explanation now connects the compensation to the formula.</small>
+              <small>The explanation now connects the compensation to the formula. Clarity Score: 58 → 84.</small>
             </div>
           </article>
         </div>

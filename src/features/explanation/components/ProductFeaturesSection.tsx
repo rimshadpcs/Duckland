@@ -47,7 +47,7 @@ export function ProductFeaturesSection() {
       <SectionHeader
         label="what you get"
         title="A study loop, not another pile of materials."
-        copy="Everything points back to one question: can you explain the mechanism without hiding behind recognition?"
+        copy="Study Rooms, flashcards, and quizzes support the core outcome: finding the gap, repairing it yourself, and proving that the understanding is yours."
       />
       <div className="feature-loop reveal">
         <div className="loop-diagram" aria-label="Feynduck study loop">

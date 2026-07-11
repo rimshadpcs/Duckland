@@ -19,8 +19,9 @@ export function HeroSection({
         <p className="hero-kicker">Feynman study loop</p>
         <h1>You&apos;ve studied it. But can you explain it?</h1>
         <p>
-          Feynduck turns the Feynman Technique into an AI study loop: add your material,
-          explain what you understand, and find the missing link before the exam does.
+          AI can help you finish the work without helping you master the subject. Explain a
+          concept to Feynduck, uncover the exact gap in your reasoning, and try again until
+          the understanding is yours.
         </p>
         <div className="hero-actions">
           <a
@@ -28,14 +29,14 @@ export function HeroSection({
             href={studyHref}
             onClick={() => trackEvent("cta_clicked", { location: "hero_primary", href: studyHref })}
           >
-            Start studying
+            Test my understanding
           </a>
           <a
             className="button secondary"
             href="#how"
             onClick={() => trackEvent("cta_clicked", { location: "hero_secondary", href: "#how" })}
           >
-            See how it works
+            Watch the study loop
           </a>
         </div>
       </div>

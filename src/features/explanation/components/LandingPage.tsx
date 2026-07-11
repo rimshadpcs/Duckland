@@ -14,6 +14,7 @@ import { ProductFeaturesSection } from "./ProductFeaturesSection";
 import { ProductPreview } from "./ProductPreview";
 import { QualityProofSection } from "./QualityProofSection";
 import { UniversityMarquee } from "./UniversityMarquee";
+import { AiComparisonSection } from "./AiComparisonSection";
 
 type ThemeMode = "light" | "obsidian";
 
@@ -109,6 +110,7 @@ export function LandingPage() {
       <Navbar themeMode={themeMode} toggleTheme={toggleTheme} studyHref={studyHref} />
       <HeroSection themeMode={themeMode} studyHref={studyHref} />
       <UniversityMarquee />
+      <AiComparisonSection />
       <QualityProofSection />
       <HowItWorksSection />
       <ProductPreview />
