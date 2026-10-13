@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from "@src/lib/supabase/client";
 type AuthFormProps = {
   mode: "login" | "signup";
   next: string;
+  initialError?: string | null;
 };
 
 type FieldErrors = Record<string, string>;
@@ -38,10 +39,10 @@ function getAuthRedirectOrigin() {
   return window.location.origin;
 }
 
-export function AuthForm({ mode, next }: AuthFormProps) {
+export function AuthForm({ mode, next, initialError = null }: AuthFormProps) {
   const isSignup = mode === "signup";
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(initialError);
   const [messageType, setMessageType] = useState<"success" | "error">("error");
   const [isPending, setIsPending] = useState(false);
 

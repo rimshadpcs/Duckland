@@ -3,41 +3,41 @@ import { SectionHeader } from "./SectionHeader";
 
 const loopStages = [
   {
-    title: "Source material",
-    copy: "Notes, PDFs, slides, and reading stay attached to the room.",
+    title: "Course materials",
+    copy: "Notes, slides, readings, and what you are studying stay attached to the room.",
   },
   {
     title: "Your explanation",
     copy: "You teach the idea in your own words before Feynduck evaluates it.",
   },
   {
-    title: "Missing link",
-    copy: "The skipped mechanism is isolated instead of buried in generic feedback.",
+    title: "The step you skipped",
+    copy: "Feynduck points to the missing step instead of burying it in generic feedback.",
   },
   {
-    title: "Better explanation",
-    copy: "One follow-up question pulls the reasoning back into place.",
+    title: "Clearer explanation",
+    copy: "One follow-up question helps you rebuild how the ideas connect.",
   },
 ];
 
 const featureGroups = [
   {
     title: "A focused room",
-    copy: "Keep the material, concept, and explanation in one place.",
+    copy: "Keep your notes, slides, readings, concept, and explanation in one place.",
     icon: Library,
-    items: ["Study rooms", "Source-grounded feedback"],
+    items: ["Study rooms", "Feedback based on your materials"],
   },
   {
-    title: "A sharper diagnosis",
-    copy: "See exactly where the reasoning breaks, and whether it improves.",
+    title: "A clearer gap",
+    copy: "See exactly which step you skipped, and whether your next attempt is better.",
     icon: Link2,
-    items: ["Missing-link detection", "Clarity score"],
+    items: ["The missing step in your explanation", "Clarity Score"],
   },
   {
     title: "A way back in",
     copy: "Repair the gap with one targeted question, then try again.",
     icon: MessageCircleMore,
-    items: ["Socratic follow-ups", "Re-explanation loop"],
+    items: ["Targeted follow-up questions", "Explain it again until it is clear"],
   },
 ];
 
@@ -46,8 +46,8 @@ export function ProductFeaturesSection() {
     <section className="section product-features">
       <SectionHeader
         label="what you get"
-        title="A study loop, not another pile of materials."
-        copy="Study Rooms, flashcards, and quizzes support the core outcome: finding the gap, repairing it yourself, and proving that the understanding is yours."
+        title="A better way to test your understanding."
+        copy="Study Rooms, flashcards, and quizzes all support the same outcome: explain the idea, find the gap, and practise from memory until it is clear."
       />
       <div className="feature-loop reveal">
         <div className="loop-diagram" aria-label="Feynduck study loop">

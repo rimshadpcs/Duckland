@@ -19,6 +19,7 @@ export function StudyDemoPage({
   initialConcept,
   initialRoomConcepts = [],
   requestedRoomId,
+  initialRecallMode = false,
 }: {
   authUser?: AuthenticatedUser;
   initialRoom?: StudyRoomRow | null;
@@ -27,6 +28,7 @@ export function StudyDemoPage({
   initialConcept?: RoomConceptRow | null;
   initialRoomConcepts?: RoomConceptRow[];
   requestedRoomId?: string | null;
+  initialRecallMode?: boolean;
 }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [mounted, setMounted] = useState(false);
@@ -66,7 +68,7 @@ export function StudyDemoPage({
       <ExplainForm onRoomLoaded={(title, subject) => {
         setRoomTitle(title);
         setRoomSubject(subject);
-      }} initialRoom={initialRoom} initialSources={initialSources} initialSessionState={initialSessionState} initialConcept={initialConcept} initialRoomConcepts={initialRoomConcepts} requestedRoomId={requestedRoomId} />
+      }} initialRoom={initialRoom} initialSources={initialSources} initialSessionState={initialSessionState} initialConcept={initialConcept} initialRoomConcepts={initialRoomConcepts} requestedRoomId={requestedRoomId} initialRecallMode={initialRecallMode} />
     </div>
   );
 }

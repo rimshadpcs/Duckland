@@ -16,12 +16,11 @@ export function HeroSection({
   return (
     <section className="hero" id="top">
       <div className="hero-copy reveal">
-        <p className="hero-kicker">Feynman study loop</p>
-        <h1>You&apos;ve studied it. But can you explain it?</h1>
+        <p className="hero-kicker">A better way to test your understanding</p>
+        <h1>You&apos;ve studied it. But can you explain how and why it works?</h1>
         <p>
-          AI can help you finish the work without helping you master the subject. Explain a
-          concept to Feynduck, uncover the exact gap in your reasoning, and try again until
-          the understanding is yours.
+          An AI companion that listens to your explanation, checks it against your course
+          materials, finds the gap, and asks what you need to think about next.
         </p>
         <div className="hero-actions">
           <a
@@ -73,14 +72,14 @@ export function HeroSection({
             <div className="analysis-row warning">
               <AlertTriangle size={17} />
               <div>
-                <strong>Missing causal link</strong>
-                <p>You named oxygen demand, but skipped how cardiac output rises.</p>
+                <strong>The missing step in your explanation</strong>
+                <p>You named oxygen demand, but skipped how the heart sends more blood each minute.</p>
               </div>
             </div>
             <div className="analysis-row success">
               <CheckCircle2 size={17} />
               <div>
-                <strong>Targeted follow-up</strong>
+                <strong>Targeted follow-up question</strong>
                 <p>What changes in heart rate and stroke volume help deliver more blood each minute?</p>
               </div>
             </div>

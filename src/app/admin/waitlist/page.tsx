@@ -1,23 +1,24 @@
 import { requireAuthenticatedUser } from "@src/lib/auth";
 import { createSupabaseAdminClient } from "@src/lib/supabase/admin";
+import { isWaitlistAdminEmail } from "@src/lib/waitlist-admin";
 import type { Database } from "@src/types/database";
+import { updateWaitlistDateAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 type WaitlistEntry = Database["public"]["Tables"]["waitlist_entries"]["Row"];
 
-function getAllowedEmails() {
-  return (process.env.WAITLIST_ADMIN_EMAILS || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 function formatDate(value: string) {
+  const calendarDate = dateInputValue(value);
+
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+    timeZone: "UTC",
+  }).format(new Date(`${calendarDate}T00:00:00.000Z`));
+}
+
+function dateInputValue(value: string) {
+  return value.slice(0, 10);
 }
 
 function csvHref(entries: WaitlistEntry[]) {
@@ -37,9 +38,7 @@ function csvHref(entries: WaitlistEntry[]) {
 
 export default async function WaitlistAdminPage() {
   const user = await requireAuthenticatedUser("/admin/waitlist");
-  const allowedEmails = getAllowedEmails();
-  const userEmail = user.email?.toLowerCase() ?? "";
-  const isAllowed = allowedEmails.length > 0 && allowedEmails.includes(userEmail);
+  const isAllowed = isWaitlistAdminEmail(user.email);
 
   if (!isAllowed) {
     return (
@@ -126,7 +125,22 @@ export default async function WaitlistAdminPage() {
                   {entries.length ? (
                     entries.map((entry) => (
                       <tr key={entry.id}>
-                        <td>{formatDate(entry.created_at)}</td>
+                        <td>
+                          <form className="admin-date-form" action={updateWaitlistDateAction}>
+                            <input type="hidden" name="entryId" value={entry.id} />
+                            <label>
+                              <span className="sr-only">Joined date for {entry.email}</span>
+                              <input
+                                type="date"
+                                name="joinedDate"
+                                defaultValue={dateInputValue(entry.created_at)}
+                                aria-label={`Joined date for ${entry.email}: ${formatDate(entry.created_at)}`}
+                                required
+                              />
+                            </label>
+                            <button type="submit">Save</button>
+                          </form>
+                        </td>
                         <td>{entry.name || "—"}</td>
                         <td>
                           <a href={`mailto:${entry.email}`}>{entry.email}</a>

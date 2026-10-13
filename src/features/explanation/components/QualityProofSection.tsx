@@ -5,7 +5,7 @@ export function QualityProofSection() {
     <section className="quality-proof section">
       <SectionHeader
         label="see what Feynduck catches"
-        title="The missing step becomes visible—and fixable."
+        title="The missing step in your explanation becomes visible."
       />
       <div className="diff-board reveal">
         <div className="diff-toolbar">
@@ -30,7 +30,7 @@ export function QualityProofSection() {
               often per minute.
             </p>
             <div className="diff-callout">
-              <strong>Causal link restored</strong>
+              <strong>How the ideas connect</strong>
               <small>The explanation now connects the compensation to the formula. Clarity Score: 58 → 84.</small>
             </div>
           </article>

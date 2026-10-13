@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@src/lib/supabase/server";
+import { buildTodayStudyPlan, getNextRecallDate, type StudyPlanItem } from "@src/lib/study/recommendations";
 import type { Database } from "@src/types/database";
 
 export type StudyUnitRow = Database["public"]["Tables"]["study_units"]["Row"];
@@ -20,6 +21,8 @@ export type GeneratedStudyPath = {
 export type StudyUnitWithConcepts = StudyUnitRow & {
   concepts: RoomConceptRow[];
 };
+
+export type TodayStudyPlanItem = StudyPlanItem;
 
 function normalizeConceptTitle(title: string) {
   return title.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
@@ -113,6 +116,38 @@ export async function getRoomLearningPath(roomId: string) {
   return { units: unitsWithConcepts, concepts: concepts || [], missingSchema: false };
 }
 
+export async function getTodayStudyPlan(
+  rooms: Array<{ id: string; title: string }>,
+): Promise<TodayStudyPlanItem[]> {
+  if (!rooms.length) return [];
+
+  const { supabase, userId } = await getAuthenticatedUserId();
+  const roomTitles = new Map(rooms.map((room) => [room.id, room.title]));
+  const { data, error } = await supabase
+    .from("room_concepts")
+    .select("*")
+    .eq("user_id", userId)
+    .in("room_id", rooms.map((room) => room.id));
+
+  if (error) {
+    if (isMissingStudyPathTableError(error)) return [];
+    throw new Error(getErrorMessage("Could not build today’s study plan", error));
+  }
+
+  return buildTodayStudyPlan((data || []).map((concept) => ({
+    id: concept.id,
+    roomId: concept.room_id,
+    roomTitle: roomTitles.get(concept.room_id) || "Study room",
+    title: concept.title,
+    status: concept.status,
+    sortOrder: concept.sort_order,
+    mainUnresolvedGap: concept.main_unresolved_gap,
+    mainGap: concept.main_gap,
+    nextReviewAt: concept.next_review_at,
+    lastActivityAt: concept.last_activity_at,
+  })));
+}
+
 export async function getRoomConcept(roomId: string, conceptId: string) {
   const { supabase, userId } = await getAuthenticatedUserId();
   const { data, error } = await supabase
@@ -163,14 +198,14 @@ export async function startRoomConcept(roomId: string, conceptId: string) {
   const { data, error } = await supabase
     .from("room_concepts")
     .update({
-      status: "in_progress",
+      status: "explaining",
       started_at: now,
       last_activity_at: now,
     })
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .eq("user_id", userId)
-    .eq("status", "not_started")
+    .in("status", ["not_started", "needs_recall", "due_for_review"])
     .select("*")
     .maybeSingle();
 
@@ -190,16 +225,20 @@ export async function updateRoomConceptProgress(
     mainGap?: string | null;
     status?: ConceptStatus | null;
     isReviewAttempt?: boolean;
+    lastSocraticQuestion?: string | null;
+    lastWrongAssumption?: string | null;
+    lastMissingRelationship?: string | null;
+    lastImprovedExplanation?: string | null;
   },
 ) {
   const { supabase, userId } = await getAuthenticatedUserId();
   const now = new Date().toISOString();
   const score = typeof input.clarityScore === "number" ? Math.max(0, Math.min(100, Math.round(input.clarityScore))) : null;
-  const status = input.status || (score == null ? "in_progress" : score >= 90 ? "clear" : score >= 60 ? "improving" : "gap_found");
+  const status = input.status || (score == null ? "explaining" : score >= 90 ? "clear" : score >= 60 ? "improving" : "gap_found");
 
   const { data: existingConcept, error: loadError } = await supabase
     .from("room_concepts")
-    .select("best_clarity_score, latest_clarity_score")
+    .select("best_clarity_score, latest_clarity_score, review_count, main_gap, main_unresolved_gap, last_missing_relationship")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .eq("user_id", userId)
@@ -215,13 +254,24 @@ export async function updateRoomConceptProgress(
     existingConcept?.latest_clarity_score ?? 0,
   );
   const nextBest = score == null ? previousBest || null : Math.max(previousBest, score);
+  const previousReviewCount = existingConcept?.review_count ?? 0;
+  const nextReviewCount = input.isReviewAttempt ? previousReviewCount + 1 : previousReviewCount;
+  const shouldScheduleRecall = status === "clear";
+  const weakLink = input.mainGap || existingConcept?.main_unresolved_gap || existingConcept?.main_gap || null;
 
   const update: Database["public"]["Tables"]["room_concepts"]["Update"] = {
     status,
     latest_clarity_score: score,
     best_clarity_score: nextBest,
     main_gap: status === "clear" ? null : input.mainGap || null,
+    main_unresolved_gap: status === "clear" ? null : input.mainGap || existingConcept?.main_unresolved_gap || null,
+    last_socratic_question: input.lastSocraticQuestion || null,
+    last_wrong_assumption: input.lastWrongAssumption || null,
+    last_missing_relationship: input.lastMissingRelationship || weakLink || existingConcept?.last_missing_relationship || null,
+    last_improved_explanation: input.lastImprovedExplanation || null,
     last_activity_at: now,
+    next_review_at: shouldScheduleRecall ? getNextRecallDate(nextReviewCount, new Date(now)).toISOString() : null,
+    recall_status: shouldScheduleRecall ? "scheduled" : "not_scheduled",
   };
 
   if (status === "clear") {
@@ -233,6 +283,7 @@ export async function updateRoomConceptProgress(
   if (input.isReviewAttempt) {
     update.latest_review_score = score;
     update.last_reviewed_at = now;
+    update.review_count = nextReviewCount;
   }
 
   const { data, error } = await supabase

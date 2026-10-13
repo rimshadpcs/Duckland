@@ -24,7 +24,7 @@ export function PreviewWorkspace({
   const [markedDifficult, setMarkedDifficult] = useState(false);
   const concepts = ["Glycolysis", "Krebs Cycle", "Electron Transport Chain", "ATP Synthase"];
   const gaps = [
-    <span key="causal"><strong>Missing causal link:</strong> NADH → ETC → NAD+ regeneration</span>,
+    <span key="causal"><strong>The step you skipped:</strong> NADH → ETC → NAD+ regeneration</span>,
     <span key="jargon"><strong>Jargon used as shortcut:</strong> “energy”</span>,
     <span key="analogy"><strong>Needs analogy:</strong> battery handoff / recycling carrier</span>,
     <span key="accuracy"><strong>Factual accuracy:</strong> mostly correct</span>,
@@ -118,8 +118,8 @@ export function PreviewWorkspace({
         {activeTab === "map" ? (
           <div className="workspace-card">
             <span>BIOLOGY MIDTERM · KREBS CYCLE</span>
-            <h4>Clarity Map</h4>
-            <div className="clarity-map" aria-label="Concept clarity map">
+            <h4>Mastery Map</h4>
+            <div className="clarity-map" aria-label="Mastery map">
               <span className={mapProgress >= 1 ? "ready" : ""}>Glycolysis <b>●</b></span>
               <i />
               <span className={mapProgress >= 2 ? "ready" : ""}>Krebs Cycle <b>◐</b></span>
@@ -132,10 +132,10 @@ export function PreviewWorkspace({
               <span>● Clear</span>
               <span>◐ Improving</span>
               <span>○ Gap detected</span>
-              <span>Dashed = weak link</span>
+              <span>Dashed = ideas to review first</span>
             </div>
             <div className="mini-score">Clarity Score: <strong>86</strong></div>
-            <button type="button">Review weak links →</button>
+            <button type="button">Review earlier ideas →</button>
           </div>
         ) : null}
       </div>

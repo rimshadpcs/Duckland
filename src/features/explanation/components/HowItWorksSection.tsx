@@ -7,7 +7,7 @@ export function HowItWorksSection() {
       <SectionHeader
         label="how it works"
         title="From “I think I know it” to a clearer explanation."
-        copy="Add your material, choose a concept, explain it in your own words with text or speech, find where the reasoning breaks, then explain it again."
+        copy="Add your notes, slides, readings, or course materials. Choose a concept, explain it in your own words, find the step you skipped, then explain it again until it is clear."
       />
       <div className="steps">
         {steps.map((step, index) => {

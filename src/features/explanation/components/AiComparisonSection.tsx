@@ -4,15 +4,15 @@ import { SectionHeader } from "./SectionHeader";
 
 const generalAi = [
   "Answers your question",
-  "Creates polished summaries and study materials",
+  "Creates polished summaries from your notes",
   "Makes it easy to recognise an answer",
   "Optimises for an immediately helpful response",
 ];
 
 const feynduck = [
   "Questions your explanation",
-  "Finds the exact gap in your reasoning",
-  "Makes you rebuild the missing link yourself",
+  "Finds the step you skipped",
+  "Makes you explain it again until it is clear",
   "Tracks whether your understanding improves",
 ];
 
@@ -21,8 +21,8 @@ export function AiComparisonSection() {
     <section className="section ai-comparison">
       <SectionHeader
         label="why not ChatGPT or NotebookLM?"
-        title="Getting an answer is not the same as understanding it."
-        copy="General AI tools are useful for finding and generating information. Feynduck is built for the harder part: proving the reasoning is actually yours."
+        title="ChatGPT and NotebookLM can explain a subject to you."
+        copy="Feynduck checks whether you can explain it yourself."
       />
 
       <div className="comparison-grid reveal">
@@ -48,17 +48,17 @@ export function AiComparisonSection() {
         <div>
           <span>Long-term value</span>
           <h3>Build a record of what you can actually explain.</h3>
-          <p>One study session finds a gap. Repeated sessions show how your understanding grows across a degree.</p>
+          <p>One study session finds a gap. Repeated sessions show what you understand, what still needs work, and whether your next attempt is better.</p>
         </div>
         <article>
           <Brain size={20} />
           <h4>Clarity Score</h4>
-          <p>Turn vague confidence into a visible signal and track improvement after every explanation.</p>
+          <p>A simple measure of how clearly you explained the concept.</p>
         </article>
         <article>
           <Network size={20} />
           <h4>Mastery Map</h4>
-          <p>See which concepts are clear, which need work, and where missing foundations affect what comes next.</p>
+          <p>See what you can explain, what still needs work, and which earlier ideas may be holding you back.</p>
         </article>
       </div>
     </section>

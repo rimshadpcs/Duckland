@@ -8,19 +8,19 @@ import { SectionHeader } from "./SectionHeader";
 
 const previewStates = [
   {
-    explanation: "Add PDFs, slides, notes, text, or links. Feynduck uses your source material as the context for every explanation and follow-up question.",
+    explanation: "Add notes, slides, readings, text, or links. Feynduck uses your course materials for every explanation and follow-up question.",
   },
   {
-    explanation: "Explain the concept in your own words by typing or speaking. Feynduck listens for the reasoning behind your answer, not just the right keywords.",
+    explanation: "Explain the concept in your own words by typing or speaking. Feynduck listens for how your thinking connects, not just the right keywords.",
   },
   {
-    explanation: "Feynduck compares your explanation with the source, separates the missing link from the follow-up question, and shows exactly what to repair.",
+    explanation: "Feynduck compares your explanation with your materials, shows the step you skipped, and asks a targeted follow-up question.",
   },
   {
-    explanation: "The feedback naturally leads into a second explanation, so the student rebuilds the answer instead of passively reading a correction.",
+    explanation: "The feedback leads into a second explanation, so you rebuild the answer instead of passively reading a correction.",
   },
   {
-    explanation: "Your clarity score helps you see which concepts are ready and which still need another explanation loop.",
+    explanation: "Your Clarity Score helps you see which concepts are ready and which still need another attempt.",
   },
   {
     explanation: "Feynduck turns the exact gaps in your explanation into focused quizzes and flashcards — so you practise what you actually need.",
@@ -63,8 +63,8 @@ export function ProductPreview() {
     <section className="section product-preview" id="preview">
       <SectionHeader
         label="product preview"
-        title="See the explanation-to-understanding loop."
-        copy="Watch Feynduck move from your source material to the missing link, a better explanation, and a clearer picture of what you have mastered."
+        title="See how Feynduck tests your understanding."
+        copy="Watch Feynduck move from your materials to the step you skipped, a clearer explanation, and a simple view of what you can explain."
       />
       <div className="preview-layout landing-preview-layout reveal">
         <div className="preview-sidebar">

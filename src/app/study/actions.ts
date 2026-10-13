@@ -288,6 +288,10 @@ export async function updateRoomConceptProgressAction(
     mainGap?: string | null;
     status?: ConceptStatus | null;
     isReviewAttempt?: boolean;
+    lastSocraticQuestion?: string | null;
+    lastWrongAssumption?: string | null;
+    lastMissingRelationship?: string | null;
+    lastImprovedExplanation?: string | null;
   },
 ): Promise<StudyActionResult> {
   try {

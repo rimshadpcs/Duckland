@@ -12,7 +12,7 @@ type DashboardPreviewProps = {
 const statusLabels = [
   "Add your material",
   "Ready to explain",
-  "Missing link found",
+  "Skipped step found",
   "Re-explain the gap",
   "Clarity tracked",
   "Built from your gap",
@@ -433,14 +433,14 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className={`landing-insight-card missing-link ${isPending ? "pending" : ""}`}>
-            <span>Missing link</span>
+            <span>Skipped step</span>
             <p>
               {demoEvaluation?.missingLink ||
                 (voiceStatus === "recording"
-                  ? "Record your explanation, then Feynduck will look for the missing causal link."
+                  ? "Record your explanation, then Feynduck will look for the step you skipped."
                   : voiceStatus === "ready_to_edit"
                     ? "Review the transcript, edit it if needed, then send it to Feynduck."
-                  : "Looking for the NADH, electron transport chain, and NAD+ regeneration link.")}
+                  : "Looking for how NADH, the electron transport chain, and NAD+ regeneration connect.")}
             </p>
           </div>
           <div className={`landing-insight-card why ${isPending ? "pending" : ""}`}>
@@ -448,7 +448,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
             <p>{demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops."}</p>
           </div>
           <div className={`landing-insight-card socratic ${isPending ? "pending" : ""}`}>
-            <span>Socratic follow-up</span>
+            <span>Follow-up question</span>
             <p>{demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis."}</p>
           </div>
           <div className={`landing-score-card compact ${demoEvaluation ? "is-active" : "pending"}`}>
@@ -463,15 +463,15 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card">
-            <span>Missing link</span>
+            <span>Skipped step</span>
             <p>Waiting for study material.</p>
           </div>
           <div className="landing-insight-card">
             <span>Why it matters</span>
-            <p>Add source material so Feynduck has context.</p>
+            <p>Add your materials so Feynduck has context.</p>
           </div>
           <div className="landing-insight-card socratic">
-            <span>Socratic follow-up</span>
+            <span>Follow-up question</span>
             <p>Feynduck will ask one targeted question after your explanation.</p>
           </div>
           <div className="landing-score-card compact">
@@ -486,15 +486,15 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card pending">
-            <span>Missing link</span>
+            <span>Skipped step</span>
             <p>Waiting for your explanation.</p>
           </div>
           <div className="landing-insight-card pending">
             <span>Why it matters</span>
-            <p>Feynduck will identify the missing reasoning step.</p>
+            <p>Feynduck will identify the step you skipped.</p>
           </div>
           <div className="landing-insight-card pending">
-            <span>Socratic follow-up</span>
+            <span>Follow-up question</span>
             <p>Appears after your explanation is analysed.</p>
           </div>
           <div className="landing-score-card compact pending">
@@ -509,15 +509,15 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card missing-link">
-            <span>Missing link</span>
+            <span>Skipped step</span>
             <p>You connected eosinophils to inflammation, but not yet to the mediators they release.</p>
           </div>
           <div className="landing-insight-card why">
             <span>Why it matters</span>
-            <p>The mechanism explains why eosinophils actively worsen airway inflammation.</p>
+            <p>This explains how eosinophils actively worsen airway inflammation.</p>
           </div>
           <div className="landing-insight-card socratic">
-            <span>Socratic follow-up</span>
+            <span>Follow-up question</span>
             <p>What do activated eosinophils release that can damage airway tissue?</p>
           </div>
           <div className="landing-score-card compact is-active">
@@ -532,7 +532,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
       return (
         <>
           <div className="landing-insight-card missing-link">
-            <span>Missing link</span>
+            <span>Skipped step</span>
             <p>Eosinophils release granule proteins and inflammatory mediators.</p>
           </div>
           <div className="landing-insight-card retry">
@@ -540,7 +540,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
             <p>Practise the link between mediator release, tissue damage, and airway reactivity.</p>
           </div>
           <div className="landing-insight-card socratic">
-            <span>Socratic follow-up</span>
+            <span>Follow-up question</span>
             <p>Why are eosinophils more than just a marker of allergy?</p>
           </div>
           <div className="landing-score-card compact">
@@ -554,7 +554,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     return (
       <>
         <div className="landing-insight-card missing-link">
-          <span>Missing link</span>
+          <span>Skipped step</span>
           <p>You said eosinophils are involved in allergy, but did not explain what they release.</p>
         </div>
         <div className="landing-insight-card why">
@@ -562,7 +562,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
           <p>The release step shows how eosinophils actively drive airway inflammation.</p>
         </div>
         <div className="landing-insight-card socratic">
-          <span>Socratic follow-up</span>
+          <span>Follow-up question</span>
           <p>What do activated eosinophils release that can damage or irritate airway tissue?</p>
         </div>
         <div className="landing-score-card compact">
@@ -595,7 +595,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
         {voiceStatus === "transcribing" || isDemoEvaluating ? (
           <div className="landing-message duck-message">
             <Duck />
-            <p>{voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the missing link..."}</p>
+            <p>{voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the step you skipped..."}</p>
           </div>
         ) : null}
         {demoEvaluation ? (
@@ -681,13 +681,13 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                   ? "Analysing"
                   : voiceStatus === "ready_to_edit"
                     ? "Transcript ready"
-                    : demoEvaluation ? "Missing link found" : status}
+                    : demoEvaluation ? "Skipped step found" : status}
           </div>
         </div>
 
         <div className="landing-dashboard-body">
           <aside className={panelClass("source", activeStep)}>
-            <div className="landing-panel-title">Source material</div>
+            <div className="landing-panel-title">Your materials</div>
             {hasVoiceDemo ? (
               <div className="landing-source-card">
                 <span>Source notes</span>
@@ -698,8 +698,8 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
             ) : activeStep === 0 ? (
               <div className="landing-source-import">
                 <div className="landing-source-import-copy">
-                  <h3>Add source material</h3>
-                  <p>Bring in what you&apos;re studying so Feynduck can ground its feedback in the right context.</p>
+                  <h3>Add your materials</h3>
+                  <p>Bring in what you&apos;re studying so Feynduck can base its feedback on the right context.</p>
                 </div>
 
                 <div className="landing-drop-zone">
@@ -790,7 +790,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                   <p>Once your source is ready, Feynduck will ask you to explain the concept in your own words.</p>
                 </div>
                 {renderComposer({
-                  placeholder: "Add source material first...",
+                  placeholder: "Add your materials first...",
                   disabled: true,
                   helper: "Type or explain by voice after adding material.",
                 })}
@@ -841,7 +841,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                   <div className="landing-message duck-message">
                     <Duck />
                     <div className="landing-message-stack">
-                      <p>You&apos;re close — you named the inflammation, but skipped the release mechanism.</p>
+                      <p>You&apos;re close — you named the inflammation, but skipped what eosinophils release.</p>
                       <div className="landing-try-card">
                         <span>Try this</span>
                         <p>What do activated eosinophils release that can damage airway tissue?</p>
@@ -881,7 +881,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                   </div>
                   <div className="landing-message duck-message">
                     <Duck />
-                    <p>Exactly — you connected eosinophils to the mechanism that worsens airway inflammation.</p>
+                    <p>Exactly — you connected eosinophils to how they worsen airway inflammation.</p>
                   </div>
                   <div className="landing-context-chip">Clarity improved: 60 → 85</div>
                 </div>
@@ -923,7 +923,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
                     <div className="landing-message duck-message">
                       <Duck />
                       <p>
-                        You&apos;re close — you named the association, but skipped the mechanism.
+                        You&apos;re close — you named the association, but skipped what eosinophils release.
                         What do eosinophils release that can irritate airway tissue?
                       </p>
                     </div>

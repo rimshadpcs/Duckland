@@ -58,7 +58,7 @@ export function PreviewConversation({
       {gapVisible ? (
         <div className="gap-alert">
           <strong>Gap detected · Clarity {score}</strong>
-          <p>You explained what happens but not why it stops. The causal link is missing.</p>
+          <p>You explained what happens but not why it stops. The missing step is how oxygen lets NADH unload electrons.</p>
         </div>
       ) : null}
     </div>

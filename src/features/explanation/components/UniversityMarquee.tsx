@@ -3,7 +3,7 @@ export function UniversityMarquee() {
     <section className="audience-strip reveal" aria-label="Who Feynduck is built for">
       <span>Built for</span>
       <p>
-        Medicine, science, engineering, law, other concept-heavy degrees — and everyone else.
+        Built for medicine, science, engineering, law—and anyone studying ideas they need to truly understand.
       </p>
     </section>
   );

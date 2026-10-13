@@ -20,6 +20,7 @@ import { cn } from "@src/lib/utils";
 import { createSupabaseBrowserClient } from "@src/lib/supabase/browser";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
+import { getNextRecallDate } from "@src/lib/study/recommendations";
 import type { AsyncActionState } from "@src/lib/ui/asyncState";
 import type { SourceRow } from "@src/lib/repositories/sources";
 import type { RoomConceptRow } from "@src/lib/repositories/study-path";
@@ -55,7 +56,7 @@ type ConversationMessage = {
   kind?: "feedback" | "question" | "error" | "loading";
 };
 
-type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
+type ConceptStatus = "not_started" | "explaining" | "gap_found" | "improving" | "clear" | "needs_recall" | "due_for_review";
 type PostClearIntent = "follow_up_question" | "next_recommendation" | "fresh_recall" | "unknown";
 type PostClearMode = "follow_up" | "fresh_recall" | null;
 type VoiceInputStatus = "idle" | "recording" | "transcribing" | "ready_to_edit" | "error";
@@ -78,6 +79,12 @@ type RoomConceptTrack = {
   latestClarityScore: number | null;
   bestClarityScore?: number | null;
   latestReviewScore?: number | null;
+  nextReviewAt?: string | null;
+  reviewCount?: number;
+  mainUnresolvedGap?: string | null;
+  lastSocraticQuestion?: string | null;
+  lastMissingRelationship?: string | null;
+  lastImprovedExplanation?: string | null;
   startedAt: string | null;
   completedAt: string | null;
   lastActivityAt: string | null;
@@ -494,13 +501,16 @@ function parseConceptTracks(value: unknown): Record<string, RoomConceptTrack> {
     const track = rawTrack as Partial<RoomConceptTrack>;
     if (typeof track.title !== "string" || !track.title.trim()) continue;
 
+    const legacyStatus = (track.status as string | undefined) === "in_progress" ? "explaining" : track.status;
     const status: ConceptStatus =
-      track.status === "clear" ||
-      track.status === "gap_found" ||
-      track.status === "improving" ||
-      track.status === "in_progress" ||
-      track.status === "not_started"
-        ? track.status
+      legacyStatus === "clear" ||
+      legacyStatus === "gap_found" ||
+      legacyStatus === "improving" ||
+      legacyStatus === "explaining" ||
+      legacyStatus === "needs_recall" ||
+      legacyStatus === "due_for_review" ||
+      legacyStatus === "not_started"
+        ? legacyStatus
         : "not_started";
     const snapshot = track.snapshot && typeof track.snapshot === "object"
       ? track.snapshot as Partial<ConceptTrackSnapshot>
@@ -512,6 +522,14 @@ function parseConceptTracks(value: unknown): Record<string, RoomConceptTrack> {
       title: track.title,
       status,
       latestClarityScore: typeof track.latestClarityScore === "number" ? track.latestClarityScore : null,
+      bestClarityScore: typeof track.bestClarityScore === "number" ? track.bestClarityScore : null,
+      latestReviewScore: typeof track.latestReviewScore === "number" ? track.latestReviewScore : null,
+      nextReviewAt: typeof track.nextReviewAt === "string" ? track.nextReviewAt : null,
+      reviewCount: typeof track.reviewCount === "number" ? track.reviewCount : 0,
+      mainUnresolvedGap: typeof track.mainUnresolvedGap === "string" ? track.mainUnresolvedGap : null,
+      lastSocraticQuestion: typeof track.lastSocraticQuestion === "string" ? track.lastSocraticQuestion : null,
+      lastMissingRelationship: typeof track.lastMissingRelationship === "string" ? track.lastMissingRelationship : null,
+      lastImprovedExplanation: typeof track.lastImprovedExplanation === "string" ? track.lastImprovedExplanation : null,
       startedAt: typeof track.startedAt === "string" ? track.startedAt : null,
       completedAt: typeof track.completedAt === "string" ? track.completedAt : null,
       lastActivityAt: typeof track.lastActivityAt === "string" ? track.lastActivityAt : null,
@@ -624,7 +642,7 @@ function getRecommendedNextConcept(concepts: RoomConceptTrack[], selectedConcept
     };
   }
 
-  const inProgress = byRecent(concepts.filter((concept) => concept.status === "in_progress"))[0];
+  const inProgress = byRecent(concepts.filter((concept) => concept.status === "explaining"))[0];
   if (inProgress) {
     return {
       concept: inProgress,
@@ -646,7 +664,7 @@ function getConceptStatus(result: ExplanationResult | null, hasHistory: boolean)
     if (typeof result.clarityScore === "number" && result.clarityScore >= 60) return "improving";
     return "gap_found";
   }
-  if (hasHistory) return "in_progress";
+  if (hasHistory) return "explaining";
   return "not_started";
 }
 
@@ -831,6 +849,7 @@ export function ExplainForm({
   initialConcept,
   initialRoomConcepts = [],
   requestedRoomId,
+  initialRecallMode = false,
 }: {
   onRoomLoaded?: (title: string, subject: string) => void;
   initialRoom?: StudyRoomRow | null;
@@ -839,6 +858,7 @@ export function ExplainForm({
   initialConcept?: RoomConceptRow | null;
   initialRoomConcepts?: RoomConceptRow[];
   requestedRoomId?: string | null;
+  initialRecallMode?: boolean;
 }) {
   const [roomId] = useState<string | null>(initialRoom?.id || null);
   const [room, setRoom] = useState<StudyRoomRow | null>(initialRoom || null);
@@ -890,11 +910,12 @@ export function ExplainForm({
   const [conceptTracks, setConceptTracks] = useState<Record<string, RoomConceptTrack>>({});
   const [isChoosingNextConcept, setIsChoosingNextConcept] = useState(false);
   const [sessionHydrated, setSessionHydrated] = useState(false);
-  const [postClearMode, setPostClearMode] = useState<PostClearMode>(null);
+  const [postClearMode, setPostClearMode] = useState<PostClearMode>(initialRecallMode ? "fresh_recall" : null);
   const [followUpAnswer, setFollowUpAnswer] = useState<FollowUpAnswerState>(null);
   const [isAnsweringFollowUp, setIsAnsweringFollowUp] = useState(false);
   const [nextRecommendation, setNextRecommendation] = useState<NextRecommendationState>(null);
   const [freshRecallBaseline, setFreshRecallBaseline] = useState<{ concept: string; score: number | null; attempt: string } | null>(null);
+  const [scoreBeforeLatestAttempt, setScoreBeforeLatestAttempt] = useState<number | null>(initialConcept?.latest_clarity_score ?? null);
   const [showPreviousAttempt, setShowPreviousAttempt] = useState(false);
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>("idle");
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
@@ -911,6 +932,7 @@ export function ExplainForm({
   ): RoomConceptTrack => {
     const id = getConceptId(concept);
     const existing = conceptTracks[id];
+    const serverConcept = serverConcepts.find((item) => getConceptId(item.title) === id);
     const now = new Date().toISOString();
     const cleanHistory = history.filter((message) => message.kind !== "loading");
     const status = overrides.status || getConceptStatus(result, cleanHistory.length > 0);
@@ -929,6 +951,25 @@ export function ExplainForm({
           postClearMode === "fresh_recall" && typeof result?.clarityScore === "number"
             ? result.clarityScore
             : existing?.latestReviewScore ?? null,
+      nextReviewAt: existing?.nextReviewAt ?? serverConcept?.next_review_at ?? null,
+      reviewCount: existing?.reviewCount ?? serverConcept?.review_count ?? 0,
+      mainUnresolvedGap:
+        (result ? readResultField(result, ["mainGap", "gapSummary"]) : "") ||
+        existing?.mainUnresolvedGap ||
+        serverConcept?.main_unresolved_gap ||
+        serverConcept?.main_gap ||
+        null,
+      lastSocraticQuestion:
+        (result ? readResultField(result, ["socraticQuestion"]) : "") ||
+        existing?.lastSocraticQuestion ||
+        serverConcept?.last_socratic_question ||
+        null,
+      lastMissingRelationship:
+        result?.missingClaims?.[0] ||
+        existing?.lastMissingRelationship ||
+        serverConcept?.last_missing_relationship ||
+        null,
+      lastImprovedExplanation: existing?.lastImprovedExplanation || serverConcept?.last_improved_explanation || null,
       startedAt: existing?.startedAt || now,
       completedAt: status === "clear" ? existing?.completedAt || now : existing?.completedAt || null,
       lastActivityAt: now,
@@ -1149,7 +1190,7 @@ export function ExplainForm({
         ? {
             ...current,
             title: result.data.roomTitle || current.title,
-            status: "in_progress",
+            status: "explaining",
             last_activity_at: savedAt,
           }
         : current,
@@ -1317,7 +1358,7 @@ export function ExplainForm({
           ? {
               ...current,
               title: result.data.roomTitle || current.title,
-              status: "in_progress",
+              status: "explaining",
               last_activity_at: savedAt,
             }
           : current,
@@ -1599,6 +1640,31 @@ export function ExplainForm({
       }
     }
 
+    if (initialRecallMode && initialConcept) {
+      const persistedTrack = persistedSession?.conceptTracks?.[getConceptId(initialConcept.title)];
+      const trackAttempts = persistedTrack?.snapshot.previousExplanations || [];
+      const sessionAttempts = persistedSession?.previousExplanations || [];
+      const previousAttempt = trackAttempts[trackAttempts.length - 1] ||
+        sessionAttempts[sessionAttempts.length - 1] ||
+        "";
+      const previousScore = persistedTrack?.latestClarityScore ??
+        persistedSession?.result?.clarityScore ??
+        initialConcept.latest_review_score ??
+        initialConcept.latest_clarity_score;
+
+      setSelectedConcept(initialConcept.title);
+      setActiveServerConceptId(initialConcept.id);
+      setPostClearMode("fresh_recall");
+      setFreshRecallBaseline({
+        concept: initialConcept.title,
+        score: typeof previousScore === "number" ? previousScore : null,
+        attempt: previousAttempt,
+      });
+      setScoreBeforeLatestAttempt(typeof previousScore === "number" ? previousScore : null);
+      setResult(null);
+      setRequest((current) => ({ ...current, explanation: "" }));
+    }
+
     if (initialConcept?.id && roomId) {
       void startRoomConceptAction(roomId, initialConcept.id);
     }
@@ -1748,6 +1814,7 @@ export function ExplainForm({
     const conceptId = getConceptId(nextConcept);
     const existingTrack = currentTracks[conceptId];
     const serverConcept = serverConcepts.find((item) => getConceptId(item.title) === conceptId) || null;
+    setScoreBeforeLatestAttempt(existingTrack?.latestClarityScore ?? serverConcept?.latest_clarity_score ?? null);
     setActiveServerConceptId(serverConcept?.id || null);
     setSelectedConcept(nextConcept);
     setIsChoosingNextConcept(false);
@@ -1977,6 +2044,11 @@ export function ExplainForm({
     setIsLoading(true);
     setError(null);
     setNotice(null);
+    setScoreBeforeLatestAttempt(
+      typeof result?.clarityScore === "number"
+        ? result.clarityScore
+        : serverConcepts.find((concept) => concept.id === activeServerConceptId)?.latest_clarity_score ?? null,
+    );
     setResult(null);
 
     try {
@@ -2029,11 +2101,22 @@ export function ExplainForm({
       }
       if (roomId && activeServerConceptId) {
         const nextStatus = getConceptStatus(resultPayload, true);
+        const currentServerConcept = serverConcepts.find((concept) => concept.id === activeServerConceptId);
+        const nextReviewCount = postClearMode === "fresh_recall"
+          ? (currentServerConcept?.review_count ?? 0) + 1
+          : currentServerConcept?.review_count ?? 0;
+        const nextReviewAt = nextStatus === "clear"
+          ? getNextRecallDate(nextReviewCount).toISOString()
+          : null;
         void updateRoomConceptProgressAction(roomId, activeServerConceptId, {
           clarityScore: resultPayload.status === "topic_mismatch" ? null : resultPayload.clarityScore,
-          mainGap: readResultField(resultPayload, ["mainGap", "gapSummary"]),
+          mainGap: nextMainGap,
           status: nextStatus,
           isReviewAttempt: postClearMode === "fresh_recall",
+          lastSocraticQuestion: nextQuestion,
+          lastWrongAssumption: resultPayload.gapType === "unsupported_claim" ? nextMainGap : null,
+          lastMissingRelationship: resultPayload.missingClaims?.[0] || nextMainGap,
+          lastImprovedExplanation: resultPayload.resolvedGaps?.length ? currentExplanation : null,
         });
         setServerConcepts((current) =>
           current.map((concept) =>
@@ -2053,7 +2136,14 @@ export function ExplainForm({
                       : concept.latest_review_score,
                   last_reviewed_at:
                     postClearMode === "fresh_recall" ? new Date().toISOString() : concept.last_reviewed_at,
+                  next_review_at: nextReviewAt,
+                  review_count: nextReviewCount,
+                  recall_status: nextReviewAt ? "scheduled" : "not_scheduled",
                   main_gap: nextStatus === "clear" ? null : readResultField(resultPayload, ["mainGap", "gapSummary"]) || concept.main_gap,
+                  main_unresolved_gap: nextStatus === "clear" ? null : nextMainGap || concept.main_unresolved_gap,
+                  last_socratic_question: nextQuestion || concept.last_socratic_question,
+                  last_missing_relationship: resultPayload.missingClaims?.[0] || nextMainGap || concept.last_missing_relationship,
+                  last_improved_explanation: resultPayload.resolvedGaps?.length ? currentExplanation : concept.last_improved_explanation,
                   completed_at: nextStatus === "clear" ? new Date().toISOString() : null,
                   last_activity_at: new Date().toISOString(),
                 }
@@ -2282,6 +2372,12 @@ export function ExplainForm({
         latestClarityScore: localTrack?.latestClarityScore ?? concept.latest_clarity_score,
         bestClarityScore: localTrack?.bestClarityScore ?? concept.best_clarity_score,
         latestReviewScore: localTrack?.latestReviewScore ?? concept.latest_review_score,
+        nextReviewAt: localTrack?.nextReviewAt ?? concept.next_review_at,
+        reviewCount: localTrack?.reviewCount ?? concept.review_count,
+        mainUnresolvedGap: localTrack?.mainUnresolvedGap ?? concept.main_unresolved_gap ?? concept.main_gap,
+        lastSocraticQuestion: localTrack?.lastSocraticQuestion ?? concept.last_socratic_question,
+        lastMissingRelationship: localTrack?.lastMissingRelationship ?? concept.last_missing_relationship,
+        lastImprovedExplanation: localTrack?.lastImprovedExplanation ?? concept.last_improved_explanation,
         startedAt: localTrack?.startedAt || concept.started_at,
         completedAt: localTrack?.completedAt || concept.completed_at,
         lastActivityAt: localTrack?.lastActivityAt || concept.last_activity_at,
@@ -2298,6 +2394,14 @@ export function ExplainForm({
           latestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : null,
           bestClarityScore: typeof result?.clarityScore === "number" ? result.clarityScore : null,
           latestReviewScore: null,
+          nextReviewAt: null,
+          reviewCount: 0,
+          mainUnresolvedGap: result ? readResultField(result, ["mainGap", "gapSummary"]) || null : null,
+          lastSocraticQuestion: result ? readResultField(result, ["socraticQuestion"]) || null : null,
+          lastMissingRelationship: result?.missingClaims?.[0] || (result ? readResultField(result, ["mainGap", "gapSummary"]) : "") || null,
+          lastImprovedExplanation: result?.resolvedGaps?.length
+            ? previousExplanations[previousExplanations.length - 1] || null
+            : null,
           startedAt: null,
           completedAt: result?.status === "clear" ? new Date().toISOString() : null,
           lastActivityAt: null,
@@ -2356,6 +2460,40 @@ export function ExplainForm({
   const latestWhyItMatters = result ? readResultField(result, ["whyItMatters"]) : "";
   const latestRetryPrompt = result ? readResultField(result, ["suggestedReExplanationPrompt", "tryAgain"]) : "";
   const latestAttempt = previousExplanations[previousExplanations.length - 1] || "";
+  const activeConceptMemory = serverConcepts.find((concept) => concept.id === activeServerConceptId) || null;
+  const activeLocalTrack = selectedConcept ? conceptTracks[getConceptId(selectedConcept)] : null;
+  const lastWeakLink =
+    activeLocalTrack?.mainUnresolvedGap ||
+    activeLocalTrack?.lastMissingRelationship ||
+    activeConceptMemory?.main_unresolved_gap ||
+    activeConceptMemory?.last_missing_relationship ||
+    activeConceptMemory?.main_gap ||
+    previousMainGaps[previousMainGaps.length - 1] ||
+    "";
+  const sessionSummaryStatus = isConceptClear
+    ? "Clear"
+    : result?.status === "improving"
+      ? "Improving"
+      : result?.status === "topic_mismatch"
+        ? "Choose the concept again"
+        : result
+          ? "Still needs work"
+          : "";
+  const sessionImprovement = result?.resolvedGaps?.[0] || (
+    typeof scoreBeforeLatestAttempt === "number" && typeof result?.clarityScore === "number" && result.clarityScore > scoreBeforeLatestAttempt
+      ? `Your clarity improved by ${result.clarityScore - scoreBeforeLatestAttempt} points.`
+      : ""
+  );
+  const summaryNextRecallDate = isConceptClear
+    ? activeConceptMemory?.next_review_at || getNextRecallDate(
+      postClearMode === "fresh_recall" ? (activeConceptMemory?.review_count ?? 0) + 1 : activeConceptMemory?.review_count ?? 0,
+    ).toISOString()
+    : null;
+  const sessionNextAction = isConceptClear
+    ? `Recall this from memory ${summaryNextRecallDate ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(summaryNextRecallDate)) : "tomorrow"}.`
+    : result?.status === "topic_mismatch"
+      ? "Return to the selected concept and explain only that idea."
+      : "Use the weak link above, then explain the concept again.";
   const completedConceptCount = panelConcepts.filter((concept) => concept.status === "clear").length;
   const gapConceptCount = panelConcepts.filter((concept) => concept.status === "gap_found" || concept.status === "improving").length;
   const roomProgressLabel = panelConcepts.length
@@ -2843,6 +2981,16 @@ export function ExplainForm({
                 </div>
               ) : null}
 
+              {lastWeakLink && selectedConcept && (!result || postClearMode === "fresh_recall") ? (
+                <div className="last-weak-link-card">
+                  <span>Last weak link</span>
+                  <p>{lastWeakLink}</p>
+                  {activeConceptMemory?.last_socratic_question ? (
+                    <small>{activeConceptMemory.last_socratic_question}</small>
+                  ) : null}
+                </div>
+              ) : null}
+
               {nextRecommendation ? (
                 <div className="next-recommendation-card">
                   <span>Recommended next</span>
@@ -2924,6 +3072,44 @@ export function ExplainForm({
                   ) : null}
                 </div>
               )}
+
+              {result && selectedConcept && !isLoading ? (
+                <section className="session-end-summary" aria-label="Session summary">
+                  <div className="session-end-summary-heading">
+                    <span>Session complete</span>
+                    <h3>{selectedConcept}</h3>
+                    <strong>{sessionSummaryStatus}</strong>
+                  </div>
+                  {typeof result.clarityScore === "number" ? (
+                    <div className="session-summary-score">
+                      <span>Clarity</span>
+                      <b>
+                        {typeof scoreBeforeLatestAttempt === "number" && scoreBeforeLatestAttempt !== result.clarityScore
+                          ? `${scoreBeforeLatestAttempt} → ${result.clarityScore}`
+                          : result.clarityScore}
+                      </b>
+                    </div>
+                  ) : null}
+                  <div className="session-summary-details">
+                    {sessionImprovement ? (
+                      <div>
+                        <span>You improved</span>
+                        <p>{sessionImprovement}</p>
+                      </div>
+                    ) : null}
+                    {latestMainGap ? (
+                      <div>
+                        <span>Still needs work</span>
+                        <p>{latestMainGap}</p>
+                      </div>
+                    ) : null}
+                    <div>
+                      <span>Next best step</span>
+                      <p>{sessionNextAction}</p>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
 
               {showEvaluationFeedback ? (
               <div className="explain-next-step">

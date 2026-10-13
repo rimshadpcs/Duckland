@@ -19,8 +19,8 @@ export const steps = [
     icon: Library,
   },
   {
-    title: "Add source material",
-    copy: "Bring in PDFs, PPTs, notes, or other material Feynduck should use as context.",
+    title: "Add your materials",
+    copy: "Bring in notes, slides, readings, or other course materials Feynduck should use.",
     icon: FileText,
   },
   {
@@ -29,22 +29,22 @@ export const steps = [
     icon: MessageCircleMore,
   },
   {
-    title: "Find the missing link",
-    copy: "See the exact step where your reasoning breaks.",
+    title: "Find the step you skipped",
+    copy: "See the missing step in your explanation.",
     icon: TriangleAlert,
   },
   {
-    title: "Re-explain until clear",
-    copy: "Answer one targeted question and rebuild the explanation.",
+    title: "Explain it again until clear",
+    copy: "Answer one targeted follow-up question and rebuild how the ideas connect.",
     icon: Sparkles,
   },
 ];
 
 export const previewItems = [
   {
-    title: "Add source material",
+    title: "Add your materials",
     icon: Upload,
-    description: "Anchor feedback to your actual notes.",
+    description: "Get feedback based on your notes, slides, and readings.",
   },
   {
     title: "Explain what you understand",
@@ -52,24 +52,24 @@ export const previewItems = [
     description: "Teach the concept in your own words.",
   },
   {
-    title: "Find the missing link",
+    title: "Find the step you skipped",
     icon: TriangleAlert,
-    description: "See the exact step where your reasoning breaks.",
+    description: "See the missing step in your explanation.",
   },
   {
     title: "Re-explain the weak spot",
     icon: Library,
-    description: "Use one targeted question to rebuild the missing reasoning step.",
+    description: "Use one targeted question to rebuild how the ideas connect.",
   },
   {
     title: "Track clarity",
     icon: GitBranch,
-    description: "See what you can explain clearly.",
+    description: "See how clearly you explained the idea.",
   },
   {
     title: "Build from your gaps",
     icon: Sparkles,
-    description: "Turn the parts you could not explain into focused study tools.",
+    description: "Turn what still needs work into focused study tools.",
   },
 ];
 
@@ -96,8 +96,8 @@ export const audiences = [
     icon: ClipboardCheck,
   },
   {
-    title: "The mechanism memoriser",
-    copy: "You can name the pathway, but not defend each causal step.",
+    title: "The pathway memoriser",
+    copy: "You can name the pathway, but not explain how each step leads to the next.",
     icon: Microscope,
   },
   {
@@ -119,28 +119,28 @@ export const landingFeatures = [
     icon: Library,
   },
   {
-    title: "Source-grounded feedback",
-    copy: "Feynduck checks your explanation against the material you are actually studying.",
+    title: "Feedback based on your materials",
+    copy: "Feynduck checks your explanation against the notes, slides, readings, and course materials you are actually studying.",
     icon: FileText,
   },
   {
-    title: "Missing-link detection",
-    copy: "See the exact mechanism or reasoning step your explanation skipped.",
+    title: "The missing step in your explanation",
+    copy: "See the exact step you skipped and how the ideas need to connect.",
     icon: Link2,
   },
   {
-    title: "Socratic follow-ups",
-    copy: "Get one targeted question that helps you repair the gap yourself.",
+    title: "Targeted follow-up questions",
+    copy: "Get one question that helps you think through the gap yourself.",
     icon: MessageCircleMore,
   },
   {
     title: "Clarity Score",
-    copy: "Turn vague confidence into a visible signal you can track.",
+    copy: "A simple measure of how clearly you explained the concept.",
     icon: GitBranch,
   },
   {
-    title: "Re-explanation loop",
-    copy: "Try again with a sharper prompt until the concept actually clicks.",
+    title: "Explain it again until it is clear",
+    copy: "Try again with a better question until the concept actually clicks.",
     icon: Sparkles,
   },
 ];
@@ -179,12 +179,12 @@ export const faqs = [
   {
     question: "Is Feynduck just another study material app?",
     answer:
-      "No. Most AI study tools summarize material or answer questions for you. Feynduck makes you produce the explanation yourself, so you can test whether you actually understand it.",
+      "No. ChatGPT and NotebookLM can explain a subject to you. Feynduck checks whether you can explain it yourself.",
   },
   {
-    question: "Do I need to add source material to use Feynduck?",
+    question: "Do I need to add my materials to use Feynduck?",
     answer:
-      "Yes, for now. Add the material you want Feynduck to use, then explain the concept in your own words. That context helps Feynduck check your explanation against what your class actually covered.",
+      "Yes, for now. Add the notes, slides, readings, or course materials you want Feynduck to use, then explain the concept in your own words. That context helps Feynduck check your explanation against what your class actually covered.",
   },
   {
     question: "How is this different from flashcards?",
@@ -216,8 +216,8 @@ export const pricingTiers = [
     cta: "Start studying free",
     items: [
       "One full explanation session with the duck",
-      "Add source material such as notes, PDFs, slides, transcripts, or links",
-      "The duck finds where your reasoning breaks",
+      "Add notes, PDFs, slides, transcripts, readings, or links",
+      "The duck finds the step you skipped",
       "See your top 2 gaps with plain-English explanations",
       "One targeted follow-up question to help you fix it",
       "Your first Clarity Score — see where you actually stand",
@@ -242,7 +242,7 @@ export const pricingTiers = [
       "Every gap detected, ranked by how much it matters",
       "Unlimited follow-up questions per session",
       "Flashcards auto-generated from your actual gaps — not generic topic lists",
-      "Clarity Score tracked across every session so you can see real progress",
+      "Clarity Score tracked across every session so you can see whether your next attempt is better",
       "Up to 5 active exams organised by subject",
       "Topics extracted automatically when you upload — no manual setup",
     ],

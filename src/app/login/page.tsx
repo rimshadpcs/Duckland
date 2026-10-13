@@ -14,10 +14,14 @@ function getSafeNext(value?: string | string[]) {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ next?: string | string[] }>;
+  searchParams?: Promise<{ next?: string | string[]; error?: string | string[] }>;
 }) {
   const params = await searchParams;
   const next = getSafeNext(params?.next);
+  const errorParam = Array.isArray(params?.error) ? params?.error[0] : params?.error;
+  const initialError = errorParam === "confirmation_failed"
+    ? "We couldn't sign you in from that confirmation link. If you've already confirmed your email, log in with your email and password."
+    : null;
 
   return (
     <main className="auth-page">
@@ -34,7 +38,7 @@ export default async function LoginPage({
             <p>Welcome back</p>
             <h1>Log in to keep studying.</h1>
           </div>
-          <AuthForm mode="login" next={next} />
+          <AuthForm mode="login" next={next} initialError={initialError} />
           <p className="auth-switch">
             New to Feynduck? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create an account</Link>
           </p>

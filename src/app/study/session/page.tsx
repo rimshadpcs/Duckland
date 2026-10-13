@@ -13,14 +13,16 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: Promise<{ roomId?: string | string[]; conceptId?: string | string[] }>;
+  searchParams?: Promise<{ roomId?: string | string[]; conceptId?: string | string[]; mode?: string | string[] }>;
 }) {
   const user = await getAuthenticatedUser();
   const params = await searchParams;
   const roomIdParam = Array.isArray(params?.roomId) ? params?.roomId[0] : params?.roomId;
   const conceptIdParam = Array.isArray(params?.conceptId) ? params?.conceptId[0] : params?.conceptId;
+  const modeParam = Array.isArray(params?.mode) ? params?.mode[0] : params?.mode;
   const roomId = roomIdParam?.trim() || null;
   const conceptId = conceptIdParam?.trim() || null;
+  const recallMode = modeParam === "recall";
 
   if (!user) {
     return <AuthRedirect to="/login?next=%2Fstudy%2Fsession" />;
@@ -88,6 +90,7 @@ export default async function Page({
       initialConcept={concept}
       initialRoomConcepts={roomConcepts}
       requestedRoomId={roomId}
+      initialRecallMode={recallMode}
     />
   );
 }

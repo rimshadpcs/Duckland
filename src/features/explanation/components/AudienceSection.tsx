@@ -6,15 +6,15 @@ export function AudienceSection() {
     <section className="section audience-section">
       <SectionHeader
         label="who it's for"
-        title="Good grades can still hide weak understanding."
-        copy="Feynduck is for the moment recognition stops being enough: a blank page, a viva, a harder question, an interview, a placement, or the first day on the job."
+        title="For subjects where how and why really matter."
+        copy="Built for medicine, science, engineering, law—and anyone studying ideas they need to truly understand."
       />
       <div className="audience-field-notes reveal">
         <aside className="audience-ledger">
           <span>Field notes</span>
           <p>
-            The common thread is not subject or degree. It is the uneasy point where recognition
-            stops being enough and the student has to explain the mechanism out loud.
+            The common thread is not subject or degree. It is the moment when recognising an answer
+            stops being enough and you need to explain how the ideas connect.
           </p>
         </aside>
         <div className="audience-note-grid">

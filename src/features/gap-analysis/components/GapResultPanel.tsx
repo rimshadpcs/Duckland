@@ -39,7 +39,7 @@ type StudyToolsSnapshot = {
   flashcardReviewState?: Record<string, FlashcardReviewState>;
 };
 
-type ConceptStatus = "not_started" | "in_progress" | "gap_found" | "improving" | "clear";
+type ConceptStatus = "not_started" | "explaining" | "gap_found" | "improving" | "clear" | "needs_recall" | "due_for_review";
 
 type PanelConcept = {
   id: string;
@@ -139,16 +139,20 @@ function PanelTabs({ activeTab, onChange }: { activeTab: StudyPanelTab; onChange
 
 function getConceptStatusLabel(concept: PanelConcept) {
   if (concept.status === "clear") return `Clear${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  if (concept.status === "due_for_review") return "Due for recall";
+  if (concept.status === "needs_recall") return "Recall scheduled";
   if (concept.status === "gap_found") return `Gap found${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
-  if (concept.status === "improving" || concept.status === "in_progress") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
+  if (concept.status === "improving" || concept.status === "explaining") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
   return "Not started";
 }
 
 function getConceptStatusIcon(status: ConceptStatus) {
   if (status === "clear") return "✓";
+  if (status === "due_for_review") return "↻";
+  if (status === "needs_recall") return "◷";
   if (status === "gap_found") return "!";
   if (status === "improving") return "◐";
-  if (status === "in_progress") return "◐";
+  if (status === "explaining") return "◐";
   return "○";
 }
 

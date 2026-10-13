@@ -10,7 +10,7 @@ export function MethodSection({
       <SectionHeader
         label="the method"
         title="Why Feynduck works."
-        copy="Feynman Technique helps you explain. Rubber ducking helps you hear the gap. Feynduck helps you fix it."
+        copy="Feynman Technique helps you explain. Rubber ducking helps you hear the gap. Feynduck helps you find the step you skipped."
       />
       <div className="method-card reveal" aria-label="Feynman Technique, Rubber Ducking, and Feynduck definitions">
         <article>
@@ -23,7 +23,7 @@ export function MethodSection({
             as if teaching it to someone who knows nothing? If you stumble, that stumble is the gap.
           </blockquote>
           <p className="method-meta">named after · Richard Feynman</p>
-          <p className="see-also">see also · active recall, teaching to learn</p>
+          <p className="see-also">see also · practising from memory, teaching to learn</p>
         </article>
         <article>
           <h3>rubber ducking</h3>
@@ -35,7 +35,7 @@ export function MethodSection({
             The explaining forces vague thinking into clear steps.
           </blockquote>
           <p className="method-meta">origin · The Pragmatic Programmer</p>
-          <p className="see-also">see also · self-explanation, metacognition</p>
+          <p className="see-also">see also · self-explanation, thinking about your own understanding</p>
         </article>
         <article className="feynduck-definition">
           <h3>feynduck</h3>
@@ -43,9 +43,8 @@ export function MethodSection({
           <div className="method-rule" />
           <p className="part">definition.</p>
           <blockquote>
-            The duck that talks back. An AI study companion that makes you explain a concept in
-            your own words, finds where your reasoning breaks, and asks the one question that helps
-            you fix it yourself.
+            The duck that talks back. An AI companion that listens to your explanation, finds the
+            gap, and asks what you need to think about next.
           </blockquote>
           <p className="see-also">see also · understanding, not memorisation</p>
         </article>
