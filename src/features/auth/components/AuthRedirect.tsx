@@ -8,21 +8,14 @@ export function AuthRedirect({ to }: { to: string }) {
   }, [to]);
 
   return (
-    <main className="auth-page">
-      <div className="auth-shell">
-        <a className="auth-brand" href="/">
-          <img src="/feynduckhead.png" alt="" />
-          <span>Feynduck</span>
-        </a>
-        <section className="auth-card auth-choice-card">
-          <div className="auth-copy">
-            <p>Redirecting</p>
-            <h1>Taking you to the right place.</h1>
-          </div>
-          <a className="auth-submit" href={to}>
-            Continue
-          </a>
-        </section>
+    <main className="fd" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div className="fd-center-inner is-narrow" aria-live="polite">
+        <img src="/feynduckhead.png" alt="" width={44} height={44} />
+        <div className="fd-busy">
+          <span className="fd-spinner" aria-hidden="true" />
+          Taking you to the right place…
+        </div>
+        <a className="fd-text-link" href={to}>Continue</a>
       </div>
     </main>
   );

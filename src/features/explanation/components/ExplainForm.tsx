@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect, useTransition } from "react";
+import { useState, KeyboardEvent, ChangeEvent, useRef, useEffect, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { GapResultPanel } from "@src/features/gap-analysis";
-import { Check, CheckCircle2, Loader2, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, PanelRightOpen, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronRight, CircleHelp, FileText, Mic, MoreHorizontal, PanelLeft, PanelRight, Plus, Upload, X } from "lucide-react";
+import { AccountMenu } from "@src/components/app/AppHeader";
+import type { AuthenticatedUser } from "@src/lib/auth";
 import {
   clearRoomSessionStateAction,
   deleteRoomSourceAction,
   renameRoomSourceAction,
-  saveRoomPdfSourceAction,
   saveRoomSessionStateAction,
   saveRoomSourceAction,
   startRoomConceptAction,
@@ -17,7 +18,7 @@ import {
   updateRoomSelectedConceptAction,
 } from "@src/app/study/actions";
 import { cn } from "@src/lib/utils";
-import { createSupabaseBrowserClient } from "@src/lib/supabase/browser";
+import { formatFileSize, PDF_UNREADABLE_MESSAGE, uploadPdfSource, validatePdfFile } from "@src/lib/pdf/uploadPdfSource";
 import { clampPanelWidth, getPanelWidth, savePanelWidth } from "@src/lib/storage/panelStorage";
 import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
 import { getNextRecallDate } from "@src/lib/study/recommendations";
@@ -33,8 +34,6 @@ const initialRequest: ExplanationRequest = {
   explanation: "",
 };
 
-const PDF_MAX_BYTES = 10 * 1024 * 1024;
-const PDF_UNREADABLE_MESSAGE = "We couldn't read this PDF. Try a different file or paste the text instead.";
 const VOICE_WAVEFORM_BAR_COUNT = 34;
 
 const conceptQuestionMessage: ConversationMessage = {
@@ -279,22 +278,13 @@ type PersistedSessionSnapshot = {
   sourceUpdatedAt?: string | null;
 };
 
+// Matches the CSS breakpoint where side panels turn into drawers.
+function isCompactLayout() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches;
+}
+
 function getSessionStorageKey(roomId: string | null) {
   return `feynduck-session-${roomId || "quick"}`;
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function sanitizePdfFileName(name: string) {
-  const baseName = name.replace(/\.pdf$/i, "").trim() || "study-material";
-  return `${baseName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "study-material"}.pdf`;
 }
 
 function getSourceDisplayTitle(source: SourceRow) {
@@ -313,11 +303,10 @@ function combineSourceContent(sources: SourceRow[]) {
 }
 
 function formatSourceMeta(source: SourceRow) {
-  const characters = `${getSourceCharacterCount(source).toLocaleString()} characters`;
-  if (source.source_type === "pdf") {
-    return ["PDF", source.page_count ? `${source.page_count} pages` : null, characters].filter(Boolean).join(" · ");
-  }
-  return `Pasted text · ${characters}`;
+  const size = source.source_type === "pdf" && source.page_count
+    ? `${source.page_count} page${source.page_count === 1 ? "" : "s"}`
+    : `${getSourceCharacterCount(source).toLocaleString()} chars`;
+  return `${size} · ${source.is_active ? "in learning path" : "excluded"}`;
 }
 
 function getSourcePreviewSections(source: SourceRow) {
@@ -842,7 +831,7 @@ function getRenderableMessages(
 }
 
 export function ExplainForm({
-  onRoomLoaded,
+  authUser,
   initialRoom,
   initialSources = [],
   initialSessionState,
@@ -851,7 +840,7 @@ export function ExplainForm({
   requestedRoomId,
   initialRecallMode = false,
 }: {
-  onRoomLoaded?: (title: string, subject: string) => void;
+  authUser?: AuthenticatedUser;
   initialRoom?: StudyRoomRow | null;
   initialSources?: SourceRow[];
   initialSessionState?: Json | null;
@@ -905,7 +894,6 @@ export function ExplainForm({
   const [activeServerConceptId, setActiveServerConceptId] = useState<string | null>(initialConcept?.id || null);
   const [conceptsLoading, setConceptsLoading] = useState(false);
   const [conceptsError, setConceptsError] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [studyToolsState, setStudyToolsState] = useState<Json | null>(null);
   const [conceptTracks, setConceptTracks] = useState<Record<string, RoomConceptTrack>>({});
   const [isChoosingNextConcept, setIsChoosingNextConcept] = useState(false);
@@ -924,7 +912,6 @@ export function ExplainForm({
     Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, () => 0.18),
   );
   const [isConceptSwitchPending, startConceptTransition] = useTransition();
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const buildCurrentConceptTrack = (
     concept: string,
@@ -1012,7 +999,6 @@ export function ExplainForm({
     setIsChoosingNextConcept(false);
 
     if (roomId) void updateRoomSelectedConceptAction(roomId, track.title);
-    if (onRoomLoaded) onRoomLoaded(room ? room.title : "Quick explain", track.title);
   };
 
   const mapLearningPath = async (force = false, sourceOverride?: string) => {
@@ -1061,9 +1047,6 @@ export function ExplainForm({
       setHistory(createEmptyConceptSnapshot(initialConceptTitle).history);
     }
     if (sourceMaterial && !initialRoomConcepts.length) void mapLearningPath(false, sourceMaterial);
-    if (onRoomLoaded) {
-      onRoomLoaded(initialRoom?.title || "Quick explain", initialConceptTitle || initialRoom?.description || "");
-    }
   }, []);
 
   const resetEvaluationSession = () => {
@@ -1087,22 +1070,8 @@ export function ExplainForm({
     setRequest(prev => ({ ...prev, explanation: "" }));
   };
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    toastTimeoutRef.current = setTimeout(() => {
-      setToastMessage(null);
-      toastTimeoutRef.current = null;
-    }, 2600);
-  };
-
   useEffect(() => {
     return () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
       voiceMediaRecorderRef.current?.state === "recording" && voiceMediaRecorderRef.current.stop();
       voiceMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
@@ -1207,9 +1176,6 @@ export function ExplainForm({
     } else {
       void mapLearningPath(false, nextMaterial);
     }
-    if (onRoomLoaded) {
-      onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
-    }
     endTiming();
   };
 
@@ -1255,8 +1221,7 @@ export function ExplainForm({
     openPasteMode();
   };
 
-  const handlePdfFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
+  const handlePdfFile = (file: File | null) => {
     setSelectedPdfFile(null);
     setPdfError(null);
     setPdfStatus(null);
@@ -1264,20 +1229,19 @@ export function ExplainForm({
 
     if (!file) return;
 
-    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-    if (!isPdf) {
-      setPdfError("Please upload a PDF file.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > PDF_MAX_BYTES) {
-      setPdfError("This PDF is larger than 10 MB. Choose a smaller file for now.");
-      event.target.value = "";
+    const validationError = validatePdfFile(file);
+    if (validationError) {
+      setPdfError(validationError);
       return;
     }
 
     setSelectedPdfFile(file);
+  };
+
+  const handlePdfFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    handlePdfFile(file);
+    if (file && validatePdfFile(file)) event.target.value = "";
   };
 
   const handleCancelPdfUpload = () => {
@@ -1299,65 +1263,28 @@ export function ExplainForm({
     setSourceActionState({ status: "pending" });
     setPdfError(null);
     setPdfProgress(null);
-    setPdfStatus("Uploading your PDF...");
     const endTiming = startInteractionTiming("pdf-upload-and-extraction");
 
-    const supabase = createSupabaseBrowserClient();
-    let uploadedPath: string | null = null;
-
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("You must be signed in to upload a PDF.");
-
-      const storagePath = `${user.id}/${roomId}/${Date.now()}-${sanitizePdfFileName(selectedPdfFile.name)}`;
-      const { error: uploadError } = await supabase.storage
-        .from("study-files")
-        .upload(storagePath, selectedPdfFile, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
-
-      if (uploadError) throw new Error(uploadError.message || "Could not upload this PDF.");
-      uploadedPath = storagePath;
-
-      setPdfStatus("Reading page 1...");
-      const { extractPdfText } = await import("@src/lib/pdf/extractPdfText");
-      const extraction = await extractPdfText(selectedPdfFile, (currentPage, totalPages) => {
-        setPdfProgress({ currentPage, totalPages });
-        setPdfStatus(`Reading page ${currentPage} of ${totalPages}...`);
-      });
-
-      setPdfStatus(`${extraction.pageCount} pages · ${extraction.extractedTextLength.toLocaleString()} characters extracted`);
-      window.setTimeout(() => setPdfStatus("Saving extracted text..."), 80);
-
-      const result = await saveRoomPdfSourceAction({
+      const saved = await uploadPdfSource({
+        file: selectedPdfFile,
         roomId,
         roomTitle: room.title,
-        title: selectedPdfFile.name,
-        content: extraction.text,
-        originalFileName: selectedPdfFile.name,
-        storagePath,
-        pageCount: extraction.pageCount,
-        extractedTextLength: extraction.extractedTextLength,
+        onStatus: setPdfStatus,
+        onProgress: (currentPage, totalPages) => setPdfProgress({ currentPage, totalPages }),
       });
 
-      if (!result.ok) throw new Error(result.error);
-
-      uploadedPath = null;
       const savedAt = new Date().toISOString();
-      const nextSources = [...sources, result.data.source];
+      const nextSources = [...sources, saved.source];
       const nextMaterial = combineSourceContent(nextSources);
       setSources(nextSources);
-      setOpenSourceId(result.data.source.id);
+      setOpenSourceId(saved.source.id);
       setSavedSourceMaterial(nextMaterial);
       setRoom((current) =>
         current
           ? {
               ...current,
-              title: result.data.roomTitle || current.title,
+              title: saved.roomTitle || current.title,
               status: "explaining",
               last_activity_at: savedAt,
             }
@@ -1368,24 +1295,14 @@ export function ExplainForm({
       setSourceInputMode(null);
       setIsAddMaterialOpen(false);
       setPdfStatus(serverConcepts.length ? "PDF added · Saved" : "PDF added · Mapping concepts...");
-      setSourceActionState({ status: "success", data: { sourceId: result.data.source.id } });
+      setSourceActionState({ status: "success", data: { sourceId: saved.source.id } });
       window.setTimeout(() => setSourceActionState({ status: "idle" }), 1600);
       if (serverConcepts.length) {
         setPathUpdateNotice(`New material added. Your learning path is based on ${Math.max(1, sources.filter((item) => item.is_active).length)} source${sources.filter((item) => item.is_active).length === 1 ? "" : "s"}. Update it to include ${nextSources.filter((item) => item.is_active).length} sources?`);
       } else {
         void mapLearningPath(false, nextMaterial);
       }
-      if (onRoomLoaded) {
-        onRoomLoaded(result.data.roomTitle || room.title, room.selected_concept || room.description || "");
-      }
     } catch (caught) {
-      if (uploadedPath) {
-        const { error: cleanupError } = await supabase.storage.from("study-files").remove([uploadedPath]);
-        if (cleanupError && process.env.NODE_ENV === "development") {
-          console.warn("[Study] could not remove failed PDF upload", cleanupError);
-        }
-      }
-
       const message = caught instanceof Error ? caught.message : PDF_UNREADABLE_MESSAGE;
       setPdfError(message);
       setSourceActionState({ status: "error", error: message });
@@ -1620,9 +1537,6 @@ export function ExplainForm({
         setResolvedGaps(persistedSession.resolvedGaps);
         setStudyToolsState(persistedSession.studyTools || null);
 
-        if (onRoomLoaded && persistedSession.selectedConcept) {
-          onRoomLoaded(initialRoom?.title || "Quick explain", persistedSession.selectedConcept);
-        }
       } else if (routedConceptTitle) {
         const routedTrack = persistedSession.conceptTracks?.[getConceptId(routedConceptTitle)];
         if (routedTrack) {
@@ -1867,9 +1781,6 @@ export function ExplainForm({
       if (serverConcept?.id) void startRoomConceptAction(roomId, serverConcept.id);
     }
 
-    if (onRoomLoaded) {
-      onRoomLoaded(room ? room.title : "Quick explain", nextConcept);
-    }
     endTiming();
   };
 
@@ -1915,14 +1826,6 @@ export function ExplainForm({
     }, 0);
   };
 
-  const focusCustomConceptInput = () => {
-    setRequest(prev => ({ ...prev, explanation: "" }));
-    showToast("Type your concept in the chat box below.");
-    window.setTimeout(() => {
-      composerTextareaRef.current?.focus();
-    }, 0);
-  };
-
   const handleChangeTopic = () => {
     saveCurrentConceptTrack();
     setSelectedConcept(null);
@@ -1941,9 +1844,6 @@ export function ExplainForm({
     setFreshRecallBaseline(null);
     setRequest(prev => ({ ...prev, explanation: "" }));
 
-    if (onRoomLoaded) {
-      onRoomLoaded(room ? room.title : "Quick explain", room?.description || "");
-    }
   };
 
   const showNextRecommendation = () => {
@@ -2338,11 +2238,31 @@ export function ExplainForm({
     }
   };
 
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const pdfDragDepthRef = useRef(0);
+  const [modKey, setModKey] = useState("⌘");
+
+  useEffect(() => {
+    if (!/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)) setModKey("Ctrl");
+    if (isCompactLayout()) {
+      setIsSourcePanelOpen(false);
+      setIsSupportPanelOpen(false);
+    }
+  }, []);
+
   if (roomStatus === "not_found") {
     return (
-      <div className="empty-insights" style={{ height: '100vh', justifyContent: 'center' }}>
-        <h4 style={{ fontSize: '1.2rem', marginBottom: '16px' }}>Study room not found</h4>
-        <a href="/study" className="app-start-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', background: 'var(--duck)', color: 'var(--ink)' }}>Back to study rooms</a>
+      <div className="fd" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div className="fd-center-inner is-narrow fd-enter">
+          <div className="fd-empty-tile" aria-hidden="true">
+            <FileText size={24} strokeWidth={1.8} />
+          </div>
+          <div className="fd-center-head">
+            <h1 style={{ fontSize: 22 }}>Study room not found</h1>
+            <p>It may have been deleted, or the link is out of date.</p>
+          </div>
+          <a href="/study" className="fd-btn fd-btn-accent">Back to study rooms</a>
+        </div>
       </div>
     );
   }
@@ -2353,7 +2273,7 @@ export function ExplainForm({
   const visiblePreviewSections = isSourcePreviewExpanded ? openSourcePreviewSections : openSourcePreviewSections.slice(0, 1);
   const activeCharacterCount = activeSources.reduce((total, item) => total + getSourceCharacterCount(item), 0);
   const sourceCountLabel = sources.length
-    ? `${sources.length} source${sources.length === 1 ? "" : "s"} · ${activeCharacterCount.toLocaleString()} characters`
+    ? `${sources.length} source${sources.length === 1 ? "" : "s"} · ${activeCharacterCount.toLocaleString()} chars`
     : "No study material yet";
   const hasSavedMaterial = !!savedSourceMaterial.trim() && !isEditingNotes;
   const hasMissingClaims = Boolean(result?.missingClaims?.length);
@@ -2470,15 +2390,6 @@ export function ExplainForm({
     activeConceptMemory?.main_gap ||
     previousMainGaps[previousMainGaps.length - 1] ||
     "";
-  const sessionSummaryStatus = isConceptClear
-    ? "Clear"
-    : result?.status === "improving"
-      ? "Improving"
-      : result?.status === "topic_mismatch"
-        ? "Choose the concept again"
-        : result
-          ? "Still needs work"
-          : "";
   const sessionImprovement = result?.resolvedGaps?.[0] || (
     typeof scoreBeforeLatestAttempt === "number" && typeof result?.clarityScore === "number" && result.clarityScore > scoreBeforeLatestAttempt
       ? `Your clarity improved by ${result.clarityScore - scoreBeforeLatestAttempt} points.`
@@ -2501,809 +2412,999 @@ export function ExplainForm({
     : hasSavedMaterial
       ? "Concepts pending"
       : "Add material";
-  const renderPdfUploadPanel = () => (
-    <div className="pdf-upload-panel" aria-live="polite">
-      <label className="pdf-file-picker">
-        <span>Upload PDF</span>
-        <input
-          type="file"
-          accept="application/pdf,.pdf"
-          onChange={handlePdfFileChange}
-          disabled={isPdfBusy}
-        />
-      </label>
+  const roomTitle = room?.title || "Quick explain";
+  const roomHref = room ? `/study/room/${room.id}` : "/study";
+  const showMaterialForm = isAddMaterialOpen || sources.length === 0;
+  const isTranscribing = voiceInputStatus === "transcribing";
+  const isChoosingConcept = hasSavedMaterial && (isChoosingNextConcept || !selectedConcept);
+  const chooserConcepts = isChoosingNextConcept ? conceptSuggestionOptions : serverConcepts;
+  const clearPercent = panelConcepts.length ? Math.round((completedConceptCount / panelConcepts.length) * 100) : 0;
+  const isFollowUpComposer =
+    currentPostClearIntent === "follow_up_question" ||
+    postClearMode === "follow_up" ||
+    (isConceptClear && postClearMode !== "fresh_recall");
+  const composerLabel = isFollowUpComposer
+    ? "Ask a follow-up"
+    : postClearMode === "fresh_recall"
+      ? "Explain it from memory"
+      : selectedConcept
+        ? result || previousExplanations.length
+          ? "Re-explain it"
+          : "Explain it in your own words"
+        : "Or explain something else";
+  const composerHint = currentPostClearIntent === "follow_up_question"
+    ? `${modKey} ↵ to send`
+    : isConceptClear && postClearMode !== "fresh_recall"
+      ? "Ask about this concept, or what to learn next"
+      : selectedConcept
+        ? `${modKey} ↵ to check`
+        : `${modKey} ↵ to start`;
+  const attemptLabel = postClearMode === "fresh_recall"
+    ? "Fresh recall"
+    : `Attempt ${Math.max(1, previousExplanations.length + (result || isLoading ? 0 : 1))} · Explain the mechanism`;
+  const feedbackStatus = result?.status === "topic_mismatch"
+    ? { label: "Topic mismatch", tone: "is-danger" }
+    : isConceptClear
+      ? { label: "Clear", tone: "is-success" }
+      : result?.status === "improving"
+        ? { label: "Improving", tone: "is-amber" }
+        : { label: "Gap found", tone: "is-amber" };
+  const scoreChanged =
+    typeof scoreBeforeLatestAttempt === "number" &&
+    typeof result?.clarityScore === "number" &&
+    scoreBeforeLatestAttempt !== result.clarityScore;
 
-      {selectedPdfFile ? (
-        <div className="pdf-selected-file">
-          <strong>{selectedPdfFile.name}</strong>
-          <span>{formatFileSize(selectedPdfFile.size)}</span>
-        </div>
+  const resizeWithKeys = (side: "left" | "right", event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 48 : 16;
+    const delta = event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0;
+    if (!delta) return;
+    event.preventDefault();
+    if (side === "left") setLeftWidth((current) => clampPanelWidth("left", current + delta));
+    else setRightWidth((current) => clampPanelWidth("right", current - delta));
+  };
+
+  const startTypedConcept = () => {
+    if (isChoosingNextConcept) selectConcept(request.explanation);
+    else void handleSubmit();
+  };
+
+  const renderComposer = (rows: number, conceptMode = false) => (
+    <div className={cn("fd-composer", isVoiceInputActive && "is-recording")}>
+      {isVoiceInputActive ? (
+        <>
+          <div className="fd-voice-head">
+            <span>Voice explanation</span>
+            <span className={cn("fd-rec", isTranscribing && "is-muted")}>
+              <span aria-hidden="true" />
+              {voiceInputLabel} · {formatVoiceRecordingTime(voiceRecordingSeconds)}
+            </span>
+          </div>
+          <div className={cn("fd-wave", isTranscribing && "is-idle fd-pulse")} aria-hidden="true">
+            {voiceWaveformBars.map((level, index) => (
+              <span key={index} style={{ transform: `scaleY(${Math.max(0.12, isTranscribing ? 0.18 : level)})` }} />
+            ))}
+          </div>
+          <div className="fd-composer-foot">
+            <span className="fd-hint-text">
+              {isTranscribing ? "Turning your recording into text…" : "Recording on your device. Confirm when you’re done."}
+            </span>
+            <div>
+              <button
+                type="button"
+                className="fd-icon-btn fd-icon-btn-lg"
+                aria-label="Discard recording"
+                disabled={isTranscribing}
+                onClick={cancelVoiceInput}
+              >
+                <X size={16} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                className="fd-btn fd-btn-accent"
+                disabled={voiceInputStatus !== "recording"}
+                onClick={confirmVoiceInput}
+              >
+                {isTranscribing ? <span className="fd-spinner" aria-hidden="true" /> : <Check size={16} strokeWidth={2.2} />}
+                {isTranscribing ? "Transcribing…" : "Use recording"}
+              </button>
+            </div>
+          </div>
+        </>
       ) : (
-        <p className="pdf-helper-text">Choose a selectable-text PDF up to 10 MB and 100 pages.</p>
+        <>
+          <label htmlFor="fd-composer-input">{conceptMode ? "Or explain something else" : composerLabel}</label>
+          <textarea
+            id="fd-composer-input"
+            ref={composerTextareaRef}
+            rows={rows}
+            placeholder={conceptMode ? "e.g. Expiratory airflow limitation in asthma" : composerPlaceholder}
+            value={request.explanation}
+            onChange={(event) => updateField("explanation", event.target.value)}
+            onKeyDown={(event) => {
+              if (conceptMode && (event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                startTypedConcept();
+                return;
+              }
+              handleKeyDown(event);
+            }}
+            disabled={!hasSavedMaterial}
+          />
+          <div className="fd-composer-foot">
+            <span className="fd-hint">{conceptMode ? `${modKey} ↵ to start` : composerHint}</span>
+            <div>
+              <button
+                type="button"
+                className="fd-icon-btn fd-icon-btn-lg"
+                aria-label="Explain by voice"
+                title="Explain by voice"
+                onClick={startVoiceInput}
+                disabled={!hasSavedMaterial || isLoading || isAnsweringFollowUp}
+              >
+                <Mic size={18} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="fd-btn fd-btn-accent"
+                onClick={() => (conceptMode ? startTypedConcept() : void handleSubmit())}
+                disabled={isLoading || isAnsweringFollowUp || !request.explanation.trim() || !hasSavedMaterial}
+              >
+                {isLoading || isAnsweringFollowUp ? <span className="fd-spinner" aria-hidden="true" /> : null}
+                {isLoading || isAnsweringFollowUp
+                  ? `${isAnsweringFollowUp ? "Sending" : "Checking"}…`
+                  : conceptMode ? "Start concept" : submitButtonLabel}
+              </button>
+            </div>
+          </div>
+        </>
       )}
-
-      {pdfStatus ? <p className="pdf-status" role="status">{pdfStatus}</p> : null}
-      {pdfProgress ? (
-        <div className="pdf-progress" aria-label={`Reading page ${pdfProgress.currentPage} of ${pdfProgress.totalPages}`}>
-          <span style={{ width: `${Math.round((pdfProgress.currentPage / pdfProgress.totalPages) * 100)}%` }} />
-        </div>
-      ) : null}
-      {pdfError ? <div className="pdf-error" role="alert">{pdfError}</div> : null}
-
-      <div className="pdf-actions">
-        <button
-          type="button"
-          className="source-action-btn"
-          onClick={handleCancelPdfUpload}
-          disabled={isPdfBusy}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="source-action-btn source-action-btn-primary"
-          onClick={handleSavePdfSource}
-          disabled={!selectedPdfFile || isPdfBusy}
-        >
-          {isPdfBusy ? "Working..." : "Add PDF"}
-        </button>
-      </div>
     </div>
   );
 
-  return (
-    <div className={`dashboard-container ${!isSourcePanelOpen ? 'left-closed' : ''}`}>
-      {/* Left Panel: Study Material */}
-      <aside 
-        className={`dashboard-panel left-panel ${!isSourcePanelOpen ? 'closed' : ''}`}
-        style={{ 
-          width: isSourcePanelOpen ? leftWidth : 0, 
-          transition: isDraggingLeft ? "none" : undefined 
-        }}
-      >
-        <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontFamily: 'inherit', fontWeight: 700 }}>Source Material</h3>
-          <button 
-            className="panel-toggle-btn" 
-            onClick={() => setIsSourcePanelOpen(false)}
-            aria-label="Close study material panel"
+  const renderMaterialForm = () => (
+    <div className="fd-material-form">
+      <div role="tablist" aria-label="Material type" className="fd-segmented">
+        <button type="button" role="tab" aria-selected={sourceInputMode !== "pdf"} onClick={openPasteMode}>
+          Paste text
+        </button>
+        <button type="button" role="tab" aria-selected={sourceInputMode === "pdf"} onClick={openPdfMode}>
+          Upload PDF
+        </button>
+      </div>
+
+      {sourceInputMode === "pdf" ? (
+        <>
+          <label
+            className={cn("fd-dropzone is-compact", isDraggingPdf && "is-dragging", selectedPdfFile && "has-file")}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              pdfDragDepthRef.current += 1;
+              setIsDraggingPdf(true);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              pdfDragDepthRef.current = Math.max(0, pdfDragDepthRef.current - 1);
+              if (pdfDragDepthRef.current === 0) setIsDraggingPdf(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              pdfDragDepthRef.current = 0;
+              setIsDraggingPdf(false);
+              if (!isPdfBusy) handlePdfFile(event.dataTransfer.files?.[0] || null);
+            }}
           >
-            <PanelLeftClose size={18} />
-          </button>
-        </div>
-        <div className="panel-content">
-          <div className="source-room-summary">
-            <div>
-              <h4>{room ? room.title : "Quick explain"}</h4>
-              <div className="source-meta">{sourceCountLabel}</div>
-              {selectedConcept && (
-                <div className="current-focus-pill">
-                  <span>Current focus</span>
-                  <strong>{selectedConcept}</strong>
-                </div>
-              )}
-              {postClearMode === "fresh_recall" ? (
-                <div className="current-focus-pill recall-note">
-                  <span>Recall mode</span>
-                  <strong>Try without checking your notes</strong>
+            {selectedPdfFile ? (
+              <>
+                <span className="fd-file-badge is-sm" aria-hidden="true">PDF</span>
+                <span className="fd-dropzone-title" style={{ fontSize: 14, wordBreak: "break-word" }}>{selectedPdfFile.name}</span>
+                <span className="fd-dropzone-hint">{formatFileSize(selectedPdfFile.size)} · click or drop to replace</span>
+              </>
+            ) : (
+              <>
+                <Upload size={24} strokeWidth={1.8} aria-hidden="true" />
+                <span className="fd-dropzone-title" style={{ fontSize: 14 }}>
+                  {isDraggingPdf ? "Drop your PDF here" : <>Drop a PDF or <u>browse</u></>}
+                </span>
+                <span className="fd-dropzone-hint" style={{ fontSize: 12 }}>Selectable-text PDF, up to 10 MB and 100 pages</span>
+              </>
+            )}
+            <input type="file" accept="application/pdf,.pdf" onChange={handlePdfFileChange} disabled={isPdfBusy} />
+          </label>
+          {pdfStatus || pdfProgress ? (
+            <div className="fd-upload-progress" role="status">
+              {pdfStatus ? (
+                <span className="fd-busy" style={{ fontSize: 13 }}>
+                  {isPdfBusy ? <span className="fd-spinner" aria-hidden="true" /> : null}
+                  {pdfStatus}
+                </span>
+              ) : null}
+              {pdfProgress ? (
+                <div className="fd-bar is-thin">
+                  <span style={{ width: `${Math.round((pdfProgress.currentPage / pdfProgress.totalPages) * 100)}%` }} />
                 </div>
               ) : null}
             </div>
-            <button className="source-action-btn source-action-btn-primary" type="button" onClick={openAddMaterialSheet}>
-              Add material
+          ) : null}
+          {pdfError ? (
+            <div className="fd-notice is-error" role="alert">
+              <AlertCircle size={16} strokeWidth={1.8} />
+              <span>{pdfError}</span>
+            </div>
+          ) : null}
+          <div className="fd-form-actions">
+            {sources.length ? (
+              <button type="button" className="fd-btn fd-btn-ghost fd-btn-md" onClick={handleCancelPdfUpload} disabled={isPdfBusy}>
+                Cancel
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="fd-btn fd-btn-accent fd-btn-md"
+              onClick={handleSavePdfSource}
+              disabled={!selectedPdfFile || isPdfBusy}
+            >
+              {isPdfBusy ? "Working…" : "Add PDF"}
             </button>
           </div>
+        </>
+      ) : (
+        <>
+          <div className="fd-field">
+            <label htmlFor="mat-title" className="fd-label" style={{ fontSize: 12 }}>
+              Title <span className="fd-optional">(optional)</span>
+            </label>
+            <input
+              id="mat-title"
+              className="fd-input fd-input-sm"
+              value={pasteTitle}
+              onChange={(event) => setPasteTitle(event.target.value)}
+              placeholder="Lecture 4 notes"
+            />
+          </div>
+          <div className="fd-field">
+            <label htmlFor="mat-text" className="fd-label" style={{ fontSize: 12 }}>Text</label>
+            <textarea
+              id="mat-text"
+              className="fd-textarea"
+              rows={9}
+              style={{ fontSize: 14 }}
+              placeholder="Paste your notes or text…"
+              value={request.notes}
+              onChange={(event) => updateField("notes", event.target.value)}
+            />
+          </div>
+          <div className="fd-form-actions">
+            {sources.length ? (
+              <button type="button" className="fd-btn fd-btn-ghost fd-btn-md" onClick={handleCancelNotesEdit} disabled={isSavingSource}>
+                Cancel
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="fd-btn fd-btn-accent fd-btn-md"
+              onClick={handleSaveNotes}
+              disabled={isSavingSource || request.notes.trim().length < 10}
+            >
+              {isSavingSource ? <span className="fd-spinner" aria-hidden="true" /> : null}
+              {isSavingSource ? "Saving…" : "Add text"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 
-          {pathUpdateNotice ? (
-            <div className="source-path-notice" role="status">
-              <strong>{pathUpdateNotice.startsWith("New material") ? "New material added" : "Study material changed"}</strong>
-              <p>{pathUpdateNotice}</p>
-              <div>
-                <button className="source-action-btn source-action-btn-primary" type="button" onClick={handleUpdateLearningPath} disabled={conceptsLoading}>
-                  {conceptsLoading ? "Updating..." : "Update learning path"}
-                </button>
-                <button className="source-action-btn" type="button" onClick={() => setPathUpdateNotice(null)}>Not now</button>
-              </div>
+  const renderSourcePanel = () => (
+    <aside
+      className={cn("fd-panel is-left", isDraggingLeft && "is-dragging")}
+      style={{ width: leftWidth }}
+      aria-label="Source material and learning path"
+    >
+      <div className="fd-panel-head">
+        <div>
+          <strong title={roomTitle}>{roomTitle}</strong>
+          <span className="fd-kicker">{sourceCountLabel}</span>
+        </div>
+        {sources.length ? (
+          <button
+            type="button"
+            className={cn("fd-btn fd-btn-secondary fd-btn-sm")}
+            aria-expanded={isAddMaterialOpen}
+            onClick={openAddMaterialSheet}
+          >
+            {isAddMaterialOpen ? <X size={14} strokeWidth={2} /> : <Plus size={14} strokeWidth={2} />}
+            {isAddMaterialOpen ? "Close" : "Add material"}
+          </button>
+        ) : null}
+      </div>
+
+      {postClearMode === "fresh_recall" ? (
+        <div className="fd-panel-block">
+          <div className="fd-notice is-amber">
+            <span><strong>Recall mode.</strong> Try it without checking your notes.</span>
+          </div>
+        </div>
+      ) : null}
+
+      {pathUpdateNotice ? (
+        <div className="fd-panel-block">
+          <div className="fd-notice is-amber" role="status" style={{ flexDirection: "column", gap: 0 }}>
+            <strong>{pathUpdateNotice.startsWith("New material") ? "New material added" : "Study material changed"}</strong>
+            <span>{pathUpdateNotice}</span>
+            <div className="fd-notice-actions">
+              <button type="button" className="fd-btn fd-btn-dark fd-btn-sm" onClick={handleUpdateLearningPath} disabled={conceptsLoading}>
+                {conceptsLoading ? "Updating…" : "Update learning path"}
+              </button>
+              <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={() => setPathUpdateNotice(null)}>
+                Not now
+              </button>
             </div>
-          ) : null}
+          </div>
+        </div>
+      ) : null}
 
-          {isAddMaterialOpen ? (
-            <div className="add-material-sheet">
-              <div className="source-choice-tabs" aria-label="Source type">
-                <button className={sourceInputMode === "pdf" ? "" : "active"} type="button" onClick={openPasteMode}>Paste text</button>
-                <button className={sourceInputMode === "pdf" ? "active" : ""} type="button" onClick={openPdfMode}>Upload PDF</button>
-              </div>
-              {sourceInputMode === "pdf" ? (
-                renderPdfUploadPanel()
-              ) : (
-                <div>
-                  <label className="source-field-label">
-                    <span>Title (optional)</span>
-                    <input
-                      className="source-title-input"
-                      value={pasteTitle}
-                      onChange={(event) => setPasteTitle(event.target.value)}
-                      placeholder="Pasted notes"
-                    />
-                  </label>
-                  <textarea
-                    className="notes-textarea-minimal"
-                    placeholder="Paste your notes or text..."
-                    value={request.notes}
-                    onChange={(e) => updateField("notes", e.target.value)}
-                    rows={10}
-                    style={{ width: '100%', minWidth: '220px', marginBottom: '16px' }}
-                  />
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    <button className="source-action-btn" onClick={handleCancelNotesEdit} disabled={isSavingSource}>Cancel</button>
-                    <button className="source-action-btn source-action-btn-primary" onClick={handleSaveNotes} disabled={isSavingSource}>
-                      {isSavingSource ? "Saving..." : "Add text"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
+      {showMaterialForm ? renderMaterialForm() : null}
 
-          {sourceActionError ? <div className="pdf-error" role="alert">{sourceActionError}</div> : null}
+      {sourceActionError ? (
+        <div className="fd-panel-block">
+          <div className="fd-notice is-error" role="alert">
+            <AlertCircle size={16} strokeWidth={1.8} />
+            <span>{sourceActionError}</span>
+          </div>
+        </div>
+      ) : null}
 
-          {sources.length ? (
-            <div className="source-list" aria-label="Room sources">
-              {sources.map((item) => {
-                const isSourcePending = pendingSourceIds.includes(item.id) ||
-                  (sourceActionState.status === "pending" && sourceActionState.data?.sourceId === item.id);
-                const isSourceSaved = sourceActionState.status === "success" && sourceActionState.data?.sourceId === item.id;
+      {sources.length ? (
+        <div className="fd-source-stack" aria-label="Room sources">
+          {sources.map((item) => {
+            const isSourcePending = pendingSourceIds.includes(item.id) ||
+              (sourceActionState.status === "pending" && sourceActionState.data?.sourceId === item.id);
+            const isSourceSaved = sourceActionState.status === "success" && sourceActionState.data?.sourceId === item.id;
+            const isOpen = openSourceId === item.id;
 
-                return (
-                <div key={item.id} className={cn("source-list-item", openSourceId === item.id && "active", !item.is_active && "inactive", isSourcePending && "pending")}>
-                  <button type="button" className="source-row-main" onClick={() => openSourcePreview(item.id)}>
-                    <strong>{getSourceDisplayTitle(item)}</strong>
-                    <span>{formatSourceMeta(item)}</span>
-                    <em>
-                      {isSourcePending
-                        ? "Saving..."
-                        : isSourceSaved
-                          ? "Saved just now"
-                          : item.is_active ? "Included in learning path" : "Excluded from learning path"}
-                    </em>
+            return (
+              <div
+                key={item.id}
+                className={cn("fd-source-item", isOpen && "is-open", !item.is_active && "is-inactive", isSourcePending && "is-pending")}
+              >
+                <div className="fd-source-row">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => (isOpen ? setOpenSourceId(null) : openSourcePreview(item.id))}
+                  >
+                    <span className="fd-file-badge is-sm" aria-hidden="true">{item.source_type === "pdf" ? "PDF" : "TXT"}</span>
+                    <span>
+                      <strong>{getSourceDisplayTitle(item)}</strong>
+                      <small>
+                        {isSourcePending
+                          ? "Saving…"
+                          : isSourceSaved
+                            ? "Saved just now"
+                            : formatSourceMeta(item)}
+                      </small>
+                    </span>
                   </button>
                   <button
                     ref={(element) => {
                       sourceMenuTriggerRefs.current[item.id] = element;
                     }}
                     type="button"
-                    className="source-menu-trigger"
+                    className="fd-icon-btn is-plain fd-icon-btn-sm"
                     aria-label={`Actions for ${getSourceDisplayTitle(item)}`}
                     aria-haspopup="menu"
                     aria-expanded={openSourceMenuId === item.id}
-                    onClick={() => setOpenSourceMenuId((current) => current === item.id ? null : item.id)}
+                    onClick={() => setOpenSourceMenuId((current) => (current === item.id ? null : item.id))}
                   >
-                    ...
+                    <MoreHorizontal size={16} />
                   </button>
-                  {openSourceMenuId === item.id ? (
-                    <SourceActionMenuPortal
-                      triggerElement={sourceMenuTriggerRefs.current[item.id]}
-                      onClose={() => setOpenSourceMenuId(null)}
-                      actions={[
-                        {
-                          label: "View source",
-                          onSelect: () => openSourcePreview(item.id),
-                        },
-                        {
-                          label: "Rename",
-                          onSelect: () => startRenameSource(item),
-                        },
-                        {
-                          label: item.is_active ? "Exclude from learning path" : "Include in learning path",
-                          onSelect: () => handleToggleSourceActive(item),
-                        },
-                        {
-                          label: "Delete",
-                          destructive: true,
-                          onSelect: () => setPendingDeleteSourceId(item.id),
-                        },
-                      ]}
+                </div>
+                {openSourceMenuId === item.id ? (
+                  <SourceActionMenuPortal
+                    triggerElement={sourceMenuTriggerRefs.current[item.id]}
+                    onClose={() => setOpenSourceMenuId(null)}
+                    actions={[
+                      { label: isOpen ? "Hide preview" : "View source", onSelect: () => (isOpen ? setOpenSourceId(null) : openSourcePreview(item.id)) },
+                      { label: "Rename", onSelect: () => startRenameSource(item) },
+                      {
+                        label: item.is_active ? "Exclude from learning path" : "Include in learning path",
+                        onSelect: () => handleToggleSourceActive(item),
+                      },
+                      { label: "Delete", destructive: true, onSelect: () => setPendingDeleteSourceId(item.id) },
+                    ]}
+                  />
+                ) : null}
+                {renamingSourceId === item.id ? (
+                  <form
+                    className="fd-inline-edit"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleRenameSource(item);
+                    }}
+                  >
+                    <input
+                      className="fd-input fd-input-sm"
+                      style={{ height: 32, fontSize: 13 }}
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      aria-label="Source title"
+                      autoFocus
                     />
-                  ) : null}
-                  {renamingSourceId === item.id ? (
-                    <div className="source-inline-edit">
-                      <input value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} aria-label="Source title" />
-                      <button type="button" onClick={() => handleRenameSource(item)} disabled={sourceActionState.status === "pending"}>Save</button>
-                      <button type="button" onClick={() => setRenamingSourceId(null)}>Cancel</button>
-                    </div>
-                  ) : null}
-                  {pendingDeleteSourceId === item.id ? (
-                    <div className="source-delete-confirm">
-                      <span>Delete this material?</span>
-                      <button type="button" onClick={() => handleDeleteSource(item)}>Delete</button>
-                      <button type="button" onClick={() => setPendingDeleteSourceId(null)}>Cancel</button>
-                    </div>
-                  ) : null}
-                </div>
-              )})}
-            </div>
-          ) : (
-            <div className="empty-insights" style={{ alignItems: 'flex-start', textAlign: 'left', padding: '0', height: 'auto' }}>
-              <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--ink)' }}>No study material yet</h4>
-              <p style={{ marginBottom: '24px' }}>Add a PDF or pasted notes for Feynduck to use as the source.</p>
-            </div>
-          )}
-
-          {openSource ? (
-            <div className="source-preview-block">
-              <div className="source-preview-heading">
-                <div>
-                  <span>{openSource.source_type === "pdf" ? "Extracted PDF text" : "Pasted source"}</span>
-                  <strong>{getSourceDisplayTitle(openSource)}</strong>
-                </div>
-                <div className="source-preview-actions">
-                  <button type="button" onClick={() => setIsSourcePreviewExpanded((current) => !current)}>
-                    {isSourcePreviewExpanded ? "Collapse" : "Expand"}
-                  </button>
-                  <button type="button" onClick={() => setOpenSourceId(null)}>Close</button>
-                </div>
-              </div>
-              <div className={cn("source-formatted-preview", isSourcePreviewExpanded && "expanded")}>
-                {visiblePreviewSections.map((section) => (
-                  <section key={`${openSource.id}-${section.title}`} className="source-preview-section">
-                    <h5>{section.title}</h5>
-                    <p>{section.body}</p>
-                  </section>
-                ))}
-                {!isSourcePreviewExpanded && openSourcePreviewSections.length > 1 ? (
-                  <button type="button" className="source-preview-more" onClick={() => setIsSourcePreviewExpanded(true)}>
-                    Show all {openSourcePreviewSections.length} sections
-                  </button>
+                    <button type="submit" className="fd-btn fd-btn-dark fd-btn-sm" disabled={sourceActionState.status === "pending"}>Save</button>
+                    <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={() => setRenamingSourceId(null)}>Cancel</button>
+                  </form>
                 ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="study-context-block">
-                <div className="study-context-heading">
-                  <span>Room progress</span>
-                  <strong>{roomProgressLabel}</strong>
-                </div>
-                <div className="study-context-stats">
-                  <span>{gapConceptCount} weak spots</span>
-                  <span>{previousExplanations.length} explanations</span>
-                </div>
-                {panelConcepts.length ? (
-                  <div className="study-context-list" aria-label="Concept progress">
-                    {panelConcepts.slice(0, 6).map((concept) => (
-                      <button
-                        key={concept.id}
-                        type="button"
-                        className={cn("study-context-item", concept.id === (selectedConcept ? getConceptId(selectedConcept) : "") && "active")}
-                        onClick={() => selectConcept(concept.title)}
-                      >
-                        <span>{concept.title}</span>
-                        <em>{concept.latestClarityScore != null ? concept.latestClarityScore : concept.status.replace("_", " ")}</em>
-                      </button>
-                    ))}
+                {pendingDeleteSourceId === item.id ? (
+                  <div className="fd-inline-confirm" role="alertdialog" aria-label="Delete this material?">
+                    <span>Delete this material?</span>
+                    <button type="button" className="fd-btn fd-btn-danger fd-btn-sm" onClick={() => handleDeleteSource(item)}>Delete</button>
+                    <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={() => setPendingDeleteSourceId(null)}>Cancel</button>
                   </div>
                 ) : null}
-                {previousMainGaps.length ? (
-                  <div className="study-weakspot-card">
-                    <span>Latest weak spot</span>
-                    <p>{previousMainGaps[previousMainGaps.length - 1]}</p>
-                  </div>
-                ) : null}
-          </div>
-        </div>
-      </aside>
-
-      {isSourcePanelOpen && (
-        <div
-          className={cn("resize-handle", isDraggingLeft && "active")}
-          onPointerDown={(e) => { e.preventDefault(); setIsDraggingLeft(true); }}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize study material panel"
-        />
-      )}
-
-      {/* Center Panel: Explanation workspace */}
-      <main className="dashboard-panel center-panel">
-        {!isSourcePanelOpen && (
-          <button 
-            className="panel-toggle-btn sidebar-open-btn" 
-            onClick={() => setIsSourcePanelOpen(true)}
-            aria-label="Open study material panel"
-          >
-            <PanelLeftOpen size={20} />
-          </button>
-        )}
-        {!isSupportPanelOpen && (
-          <button
-            className="panel-toggle-btn support-open-btn"
-            onClick={() => setIsSupportPanelOpen(true)}
-            aria-label="Open support panel"
-          >
-            <PanelRightOpen size={20} />
-          </button>
-        )}
-        
-        <div className="conversation-area explain-workspace" ref={conversationRef}>
-          {!hasSavedMaterial ? (
-            <div className="empty-insights" style={{ height: '100%' }}>
-              <h4 style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>
-                {isEditingNotes ? "Save material to begin" : "Add study material to begin"}
-              </h4>
-              <p>
-                {isEditingNotes
-                  ? "Save your source material first, then Feynduck will suggest concepts from it."
-                  : "Feynduck needs your material before it can check your explanation."}
-              </p>
-            </div>
-          ) : isChoosingNextConcept ? (
-            <div className="concept-picker-state">
-              <div>
-                <span className="conversation-kicker">Next concept</span>
-                <h2>What would you like to learn next?</h2>
-                <p>Choose another concept from this material.</p>
-              </div>
-              {conceptsLoading ? (
-                <div className="concept-loading large" aria-live="polite">
-                  <Loader2 className="icon-spin" size={18} />
-                  <span>Mapping the concepts in your material...</span>
-                </div>
-              ) : null}
-              {!conceptsLoading && conceptsError ? (
-                <div className="concept-error learning-path-error">
-                  <strong>{conceptsError}</strong>
-                  <span>Try again, or add the concept you want to explain yourself.</span>
-                  <div>
-                    <button type="button" onClick={() => mapLearningPath(false)}>
-                      Try again
-                    </button>
-                    <button type="button" onClick={focusCustomConceptInput}>
-                      Add your own concept
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="next-concept-grid">
-                {conceptSuggestionOptions.map((concept) => (
-                  <button
-                    key={concept.title}
-                    type="button"
-                    className="next-concept-card"
-                    onClick={() => selectConcept(concept.title)}
-                  >
-                    <strong>{concept.title}</strong>
-                    {concept.description ? <span>{concept.description}</span> : null}
-                  </button>
-                ))}
-              </div>
-              <div className="next-concept-custom">
-                <textarea
-                  className="composer-textarea"
-                  placeholder="Enter another concept..."
-                  value={request.explanation}
-                  onChange={(event) => updateField("explanation", event.target.value)}
-                  rows={2}
-                />
-                <button
-                  type="button"
-                  className="source-action-btn source-action-btn-primary"
-                  disabled={!request.explanation.trim()}
-                  onClick={() => selectConcept(request.explanation)}
-                >
-                  Start concept
-                </button>
-              </div>
-            </div>
-          ) : (
-            <section className={cn("explain-loop-surface", isConceptSwitchPending && "is-switching")} aria-label="Explanation workspace">
-              <div className="explain-loop-header">
-                <div>
-                  <span className="conversation-kicker">Main loop</span>
-                  <h1>{selectedConcept ? selectedConcept : "Choose the concept you want to explain"}</h1>
-                  <p>
-                    {selectedConcept
-                      ? "Explain the mechanism in your own words. Feynduck will find the missing reasoning link."
-                      : "Pick a concept from your material, or type one below to start the explanation loop."}
-                  </p>
-                </div>
-                <div
-                  className={cn("explain-loop-score", result?.status === "topic_mismatch" && "is-mismatch")}
-                  aria-label="Current clarity score"
-                >
-                  <span>{result?.status === "topic_mismatch" ? "Status" : "Clarity"}</span>
-                  <strong>{result?.status === "topic_mismatch" ? "Topic mismatch" : result?.clarityScore ?? "--"}</strong>
-                </div>
-              </div>
-
-              {isConceptSwitchPending && selectedConcept ? (
-                <div className="concept-switch-loading skeleton-block" aria-live="polite">
-                  <Loader2 className="icon-spin" size={18} />
-                  <span>Loading {selectedConcept}...</span>
-                  <i />
-                  <i />
-                </div>
-              ) : null}
-
-              {hasSavedMaterial && !selectedConcept && (
-                <div className="concept-suggestions explain-concept-suggestions" aria-label="Suggested concepts">
-                  {conceptsLoading && (
-                    <div className="concept-loading" aria-live="polite">
-                      <Loader2 className="icon-spin" size={16} />
-                      <span>Mapping the concepts in your material...</span>
-                    </div>
-                  )}
-                  {!conceptsLoading && conceptsError && (
-                    <div className="concept-error learning-path-error">
-                      <strong>{conceptsError}</strong>
-                      <span>Try again, or add the concept you want to explain yourself.</span>
+                {isOpen && openSourcePreviewSections.length ? (
+                  <div className={cn("fd-source-preview", !isSourcePreviewExpanded && "is-collapsed")}>
+                    <div className="fd-source-preview-head">
+                      <span className="fd-eyebrow">{item.source_type === "pdf" ? "Extracted text" : "Pasted text"}</span>
                       <div>
-                        <button type="button" onClick={() => mapLearningPath(false)}>
-                          Try again
-                        </button>
-                        <button type="button" onClick={focusCustomConceptInput}>
-                          Add your own concept
+                        <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" style={{ height: 26, padding: "0 8px", fontSize: 12 }} onClick={() => setIsSourcePreviewExpanded((current) => !current)}>
+                          {isSourcePreviewExpanded ? "Collapse" : "Expand"}
                         </button>
                       </div>
                     </div>
-                  )}
-                  {!conceptsLoading && !conceptsError && serverConcepts.map((concept) => (
+                    {visiblePreviewSections.map((section) => (
+                      <section key={`${item.id}-${section.title}`}>
+                        <h5>{section.title}</h5>
+                        <p>{section.body}</p>
+                      </section>
+                    ))}
+                    {!isSourcePreviewExpanded && openSourcePreviewSections.length > 1 ? (
+                      <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" style={{ alignSelf: "flex-start", padding: "0 6px", fontSize: 12 }} onClick={() => setIsSourcePreviewExpanded(true)}>
+                        Show all {openSourcePreviewSections.length} sections
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="fd-path-head">
+        <div>
+          <span>Learning path</span>
+          <span className="fd-kicker">{conceptsLoading ? "Mapping…" : panelConcepts.length ? `${completedConceptCount} / ${panelConcepts.length} clear` : roomProgressLabel}</span>
+        </div>
+        <div className="fd-bar is-thin" aria-hidden="true">
+          <span style={{ width: `${clearPercent}%` }} />
+        </div>
+        {panelConcepts.length ? (
+          <div className="fd-path-stats">
+            <span>{gapConceptCount} weak spot{gapConceptCount === 1 ? "" : "s"}</span>
+            <span>{previousExplanations.length} explanation{previousExplanations.length === 1 ? "" : "s"}</span>
+          </div>
+        ) : null}
+      </div>
+      {conceptsLoading ? (
+        <div className="fd-path-skeleton fd-pulse" aria-hidden="true">
+          <span className="fd-skeleton" style={{ width: "80%" }} />
+          <span className="fd-skeleton" style={{ width: "64%" }} />
+          <span className="fd-skeleton" style={{ width: "72%" }} />
+        </div>
+      ) : panelConcepts.length ? (
+        <ul className="fd-path-list" aria-label="Concept progress">
+          {panelConcepts.map((concept) => {
+            const isActive = concept.id === (selectedConcept ? getConceptId(selectedConcept) : "");
+            return (
+              <li key={concept.id}>
+                <button
+                  type="button"
+                  className="fd-path-item"
+                  aria-current={isActive ? "true" : undefined}
+                  onClick={() => {
+                    selectConcept(concept.title);
+                    if (isCompactLayout()) setIsSourcePanelOpen(false);
+                  }}
+                  title={concept.title}
+                >
+                  <span className="fd-dot" data-status={concept.status} aria-hidden="true" />
+                  <span>{concept.title}</span>
+                  {concept.latestClarityScore != null ? (
+                    <span className={cn("fd-path-score", concept.status === "clear" && "is-clear")}>{concept.latestClarityScore}</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="fd-path-empty">
+          {hasSavedMaterial ? "No concepts yet. Pick one in the middle or type your own." : "Concepts from your material will appear here."}
+        </div>
+      )}
+    </aside>
+  );
+
+  const renderCenter = () => {
+    if (!hasSavedMaterial) {
+      return (
+        <main className="fd-center is-middle" ref={conversationRef}>
+          <div className="fd-center-inner is-narrow fd-enter">
+            <div className="fd-empty-tile" aria-hidden="true">
+              <FileText size={24} strokeWidth={1.8} />
+            </div>
+            <div className="fd-center-head">
+              <h1 style={{ fontSize: 22 }}>{isEditingNotes ? "Save material to begin" : "Add study material to begin"}</h1>
+              <p>
+                {isEditingNotes
+                  ? "Save your notes on the left, then Feynduck will map the concepts in them."
+                  : "Feynduck needs your material before it can check your explanation. Paste notes or upload a PDF on the left."}
+              </p>
+            </div>
+            <ol className="fd-flow-steps">
+              <li className="is-active"><span>1</span>Add material</li>
+              <li><span>2</span>Pick a concept</li>
+              <li><span>3</span>Explain it</li>
+            </ol>
+            {!isSourcePanelOpen ? (
+              <button type="button" className="fd-btn fd-btn-accent" onClick={() => setIsSourcePanelOpen(true)}>
+                Open the material panel
+              </button>
+            ) : null}
+          </div>
+        </main>
+      );
+    }
+
+    if (isChoosingConcept) {
+      return (
+        <main className="fd-center" ref={conversationRef}>
+          <div className="fd-center-inner fd-enter" style={{ gap: 24 }}>
+            <div className="fd-center-head">
+              <h1>{isChoosingNextConcept ? "What would you like to learn next?" : "Choose a concept to explain"}</h1>
+              <p>
+                {isChoosingNextConcept
+                  ? "Pick another concept from this material, or type your own."
+                  : "Pick one from your material, or type your own. You’ll explain it in your own words and Feynduck will find the missing link."}
+              </p>
+            </div>
+
+            {conceptsLoading ? (
+              <section className="fd-busy-card" aria-busy="true">
+                <div className="fd-busy">
+                  <span className="fd-spinner" aria-hidden="true" />
+                  Mapping the concepts in your material…
+                </div>
+                <div className="fd-busy-grid fd-pulse" aria-hidden="true">
+                  <span className="fd-skeleton" />
+                  <span className="fd-skeleton" />
+                  <span className="fd-skeleton" />
+                  <span className="fd-skeleton" />
+                </div>
+              </section>
+            ) : conceptsError ? (
+              <div className="fd-notice is-error" role="alert" style={{ flexDirection: "column", gap: 0 }}>
+                <strong>{conceptsError}</strong>
+                <span>Try again, or type the concept you want to explain below.</span>
+                <div className="fd-notice-actions">
+                  <button type="button" className="fd-btn fd-btn-dark fd-btn-sm" onClick={() => mapLearningPath(false)}>Try again</button>
+                  <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={() => composerTextareaRef.current?.focus()}>Type my own</button>
+                </div>
+              </div>
+            ) : chooserConcepts.length ? (
+              <section aria-labelledby="from-h" className="fd-section" style={{ gap: 10 }}>
+                <div className="fd-section-head">
+                  <h2 id="from-h" className="fd-section-title" style={{ fontSize: 13 }}>From your material</h2>
+                  <span className="fd-kicker">{chooserConcepts.length} concept{chooserConcepts.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="fd-concept-grid fd-stagger">
+                  {chooserConcepts.map((concept, index) => (
                     <button
-                      key={concept.title}
+                      key={concept.id}
                       type="button"
-                      className="concept-chip"
+                      className="fd-concept-pick"
+                      style={{ "--i": index } as CSSProperties}
                       onClick={() => selectConcept(concept.title)}
                       title={concept.description || undefined}
                     >
-                      {concept.title}
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <span>{concept.title}</span>
+                      <ArrowRight size={14} strokeWidth={2} aria-hidden="true" />
                     </button>
                   ))}
-                  {!conceptsLoading && !conceptsError ? (
-                    <button type="button" className="concept-chip" onClick={focusCustomConceptInput}>
-                      Add your own concept
-                    </button>
-                  ) : null}
                 </div>
-              )}
+              </section>
+            ) : null}
 
-              {postClearMode === "fresh_recall" && selectedConcept ? (
-                <div className="fresh-recall-card">
-                  <span>Fresh recall</span>
-                  <h3>One more time — without looking back.</h3>
-                  <p>Explain {selectedConcept} in your own words.</p>
-                  {freshRecallBaseline?.attempt ? (
-                    <div className="previous-attempt-toggle">
-                      <button type="button" onClick={() => setShowPreviousAttempt((current) => !current)}>
-                        {showPreviousAttempt ? "Hide previous attempt" : "Previous attempt"}
-                      </button>
-                      {showPreviousAttempt ? <p>{freshRecallBaseline.attempt}</p> : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+            {renderComposer(2, true)}
 
-              {lastWeakLink && selectedConcept && (!result || postClearMode === "fresh_recall") ? (
-                <div className="last-weak-link-card">
-                  <span>Last weak link</span>
-                  <p>{lastWeakLink}</p>
-                  {activeConceptMemory?.last_socratic_question ? (
-                    <small>{activeConceptMemory.last_socratic_question}</small>
-                  ) : null}
-                </div>
-              ) : null}
+            {isChoosingNextConcept && selectedConcept ? (
+              <button type="button" className="fd-btn fd-btn-ghost" style={{ alignSelf: "flex-start" }} onClick={() => setIsChoosingNextConcept(false)}>
+                <ArrowLeft size={16} strokeWidth={1.8} />
+                Back to {selectedConcept}
+              </button>
+            ) : null}
+            {renderMessages()}
+          </div>
+        </main>
+      );
+    }
 
-              {nextRecommendation ? (
-                <div className="next-recommendation-card">
-                  <span>Recommended next</span>
-                  {nextRecommendation.allClear ? (
-                    <>
-                      <h3>You’ve explained every concept in this room clearly.</h3>
-                      <p>{nextRecommendation.reason}</p>
-                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
-                        Choose a concept to revisit
-                      </button>
-                    </>
-                  ) : nextRecommendation.concept ? (
-                    <>
-                      <h3>{nextRecommendation.concept.title}</h3>
-                      <em>{nextRecommendation.concept.status.replace("_", " ")}</em>
-                      <p>{nextRecommendation.reason}</p>
-                      <div>
-                        <button type="button" className="source-action-btn source-action-btn-primary" onClick={() => selectConcept(nextRecommendation.concept!.title)}>
-                          Start explaining {nextRecommendation.concept.title}
-                        </button>
-                        <button type="button" className="source-action-btn" onClick={handleChooseAnotherConcept}>
-                          See all concepts
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
+    return (
+      <main className="fd-center" ref={conversationRef}>
+        <section className="fd-center-inner" aria-label="Explanation workspace">
+          <div className="fd-center-head">
+            <span className="fd-kicker">{attemptLabel}</span>
+            <h1>{selectedConcept}</h1>
+          </div>
 
-              {followUpAnswer ? (
-                <div className="follow-up-answer-card">
-                  <span>Follow-up answer</span>
-                  <h3>Answer</h3>
-                  <p>{followUpAnswer.answer}</p>
-                  <h4>Try thinking about it this way</h4>
-                  <p>{followUpAnswer.thinking}</p>
-                </div>
-              ) : null}
-
-              {postClearMode === "fresh_recall" && freshRecallBaseline && result ? (
-                <div className={cn("review-status-card", isConceptClear ? "is-clear" : "is-improving")}>
-                  <strong>{isConceptClear ? "Strongly understood" : "Previously clear · Latest review: Improving"}</strong>
-                  <span>
-                    First clear explanation: {freshRecallBaseline.score ?? "--"}
-                    {typeof result.clarityScore === "number" ? ` · Fresh recall: ${result.clarityScore}` : ""}
-                  </span>
-                </div>
-              ) : null}
-
-              {showEvaluationFeedback && (result || isLoading || latestAttempt) && (
-                <div className="explain-feedback-grid" aria-label="Latest feedback">
-                  <article className={cn("explain-feedback-card missing-link", isLoading && "loading-pulse")}>
-                    <span>{isConceptClear ? "Clear" : result?.status === "topic_mismatch" ? "Topic mismatch" : "Missing link"}</span>
-                    <p>{isLoading ? "Analyzing the reasoning chain..." : assistantFeedback || latestMainGap || "No feedback yet."}</p>
-                  </article>
-                  {assistantQuestion && !isConceptClear ? (
-                    <article className="explain-feedback-card socratic">
-                      <span>Socratic follow-up</span>
-                      <p>{assistantQuestion}</p>
-                    </article>
-                  ) : null}
-                  {latestWhyItMatters && result?.status !== "clear" ? (
-                    <article className="explain-feedback-card why">
-                      <span>Why it matters</span>
-                      <p>{latestWhyItMatters}</p>
-                    </article>
-                  ) : null}
-                  {latestRetryPrompt && result?.status !== "clear" ? (
-                    <article className="explain-feedback-card retry">
-                      <span>Try again</span>
-                      <p>{latestRetryPrompt}</p>
-                    </article>
-                  ) : null}
-                  {latestAttempt ? (
-                    <article className="explain-feedback-card attempt">
-                      <span>Latest attempt</span>
-                      <p>{latestAttempt}</p>
-                    </article>
-                  ) : null}
-                </div>
-              )}
-
-              {result && selectedConcept && !isLoading ? (
-                <section className="session-end-summary" aria-label="Session summary">
-                  <div className="session-end-summary-heading">
-                    <span>Session complete</span>
-                    <h3>{selectedConcept}</h3>
-                    <strong>{sessionSummaryStatus}</strong>
-                  </div>
-                  {typeof result.clarityScore === "number" ? (
-                    <div className="session-summary-score">
-                      <span>Clarity</span>
-                      <b>
-                        {typeof scoreBeforeLatestAttempt === "number" && scoreBeforeLatestAttempt !== result.clarityScore
-                          ? `${scoreBeforeLatestAttempt} → ${result.clarityScore}`
-                          : result.clarityScore}
-                      </b>
-                    </div>
-                  ) : null}
-                  <div className="session-summary-details">
-                    {sessionImprovement ? (
-                      <div>
-                        <span>You improved</span>
-                        <p>{sessionImprovement}</p>
-                      </div>
-                    ) : null}
-                    {latestMainGap ? (
-                      <div>
-                        <span>Still needs work</span>
-                        <p>{latestMainGap}</p>
-                      </div>
-                    ) : null}
-                    <div>
-                      <span>Next best step</span>
-                      <p>{sessionNextAction}</p>
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-
-              {showEvaluationFeedback ? (
-              <div className="explain-next-step">
-                <span />
-                <p>Use the feedback above to rebuild the answer below.</p>
-                <span />
+          {isConceptSwitchPending ? (
+            <section className="fd-busy-card" aria-busy="true">
+              <div className="fd-busy">
+                <span className="fd-spinner" aria-hidden="true" />
+                Loading {selectedConcept}…
               </div>
-              ) : null}
+              <div className="fd-busy-lines fd-pulse" aria-hidden="true">
+                <span className="fd-skeleton" style={{ width: "80%" }} />
+                <span className="fd-skeleton" style={{ width: "62%" }} />
+              </div>
+            </section>
+          ) : null}
 
-              {isConceptClear && selectedConcept ? (
-                <div className="concept-complete-card explain-complete-card">
-                  <div className="concept-complete-icon"><CheckCircle2 size={22} /></div>
-                  <div>
-                    <h3>You can explain {selectedConcept} clearly.</h3>
-                    <p>
-                      Clarity {result.clarityScore}. Want to make it stick? Try explaining it once more without looking back.
-                    </p>
-                    <div className="concept-complete-chips">
-                      <span>Clarity {result.clarityScore}</span>
-                      <span>Quiz ready</span>
-                      <span>Flashcards ready</span>
-                    </div>
-                    <div className="concept-complete-actions">
-                      <button type="button" className="source-action-btn source-action-btn-primary" onClick={handleChooseAnotherConcept}>
-                        Choose another concept
-                      </button>
-                      <button type="button" className="source-action-btn" onClick={handleTestMyselfAgain}>
-                        Test myself again
-                      </button>
-                      <button type="button" className="source-action-btn" onClick={handleAskFollowUp}>
-                        Ask a follow-up
-                      </button>
-                    </div>
+          {postClearMode === "fresh_recall" ? (
+            <section className="fd-callout is-amber" aria-label="Fresh recall">
+              <span className="fd-eyebrow is-amber">Fresh recall</span>
+              <h3>One more time, without looking back.</h3>
+              <p>Explain {selectedConcept} in your own words.</p>
+              {freshRecallBaseline?.attempt ? (
+                <div className="fd-callout-actions">
+                  <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" aria-expanded={showPreviousAttempt} onClick={() => setShowPreviousAttempt((current) => !current)}>
+                    {showPreviousAttempt ? "Hide previous attempt" : "Show previous attempt"}
+                  </button>
+                </div>
+              ) : null}
+              {showPreviousAttempt && freshRecallBaseline?.attempt ? <p style={{ whiteSpace: "pre-wrap" }}>{freshRecallBaseline.attempt}</p> : null}
+            </section>
+          ) : null}
+
+          {lastWeakLink && (!result || postClearMode === "fresh_recall") && !isLoading ? (
+            <section className="fd-callout" aria-label="Last weak link">
+              <span className="fd-eyebrow is-amber">Last weak link</span>
+              <p style={{ color: "var(--fd-ink)", fontSize: 15, fontWeight: 500 }}>{lastWeakLink}</p>
+              {activeConceptMemory?.last_socratic_question ? (
+                <p>{activeConceptMemory.last_socratic_question}</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {nextRecommendation ? (
+            <section className="fd-callout" aria-label="Recommended next">
+              <span className="fd-eyebrow">Recommended next</span>
+              {nextRecommendation.allClear ? (
+                <>
+                  <h3>You’ve explained every concept in this room clearly.</h3>
+                  <p>{nextRecommendation.reason}</p>
+                  <div className="fd-callout-actions">
+                    <button type="button" className="fd-btn fd-btn-accent fd-btn-md" onClick={handleChooseAnotherConcept}>
+                      Choose a concept to revisit
+                    </button>
                   </div>
-                </div>
+                </>
+              ) : nextRecommendation.concept ? (
+                <>
+                  <h3>{nextRecommendation.concept.title}</h3>
+                  <p>{nextRecommendation.reason}</p>
+                  <div className="fd-callout-actions">
+                    <button type="button" className="fd-btn fd-btn-accent fd-btn-md" onClick={() => selectConcept(nextRecommendation.concept!.title)}>
+                      Start explaining it
+                      <ArrowRight size={14} className="fd-arrow" />
+                    </button>
+                    <button type="button" className="fd-btn fd-btn-ghost fd-btn-md" onClick={handleChooseAnotherConcept}>
+                      See all concepts
+                    </button>
+                  </div>
+                </>
               ) : null}
+            </section>
+          ) : null}
 
-              <div className={cn("explain-answer-card", isLoading && "loading", isVoiceInputActive && "is-recording-inline")}>
-                <div className="composer-label-icon">
-                  <MessageSquareText size={14} />
-                  <span>
-                    {isVoiceInputActive
-                      ? "VOICE EXPLANATION"
-                      : currentPostClearIntent === "follow_up_question" || postClearMode === "follow_up" || (isConceptClear && postClearMode !== "fresh_recall")
-                        ? "FOLLOW-UP QUESTION"
-                        : postClearMode === "fresh_recall"
-                          ? "FRESH RECALL"
-                          : selectedConcept
-                            ? "Your explanation"
-                            : "Concept to study"}
-                  </span>
-                  {isVoiceInputActive ? (
-                    <em className="voice-inline-meta">
-                      <span aria-hidden="true" />
-                      {voiceInputLabel} · {formatVoiceRecordingTime(voiceRecordingSeconds)}
-                    </em>
-                  ) : null}
+          {followUpAnswer ? (
+            <section className="fd-callout" aria-label="Follow-up answer">
+              <span className="fd-eyebrow">Your question</span>
+              <p style={{ color: "var(--fd-ink)", fontWeight: 500 }}>{followUpAnswer.question}</p>
+              <span className="fd-eyebrow" style={{ marginTop: 6 }}>Answer</span>
+              <p style={{ color: "var(--fd-ink-2)", fontSize: 15 }}>{followUpAnswer.answer}</p>
+              <div className="fd-ask" style={{ margin: "6px 0 0" }}>
+                <CircleHelp size={18} strokeWidth={1.8} aria-hidden="true" />
+                <div>
+                  <span>Try thinking about it this way</span>
+                  <span>{followUpAnswer.thinking}</span>
                 </div>
-                <textarea
-                  ref={composerTextareaRef}
-                  className="explain-answer-textarea"
-                  placeholder={
-                    isVoiceInputActive
-                      ? voiceInputStatus === "transcribing"
-                        ? "Transcribing your explanation..."
-                        : "Listening..."
-                      : composerPlaceholder
-                  }
-                  value={request.explanation}
-                  onChange={(e) => updateField("explanation", e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={!hasSavedMaterial || isVoiceInputActive}
-                />
-                {isVoiceInputActive ? (
-                  <div className="voice-inline-waveform explain-inline-waveform" aria-hidden="true">
-                    {voiceWaveformBars.slice(0, 22).map((level, index) => (
-                      <span key={index} style={{ transform: `scaleY(${0.28 + level})` }} />
-                    ))}
+              </div>
+            </section>
+          ) : null}
+
+          {postClearMode === "fresh_recall" && freshRecallBaseline && result ? (
+            <section className={cn("fd-callout", isConceptClear ? "is-success" : "is-amber")} aria-label="Recall result">
+              <h3>{isConceptClear ? "It stuck. Strongly understood." : "Previously clear · still improving on recall"}</h3>
+              <p className="fd-mono" style={{ fontSize: 13 }}>
+                First clear explanation {freshRecallBaseline.score ?? "—"}
+                {typeof result.clarityScore === "number" ? ` · Fresh recall ${result.clarityScore}` : ""}
+              </p>
+            </section>
+          ) : null}
+
+          {isLoading ? (
+            <section className="fd-busy-card" aria-label="Checking your explanation" aria-busy="true">
+              <div className="fd-busy">
+                <span className="fd-spinner" aria-hidden="true" />
+                Finding the missing link in your reasoning…
+              </div>
+              <div className="fd-busy-lines fd-pulse" aria-hidden="true">
+                <span className="fd-skeleton" style={{ width: "80%" }} />
+                <span className="fd-skeleton" style={{ width: "62%" }} />
+                <span className="fd-skeleton" style={{ width: "70%" }} />
+              </div>
+            </section>
+          ) : null}
+
+          {showEvaluationFeedback && result && !isLoading ? (
+            <section className="fd-feedback" aria-labelledby="fb-h">
+              <div className="fd-feedback-head">
+                <div>
+                  <h2 id="fb-h">Feedback</h2>
+                  <span className={cn("fd-pill", feedbackStatus.tone)}>
+                    <span className="fd-dot is-sm" data-status={isConceptClear ? "clear" : "gap_found"} style={feedbackStatus.tone === "is-danger" ? { background: "var(--fd-danger)" } : undefined} />
+                    {feedbackStatus.label}
+                  </span>
+                </div>
+                {result.status !== "topic_mismatch" && typeof result.clarityScore === "number" ? (
+                  <div className="fd-score" aria-label={`Clarity ${result.clarityScore} out of 100`}>
+                    <span className="fd-muted" style={{ fontSize: 12 }}>Clarity</span>
+                    <div className={cn("fd-bar", isConceptClear ? "is-success" : "is-amber")} aria-hidden="true">
+                      <span style={{ width: `${result.clarityScore}%` }} />
+                    </div>
+                    <span className="fd-score-num">
+                      {result.clarityScore}
+                      <small>/100</small>
+                    </span>
                   </div>
                 ) : null}
-                <div className="explain-answer-actions">
-                  <p>
-                    {isVoiceInputActive ? (
-                      voiceInputStatus === "transcribing"
-                        ? "Finalising the transcript..."
-                        : "Recording locally. Confirm when you are done."
-                    ) : (
-                      <>
-                        <span className="kb-shortcut">Cmd + Enter</span>
-                        {currentPostClearIntent === "follow_up_question"
-                          ? " to send your question"
-                          : isConceptClear && postClearMode !== "fresh_recall"
-                            ? " Ask about this concept, or ask what to learn next."
-                            : selectedConcept ? " to check your explanation" : " to start this concept"}
-                      </>
-                    )}
-                  </p>
-                  <div>
-                    {isVoiceInputActive ? (
-                      <div className="voice-inline-actions">
-                        <button
-                          type="button"
-                          aria-label="Cancel voice explanation"
-                          disabled={voiceInputStatus === "transcribing"}
-                          onClick={cancelVoiceInput}
-                        >
-                          <X size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Use this voice explanation"
-                          disabled={voiceInputStatus !== "recording"}
-                          onClick={confirmVoiceInput}
-                        >
-                          {voiceInputStatus === "transcribing" ? <Loader2 className="icon-spin" size={14} /> : <Check size={16} />}
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          className={cn("composer-mic-btn", voiceInputStatus === "error" && "has-error")}
-                          type="button"
-                          aria-label="Explain by voice"
-                          onClick={startVoiceInput}
-                          disabled={!hasSavedMaterial || isLoading || isAnsweringFollowUp}
-                        >
-                          <Mic size={20} />
-                        </button>
-                        <button
-                          className="explain-check-btn"
-                          onClick={() => handleSubmit()}
-                          disabled={isLoading || isAnsweringFollowUp || !request.explanation.trim() || !hasSavedMaterial}
-                        >
-                          {isLoading || isAnsweringFollowUp ? (
-                            <>
-                              <Loader2 className="icon-spin" size={18} />
-                              {isAnsweringFollowUp ? "Sending" : "Checking"}
-                            </>
-                          ) : (
-                            submitButtonLabel
-                          )}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
               </div>
 
-              {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
-              {notice && <div className="app-notice">{notice}</div>}
-              {error && <div className="app-error">{error}</div>}
-              {voiceInputError && <div className="app-error">{voiceInputError}</div>}
+              <div className="fd-feedback-lead">
+                <span className={cn("fd-eyebrow", !isConceptClear && "is-amber")}>
+                  {isConceptClear ? "What you got right" : result.status === "topic_mismatch" ? "Off topic" : "Missing link"}
+                </span>
+                <p>{assistantFeedback || latestMainGap || "No feedback yet."}</p>
+              </div>
+
+              {assistantQuestion && !isConceptClear ? (
+                <div className="fd-ask">
+                  <CircleHelp size={18} strokeWidth={1.8} aria-hidden="true" />
+                  <div>
+                    <span>Ask yourself</span>
+                    <span>{assistantQuestion}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {!isConceptClear && (latestWhyItMatters || latestRetryPrompt) ? (
+                <div className="fd-feedback-grid">
+                  {latestWhyItMatters ? (
+                    <div>
+                      <span>Why it matters</span>
+                      <p>{latestWhyItMatters}</p>
+                    </div>
+                  ) : null}
+                  {latestRetryPrompt ? (
+                    <div>
+                      <span>Try this</span>
+                      <p>{latestRetryPrompt}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : <div style={{ height: 20 }} />}
+
+              {sessionImprovement || scoreChanged || sessionNextAction ? (
+                <div className="fd-feedback-next">
+                  {scoreChanged ? (
+                    <span className="fd-mono">Clarity {scoreBeforeLatestAttempt} → {result.clarityScore}</span>
+                  ) : null}
+                  {sessionImprovement ? <span>{sessionImprovement}</span> : null}
+                  <span><strong>Next:</strong> {sessionNextAction}</span>
+                </div>
+              ) : null}
+
+              {latestAttempt ? (
+                <details className="fd-details">
+                  <summary>
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
+                    Your attempt
+                  </summary>
+                  <p>{latestAttempt}</p>
+                </details>
+              ) : null}
             </section>
-          )}
-        </div>
+          ) : null}
+
+          {isConceptClear && !isLoading ? (
+            <section className="fd-callout is-success" aria-label="Concept clear">
+              <h3>You can explain {selectedConcept} clearly.</h3>
+              <p>Want it to stick? Explain it once more from memory, or move on.</p>
+              <div className="fd-callout-actions">
+                <button type="button" className="fd-btn fd-btn-dark fd-btn-md" onClick={handleChooseAnotherConcept}>
+                  Choose another concept
+                </button>
+                <button type="button" className="fd-btn fd-btn-secondary fd-btn-md" onClick={handleTestMyselfAgain}>
+                  Test myself again
+                </button>
+                <button type="button" className="fd-btn fd-btn-ghost fd-btn-md" onClick={handleAskFollowUp}>
+                  Ask a follow-up
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {renderComposer(4)}
+          {renderMessages()}
+        </section>
       </main>
+    );
+  };
 
-      {isSupportPanelOpen && (
-        <>
-          <div
-            className={cn("resize-handle", isDraggingRight && "active")}
-            onPointerDown={(e) => { e.preventDefault(); setIsDraggingRight(true); }}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize support panel"
-          />
+  function renderMessages() {
+    return (
+      <>
+        {notice ? (
+          <div className="fd-notice" role="status">
+            <span>{notice}</span>
+          </div>
+        ) : null}
+        {error ? (
+          <div className="fd-notice is-error" role="alert">
+            <AlertCircle size={16} strokeWidth={1.8} />
+            <span>{error}</span>
+          </div>
+        ) : null}
+        {voiceInputError ? (
+          <div className="fd-notice is-error" role="alert">
+            <AlertCircle size={16} strokeWidth={1.8} />
+            <span>{voiceInputError}</span>
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
-          {/* Right Panel: Support */}
-          <GapResultPanel
-            result={result}
-            isLoading={isLoading}
-            width={rightWidth}
-            isDragging={isDraggingRight}
-            hasNotes={hasSavedMaterial}
-            hasSelectedConcept={!!selectedConcept}
-            sourceMaterial={hasSavedMaterial ? savedSourceMaterial : ""}
-            selectedConcept={selectedConcept}
-            explanationAttempts={previousExplanations}
-            sessionId={roomId || "quick"}
-            initialStudyToolsState={studyToolsState}
-            onStudyToolsStateChange={setStudyToolsState}
-            isConceptSwitching={isConceptSwitchPending}
-            concepts={panelConcepts.map((concept) => ({
-              id: concept.id,
-              title: concept.title,
-              status: concept.status,
-              latestClarityScore: concept.latestClarityScore,
-            }))}
-            activeConceptId={selectedConcept ? getConceptId(selectedConcept) : null}
-            onConceptSelect={selectConcept}
-            onClose={() => setIsSupportPanelOpen(false)}
+  return (
+    <div className="fd fd-session">
+      <header className="fd-session-header">
+        <div>
+          <a href={roomHref} className="fd-icon-btn is-plain" aria-label={room ? "Back to room" : "Back to study rooms"}>
+            <ArrowLeft size={18} strokeWidth={1.8} />
+          </a>
+          <img className="fd-session-duck" src="/feynduckhead.png" alt="" width={26} height={26} />
+          <nav aria-label="Breadcrumb" className="fd-crumbs">
+            {selectedConcept && !isChoosingNextConcept ? (
+              <>
+                <a href={roomHref} className="fd-crumb-hide-sm">{roomTitle}</a>
+                <span aria-hidden="true" className="fd-crumb-sep fd-crumb-hide-sm">/</span>
+                <span className="fd-crumb-current" aria-current="page">{selectedConcept}</span>
+              </>
+            ) : (
+              <span className="fd-crumb-current" aria-current="page">{roomTitle}</span>
+            )}
+          </nav>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="fd-icon-btn"
+            aria-pressed={isSourcePanelOpen}
+            aria-label={isSourcePanelOpen ? "Hide source panel" : "Show source panel"}
+            title={isSourcePanelOpen ? "Hide source panel" : "Show source panel"}
+            onClick={() => setIsSourcePanelOpen((current) => !current)}
+          >
+            <PanelLeft size={18} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            className="fd-icon-btn"
+            aria-pressed={isSupportPanelOpen}
+            aria-label={isSupportPanelOpen ? "Hide support panel" : "Show support panel"}
+            title={isSupportPanelOpen ? "Hide support panel" : "Show support panel"}
+            onClick={() => setIsSupportPanelOpen((current) => !current)}
+          >
+            <PanelRight size={18} strokeWidth={1.8} />
+          </button>
+          <span aria-hidden="true" className="fd-header-divider" />
+          <AccountMenu authUser={authUser} small />
+        </div>
+      </header>
+
+      <div className="fd-session-body">
+        {isSourcePanelOpen || isSupportPanelOpen ? (
+          <button
+            type="button"
+            className="fd-session-scrim"
+            aria-label="Close panels"
+            tabIndex={-1}
+            onClick={() => {
+              setIsSourcePanelOpen(false);
+              setIsSupportPanelOpen(false);
+            }}
           />
-        </>
-      )}
+        ) : null}
+        {isSourcePanelOpen ? (
+          <>
+            {renderSourcePanel()}
+            <div
+              className={cn("fd-resize", isDraggingLeft && "is-active")}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                setIsDraggingLeft(true);
+              }}
+              onDoubleClick={() => setLeftWidth(clampPanelWidth("left", 320))}
+              onKeyDown={(event) => resizeWithKeys("left", event)}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize source panel"
+              aria-valuenow={leftWidth}
+              tabIndex={0}
+            />
+          </>
+        ) : null}
+
+        {renderCenter()}
+
+        {isSupportPanelOpen ? (
+          <>
+            <div
+              className={cn("fd-resize", isDraggingRight && "is-active")}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                setIsDraggingRight(true);
+              }}
+              onDoubleClick={() => setRightWidth(clampPanelWidth("right", 360))}
+              onKeyDown={(event) => resizeWithKeys("right", event)}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize support panel"
+              aria-valuenow={rightWidth}
+              tabIndex={0}
+            />
+            <GapResultPanel
+              result={result}
+              isLoading={isLoading}
+              width={rightWidth}
+              isDragging={isDraggingRight}
+              hasNotes={hasSavedMaterial}
+              hasSelectedConcept={!!selectedConcept}
+              sourceMaterial={hasSavedMaterial ? savedSourceMaterial : ""}
+              selectedConcept={selectedConcept}
+              explanationAttempts={previousExplanations}
+              sessionId={roomId || "quick"}
+              initialStudyToolsState={studyToolsState}
+              onStudyToolsStateChange={setStudyToolsState}
+              isConceptSwitching={isConceptSwitchPending}
+              concepts={panelConcepts.map((concept) => ({
+                id: concept.id,
+                title: concept.title,
+                status: concept.status,
+                latestClarityScore: concept.latestClarityScore,
+              }))}
+              activeConceptId={selectedConcept ? getConceptId(selectedConcept) : null}
+              onConceptSelect={(title) => {
+                selectConcept(title);
+                if (isCompactLayout()) setIsSupportPanelOpen(false);
+              }}
+            />
+          </>
+        ) : null}
+      </div>
+
     </div>
   );
 }

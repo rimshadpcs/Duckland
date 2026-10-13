@@ -1,39 +1,61 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createStudyRoomAction,
-  deleteStudyRoomAction,
-  renameStudyRoomAction,
-} from "@src/app/study/actions";
-import { AppNavbar } from "./AppNavbar";
-import { useThemeMode } from "@src/lib/useThemeMode";
+import { AlertCircle, ArrowRight, FileText, MoreVertical, Pencil, Pin, PinOff, Plus, Trash2 } from "lucide-react";
+import { deleteStudyRoomAction, renameStudyRoomAction } from "@src/app/study/actions";
+import { AppHeader } from "@src/components/app/AppHeader";
+import { Dialog } from "@src/components/app/Dialog";
+import { Menu } from "@src/components/app/Menu";
 import type { AuthenticatedUser } from "@src/lib/auth";
 import type { StudyRoomWithSourceCount } from "@src/lib/repositories/study-rooms";
-import { MoreVertical } from "lucide-react";
 import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
+import { CreateRoomForm, HowFeynduckWorks } from "./CreateRoomForm";
 
 const PINNED_ROOMS_KEY = "feynduck-pinned-room-ids";
 const MAX_PINNED_ROOMS = 4;
 
-function formatDate(value?: string | null) {
-  if (!value) return "Not recorded";
-
+function formatDate(value: string | null | undefined, withYear = false) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not recorded";
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) }).format(date);
 }
 
-function formatStatus(room: StudyRoomWithSourceCount) {
-  if (room.status === "clear") return "Clear";
-  if (room.status === "in_progress") return "In progress";
-  return "Not started";
+function sourceLabel(room: StudyRoomWithSourceCount) {
+  const count = Number.isFinite(room.source_count) ? room.source_count : 0;
+  return `${count} ${count === 1 ? "source" : "sources"}`;
+}
+
+function lastActivity(room: StudyRoomWithSourceCount) {
+  return room.last_activity_at || room.created_at;
+}
+
+function RoomStatus({ room }: { room: StudyRoomWithSourceCount }) {
+  if (room.status === "clear") {
+    return (
+      <span className="fd-pill is-success">
+        <span className="fd-dot is-sm" data-status="clear" />
+        Clear
+      </span>
+    );
+  }
+
+  if (room.status === "not_started") {
+    return (
+      <span className="fd-pill">
+        <span className="fd-dot is-sm" data-status="not_started" />
+        Not started
+      </span>
+    );
+  }
+
+  return (
+    <span className="fd-pill">
+      <span className="fd-dot is-sm" data-status="gap_found" />
+      In progress
+    </span>
+  );
 }
 
 export function StudyRoomsDashboard({
@@ -45,15 +67,14 @@ export function StudyRoomsDashboard({
   initialRooms: StudyRoomWithSourceCount[];
   loadError?: string | null;
 }) {
-  const { themeMode, toggleTheme, mounted } = useThemeMode();
   const router = useRouter();
   const [rooms, setRooms] = useState<StudyRoomWithSourceCount[]>(initialRooms);
   const [pinnedRoomIds, setPinnedRoomIds] = useState<string[]>([]);
-  const [openMenuRoomId, setOpenMenuRoomId] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [pendingDeleteRoom, setPendingDeleteRoom] = useState<StudyRoomWithSourceCount | null>(null);
-  const [newRoomTitle, setNewRoomTitle] = useState("");
-  const [newRoomDescription, setNewRoomDescription] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [renamingRoom, setRenamingRoom] = useState<StudyRoomWithSourceCount | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [deletingRoom, setDeletingRoom] = useState<StudyRoomWithSourceCount | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(loadError || null);
   const [isPending, startTransition] = useTransition();
 
@@ -68,36 +89,26 @@ export function StudyRoomsDashboard({
     }
   }, []);
 
-  useEffect(() => {
-    const closeMenu = () => setOpenMenuRoomId(null);
-    window.addEventListener("click", closeMenu);
-    return () => window.removeEventListener("click", closeMenu);
-  }, []);
+  const updatePinnedRooms = (next: string[]) => {
+    setPinnedRoomIds(next);
+    try {
+      localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(next));
+    } catch {
+      // Pinning is a local preference; keep the UI usable if storage is blocked.
+    }
+  };
 
-  const handleCreateRoom = () => {
-    const title = newRoomTitle.trim();
-    if (!title) {
-      setError("Enter a room name.");
+  const togglePin = (room: StudyRoomWithSourceCount) => {
+    setError(null);
+    if (pinnedRoomIds.includes(room.id)) {
+      updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
       return;
     }
-
-    setError(null);
-    const endTiming = startInteractionTiming("room-create");
-    startTransition(async () => {
-      const result = await createStudyRoomAction({
-        title,
-        description: newRoomDescription,
-      });
-
-      if (!result.ok) {
-        setError(result.error);
-        endTiming();
-        return;
-      }
-
-      router.push(`/study/room/${result.data.id}`);
-      endTiming();
-    });
+    if (pinnedRoomIds.length >= MAX_PINNED_ROOMS) {
+      setError(`You can pin up to ${MAX_PINNED_ROOMS} study rooms.`);
+      return;
+    }
+    updatePinnedRooms([room.id, ...pinnedRoomIds]);
   };
 
   const openRoom = (roomId: string) => {
@@ -108,39 +119,24 @@ export function StudyRoomsDashboard({
     });
   };
 
-  const updatePinnedRooms = (nextPinnedRoomIds: string[]) => {
-    setPinnedRoomIds(nextPinnedRoomIds);
-    try {
-      localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(nextPinnedRoomIds));
-    } catch {
-      // Pinning is a local preference; keep the UI usable if storage is blocked.
+  const confirmRename = () => {
+    if (!renamingRoom) return;
+    const nextTitle = renameDraft.trim();
+    if (!nextTitle) {
+      setDialogError("Enter a room name.");
+      return;
     }
-  };
-
-  const handleTogglePin = (room: StudyRoomWithSourceCount) => {
-    setError(null);
-    const isPinned = pinnedRoomIds.includes(room.id);
-    if (isPinned) {
-      updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
+    if (nextTitle === renamingRoom.title) {
+      setRenamingRoom(null);
       return;
     }
 
-    if (pinnedRoomIds.length >= MAX_PINNED_ROOMS) {
-      setError("You can pin up to 4 study rooms.");
-      return;
-    }
-
-    updatePinnedRooms([room.id, ...pinnedRoomIds]);
-  };
-
-  const handleRenameRoom = (room: StudyRoomWithSourceCount) => {
-    const nextTitle = window.prompt("Rename study room", room.title)?.trim();
-    if (!nextTitle || nextTitle === room.title) return;
-
+    const room = renamingRoom;
+    const previousRooms = rooms;
     const endTiming = startInteractionTiming("room-rename");
+    setRooms((current) => current.map((item) => (item.id === room.id ? { ...item, title: nextTitle } : item)));
+    setRenamingRoom(null);
     startTransition(async () => {
-      const previousRooms = rooms;
-      setRooms((current) => current.map((item) => (item.id === room.id ? { ...item, title: nextTitle } : item)));
       const result = await renameStudyRoomAction(room.id, nextTitle);
       if (!result.ok) {
         setRooms(previousRooms);
@@ -150,25 +146,20 @@ export function StudyRoomsDashboard({
     });
   };
 
-  const handleDeleteRoom = (room: StudyRoomWithSourceCount) => {
-    setPendingDeleteRoom(room);
-    setOpenMenuRoomId(null);
-  };
-
-  const confirmDeleteRoom = () => {
-    if (!pendingDeleteRoom) return;
-    const room = pendingDeleteRoom;
+  const confirmDelete = () => {
+    if (!deletingRoom) return;
+    const room = deletingRoom;
     const endTiming = startInteractionTiming("room-delete");
     startTransition(async () => {
       const result = await deleteStudyRoomAction(room.id);
       if (!result.ok) {
-        setError(result.error);
+        setDialogError(result.error);
         endTiming();
         return;
       }
       setRooms((current) => current.filter((item) => item.id !== room.id));
       updatePinnedRooms(pinnedRoomIds.filter((id) => id !== room.id));
-      setPendingDeleteRoom(null);
+      setDeletingRoom(null);
       endTiming();
     });
   };
@@ -176,201 +167,264 @@ export function StudyRoomsDashboard({
   const pinnedRooms = pinnedRoomIds
     .map((id) => rooms.find((room) => room.id === id))
     .filter((room): room is StudyRoomWithSourceCount => Boolean(room));
-  const unpinnedRooms = rooms.filter((room) => !pinnedRoomIds.includes(room.id));
-  const continueRoom = [...rooms].sort((first, second) => (
-    new Date(second.last_activity_at || second.created_at || 0).getTime() -
-    new Date(first.last_activity_at || first.created_at || 0).getTime()
-  ))[0] || null;
+  const otherRooms = rooms.filter((room) => !pinnedRoomIds.includes(room.id));
+  const continueRoom = [...rooms].sort(
+    (first, second) => new Date(lastActivity(second) || 0).getTime() - new Date(lastActivity(first) || 0).getTime(),
+  )[0] || null;
+  const firstName = (authUser?.displayName || "").trim().split(/\s+/)[0];
 
-  const renderRoomCard = (room: StudyRoomWithSourceCount) => {
-    const statusText = room.latest_clarity_score != null ? `Clarity ${room.latest_clarity_score}%` : formatStatus(room);
-    const sourceCount = Number.isFinite(room.source_count) ? room.source_count : 0;
-    const sourceLabel = `${sourceCount} ${sourceCount === 1 ? "source" : "sources"}`;
+  const renderRoomCard = (room: StudyRoomWithSourceCount, index: number) => {
     const isPinned = pinnedRoomIds.includes(room.id);
+    const subtitle = room.selected_concept
+      ? `Last: ${room.selected_concept}`
+      : room.description || "No concepts yet";
+    const date = formatDate(lastActivity(room));
 
     return (
       <article
         key={room.id}
-        className={`room-card local-room room-card-link ${isPinned ? "pinned-room-card" : ""}`}
-        role="button"
+        className="fd-card fd-card-hover fd-room-card"
+        style={{ "--i": index } as CSSProperties}
         tabIndex={0}
+        aria-label={`Open ${room.title}`}
         onClick={() => openRoom(room.id)}
         onMouseEnter={() => router.prefetch(`/study/room/${room.id}`)}
         onFocus={() => router.prefetch(`/study/room/${room.id}`)}
         onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             openRoom(room.id);
           }
         }}
       >
-        <div className="room-card-menu">
-          <button
-            type="button"
-            className="room-menu-trigger"
-            aria-label={`Open options for ${room.title}`}
-            aria-expanded={openMenuRoomId === room.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpenMenuRoomId((current) => (current === room.id ? null : room.id));
-            }}
-          >
-            <MoreVertical size={18} />
-          </button>
-          {openMenuRoomId === room.id ? (
-            <div className="room-menu-popover" onClick={(event) => event.stopPropagation()}>
-              <button type="button" onClick={() => handleTogglePin(room)}>
-                {isPinned ? "Unpin" : "Pin to top"}
-              </button>
-              <button type="button" onClick={() => handleRenameRoom(room)} disabled={isPending}>
-                Edit name
-              </button>
-              <button type="button" className="danger" onClick={() => handleDeleteRoom(room)} disabled={isPending}>
-                Delete
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <div className="card-top">
-          <span className="room-subject">{room.selected_concept || room.description || "Study room"}</span>
-          <h3>{room.title}</h3>
-          <p className="room-card-summary">{sourceLabel}</p>
-          <div className="room-date-list">
-            <span className="room-meta">Last activity {formatDate(room.last_activity_at)}</span>
-            <span className="room-meta">Created {formatDate(room.created_at)}</span>
+        {isPinned ? <span className="fd-room-pin" aria-hidden="true" /> : null}
+        <div className="fd-room-card-top">
+          <div>
+            <a
+              className="fd-room-name"
+              href={`/study/room/${room.id}`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openRoom(room.id);
+              }}
+            >
+              {room.title}
+            </a>
+            <span className="fd-room-sub">{subtitle}</span>
           </div>
+          <Menu
+            label={`Options for ${room.title}`}
+            trigger={<MoreVertical size={16} />}
+            triggerClassName="fd-icon-btn is-plain fd-icon-btn-sm"
+            items={[
+              {
+                label: isPinned ? "Unpin" : "Pin to top",
+                icon: isPinned ? <PinOff size={16} strokeWidth={1.8} /> : <Pin size={16} strokeWidth={1.8} />,
+                onSelect: () => togglePin(room),
+              },
+              {
+                label: "Rename",
+                icon: <Pencil size={16} strokeWidth={1.8} />,
+                onSelect: () => {
+                  setDialogError(null);
+                  setRenameDraft(room.title);
+                  setRenamingRoom(room);
+                },
+              },
+              {
+                label: "Delete",
+                icon: <Trash2 size={16} strokeWidth={1.8} />,
+                danger: true,
+                onSelect: () => {
+                  setDialogError(null);
+                  setDeletingRoom(room);
+                },
+              },
+            ]}
+          />
         </div>
-        <div className="card-bottom">
-          <span className={`room-status ${room.status === "in_progress" ? "in-progress" : ""}`}>
-            <span aria-hidden="true" />
-            {statusText}
+        <div className="fd-room-card-foot">
+          <span className="fd-kicker">
+            {sourceLabel(room)}
+            {date ? ` · ${date}` : ""}
           </span>
-          <span className="room-card-arrow" aria-hidden="true">→</span>
+          <RoomStatus room={room} />
         </div>
       </article>
     );
   };
 
   return (
-    <div className="app-workspace dashboard-rooms">
-      <AppNavbar themeMode={themeMode} toggleTheme={toggleTheme} mounted={mounted} isSession={false} authUser={authUser} />
-      <main className="rooms-main">
-        <header className="rooms-header">
-          <h1>Your study rooms</h1>
-          <p>Create a room for each exam, topic, or paper you want to explain clearly.</p>
-        </header>
+    <div className="fd">
+      <AppHeader authUser={authUser} />
 
-        {error ? (
-          <div className="rooms-error">
-            <span>{error || "We couldn't load your study rooms."}</span>
-            <button type="button" onClick={() => window.location.reload()}>Retry</button>
-          </div>
-        ) : null}
-
-        {continueRoom ? (
-          <section className="continue-learning" aria-label="Continue learning">
+      {rooms.length === 0 ? (
+        <main className="fd-page fd-enter" style={{ paddingTop: 56 }}>
+          <div className="fd-page-head">
             <div>
-              <span>Continue learning</span>
-              <h2>{continueRoom.title}</h2>
-              <p>
-                {continueRoom.selected_concept
-                  ? `Current concept: ${continueRoom.selected_concept}`
-                  : `${Number.isFinite(continueRoom.source_count) ? continueRoom.source_count : 0} sources added`}
-              </p>
+              <h1 className="fd-page-title is-hero">{firstName ? `Welcome, ${firstName}` : "Welcome to Feynduck"}</h1>
+              <p className="fd-page-sub">Start with one room — one exam, topic or paper you want to explain clearly.</p>
             </div>
-            <button type="button" onClick={() => openRoom(continueRoom.id)}>
-              Continue →
+          </div>
+          {error ? (
+            <div className="fd-notice is-error" role="alert">
+              <AlertCircle size={16} strokeWidth={1.8} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <div className="fd-welcome-grid">
+            <CreateRoomForm heading="Create your first study room" />
+            <HowFeynduckWorks />
+          </div>
+        </main>
+      ) : (
+        <main className="fd-page fd-enter">
+          <div className="fd-page-head">
+            <div>
+              <h1 className="fd-page-title">Study rooms</h1>
+              <p className="fd-page-sub">One room per exam, topic or paper you want to explain clearly.</p>
+            </div>
+            <button type="button" className="fd-btn fd-btn-accent" onClick={() => setIsCreateOpen(true)}>
+              <Plus size={16} strokeWidth={2} />
+              New room
             </button>
-          </section>
-        ) : null}
-
-        <div className="rooms-grid">
-          <div className="room-card create-card" onClick={() => setIsModalOpen(true)}>
-            <div className="create-icon">+</div>
-            <h3>Create study room</h3>
-            <p>Add material and start explaining what you understand.</p>
           </div>
 
-          {rooms.length === 0 ? (
-            <div className="room-card empty-room-card">
-              <div className="card-top">
-                <h3>Create your first study room</h3>
-                <p>Add material and start explaining what you understand.</p>
-              </div>
+          {error ? (
+            <div className="fd-notice is-error" role="alert">
+              <AlertCircle size={16} strokeWidth={1.8} />
+              <span style={{ flex: 1 }}>{error}</span>
+              {loadError ? (
+                <button type="button" className="fd-btn fd-btn-secondary fd-btn-sm" onClick={() => window.location.reload()}>
+                  Retry
+                </button>
+              ) : (
+                <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={() => setError(null)}>
+                  Dismiss
+                </button>
+              )}
             </div>
+          ) : null}
+
+          {continueRoom ? (
+            <section aria-label="Continue learning" className="fd-card fd-continue">
+              <div className="fd-continue-main">
+                <div className="fd-icon-tile" aria-hidden="true">
+                  <FileText size={20} strokeWidth={1.8} />
+                </div>
+                <div>
+                  <span className="fd-kicker">Pick up where you left off</span>
+                  <span className="fd-continue-title">{continueRoom.title}</span>
+                  <span className="fd-muted" style={{ fontSize: 13 }}>
+                    {continueRoom.selected_concept ? `${continueRoom.selected_concept} · ` : ""}
+                    {sourceLabel(continueRoom)}
+                    {formatDate(lastActivity(continueRoom), true) ? ` · Last activity ${formatDate(lastActivity(continueRoom), true)}` : ""}
+                  </span>
+                </div>
+              </div>
+              <a
+                href={`/study/session?roomId=${encodeURIComponent(continueRoom.id)}`}
+                className="fd-btn fd-btn-dark"
+                onMouseEnter={() => router.prefetch(`/study/session?roomId=${encodeURIComponent(continueRoom.id)}`)}
+              >
+                Continue
+                <ArrowRight size={16} className="fd-arrow" />
+              </a>
+            </section>
           ) : null}
 
           {pinnedRooms.length ? (
-            <div className="rooms-section-heading">
-              <span>Pinned</span>
-              <small>{pinnedRooms.length}/{MAX_PINNED_ROOMS}</small>
-            </div>
-          ) : null}
-          {pinnedRooms.map(renderRoomCard)}
-
-          {pinnedRooms.length && unpinnedRooms.length ? (
-            <div className="rooms-section-heading all-rooms-heading">
-              <span>All rooms</span>
-            </div>
-          ) : null}
-          {unpinnedRooms.map(renderRoomCard)}
-        </div>
-      </main>
-
-      {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Create study room</h3>
-            <div className="modal-body">
-              <div className="input-group">
-                <label>Room name</label>
-                <input
-                  type="text"
-                  placeholder="Kidney physiology"
-                  value={newRoomTitle}
-                  onChange={(e) => setNewRoomTitle(e.target.value)}
-                />
+            <section aria-label="Pinned rooms" className="fd-section">
+              <div className="fd-section-head">
+                <h2 className="fd-section-title">
+                  Pinned <span className="fd-count">{pinnedRooms.length}/{MAX_PINNED_ROOMS}</span>
+                </h2>
               </div>
-              <div className="input-group">
-                <label>Optional description</label>
-                <input
-                  type="text"
-                  placeholder="Human anatomy, finals, lecture 4..."
-                  value={newRoomDescription}
-                  onChange={(e) => setNewRoomDescription(e.target.value)}
-                />
+              <div className="fd-room-grid fd-stagger">{pinnedRooms.map(renderRoomCard)}</div>
+            </section>
+          ) : null}
+
+          {otherRooms.length ? (
+            <section aria-label="All rooms" className="fd-section">
+              <div className="fd-section-head">
+                <h2 className="fd-section-title">
+                  {pinnedRooms.length ? "Other rooms" : "All rooms"} <span className="fd-count">{otherRooms.length}</span>
+                </h2>
               </div>
-            </div>
-            <div className="modal-actions">
-              <button className="modal-btn-cancel" onClick={() => setIsModalOpen(false)} disabled={isPending}>
-                Cancel
-              </button>
-              <button className="modal-btn-create" onClick={handleCreateRoom} disabled={isPending}>
-                {isPending ? "Creating..." : "Create room"}
-              </button>
-            </div>
-          </div>
-        </div>
+              <div className="fd-room-grid fd-stagger">{otherRooms.map(renderRoomCard)}</div>
+            </section>
+          ) : null}
+        </main>
       )}
 
-      {pendingDeleteRoom && (
-        <div className="modal-overlay">
-          <div className="modal-content confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-room-title">
-            <h3 id="delete-room-title">Delete study room?</h3>
-            <p>
-              This will delete “{pendingDeleteRoom.title}” and its source material. This cannot be undone.
-            </p>
-            <div className="modal-actions">
-              <button className="modal-btn-cancel" onClick={() => setPendingDeleteRoom(null)} disabled={isPending}>
-                Cancel
-              </button>
-              <button className="modal-btn-create danger" onClick={confirmDeleteRoom} disabled={isPending}>
-                {isPending ? "Deleting..." : "Delete room"}
-              </button>
-            </div>
+      <Dialog
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="New study room"
+        description="Name it after the exam, topic or paper you want to explain clearly."
+        wide
+      >
+        <CreateRoomForm onCancel={() => setIsCreateOpen(false)} />
+      </Dialog>
+
+      <Dialog
+        open={Boolean(renamingRoom)}
+        onClose={() => setRenamingRoom(null)}
+        title="Rename room"
+      >
+        <form
+          style={{ display: "flex", flexDirection: "column", gap: 20 }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            confirmRename();
+          }}
+        >
+          <div className="fd-field">
+            <label htmlFor="rename-room" className="fd-label">Room name</label>
+            <input
+              id="rename-room"
+              className="fd-input"
+              value={renameDraft}
+              onChange={(event) => {
+                setRenameDraft(event.target.value);
+                setDialogError(null);
+              }}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            {dialogError ? <small className="fd-field-error">{dialogError}</small> : null}
           </div>
+          <div className="fd-dialog-actions">
+            <button type="button" className="fd-btn fd-btn-ghost" onClick={() => setRenamingRoom(null)}>Cancel</button>
+            <button type="submit" className="fd-btn fd-btn-accent">Save</button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deletingRoom)}
+        onClose={() => setDeletingRoom(null)}
+        title="Delete this room?"
+        description={deletingRoom ? `“${deletingRoom.title}” and its study material will be deleted. This can’t be undone.` : undefined}
+        dismissible={!isPending}
+      >
+        {dialogError ? (
+          <div className="fd-notice is-error" role="alert">
+            <AlertCircle size={16} strokeWidth={1.8} />
+            <span>{dialogError}</span>
+          </div>
+        ) : null}
+        <div className="fd-dialog-actions">
+          <button type="button" className="fd-btn fd-btn-ghost" onClick={() => setDeletingRoom(null)} disabled={isPending}>
+            Cancel
+          </button>
+          <button type="button" className="fd-btn fd-btn-danger" onClick={confirmDelete} disabled={isPending}>
+            {isPending ? <span className="fd-spinner" aria-hidden="true" /> : null}
+            {isPending ? "Deleting…" : "Delete room"}
+          </button>
         </div>
-      )}
+      </Dialog>
     </div>
   );
 }

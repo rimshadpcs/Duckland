@@ -19,10 +19,14 @@ export type OnboardingPayload = {
   courseName?: string | null;
   institutionName?: string | null;
   institutionCountry?: string | null;
+  studyGoals?: string[];
   onboardingStep?: number;
 };
 
 type ProfileUpsert = Database["public"]["Tables"]["profiles"]["Insert"];
+
+const ACADEMIC_STAGES = new Set(["undergraduate", "postgraduate"]);
+const OPTIONAL_COLUMNS = ["subjects", "study_goals"] as const;
 
 function clean(value?: string | null) {
   const trimmed = typeof value === "string" ? value.trim() : "";
@@ -36,6 +40,23 @@ async function getUserId() {
   } = await supabase.auth.getUser();
 
   return { supabase, userId: user?.id ?? null, email: user?.email ?? null };
+}
+
+// Columns added by later migrations are dropped and retried, so onboarding keeps
+// working before the migration has been applied.
+async function upsertProfile(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  updates: ProfileUpsert,
+) {
+  let { error } = await supabase.from("profiles").upsert(updates, { onConflict: "id" });
+
+  for (const column of OPTIONAL_COLUMNS) {
+    if (!error || !(column in updates) || !error.message.toLowerCase().includes(column)) continue;
+    delete updates[column];
+    ({ error } = await supabase.from("profiles").upsert(updates, { onConflict: "id" }));
+  }
+
+  return error;
 }
 
 export async function saveOnboardingStep(payload: OnboardingPayload): Promise<OnboardingActionState> {
@@ -62,14 +83,9 @@ export async function saveOnboardingStep(payload: OnboardingPayload): Promise<On
   if (payload.institutionName !== undefined) updates.institution_name = clean(payload.institutionName);
   if (payload.institutionCountry !== undefined) updates.institution_country = clean(payload.institutionCountry);
   if (payload.subjects?.length) updates.subjects = payload.subjects;
+  if (payload.studyGoals !== undefined) updates.study_goals = payload.studyGoals;
 
-  let { error } = await supabase.from("profiles").upsert(updates, { onConflict: "id" });
-
-  if (error && "subjects" in updates && error.message.toLowerCase().includes("subjects")) {
-    delete updates.subjects;
-    const retry = await supabase.from("profiles").upsert(updates, { onConflict: "id" });
-    error = retry.error;
-  }
+  const error = await upsertProfile(supabase, updates);
 
   if (error) {
     return {
@@ -91,38 +107,10 @@ export async function completeOnboarding(payload: OnboardingPayload): Promise<On
     return { ok: false, message: "Your session expired. Please log in again." };
   }
 
-  const required = [
-    clean(payload.displayName),
-    clean(payload.educationStage),
-  ];
+  const required = [clean(payload.displayName), clean(payload.educationStage), clean(payload.subjectArea)];
 
-  const stage = payload.educationStage;
-  const subjects = payload.subjects || [];
-
-  if (stage === "secondary_school" || stage === "college") {
-    required.push(clean(payload.educationCountry), clean(payload.yearOfStudy));
-    if (!subjects.length && !clean(payload.courseName)) required.push(null);
-  }
-
-  if (stage === "teacher") {
-    required.push(clean(payload.educationCountry));
-    if (!subjects.length && !clean(payload.courseName)) required.push(null);
-  }
-
-  if (stage === "undergraduate") {
-    required.push(clean(payload.institutionName), clean(payload.yearOfStudy), clean(payload.courseName));
-  }
-
-  if (stage === "postgraduate") {
-    required.push(clean(payload.institutionName), clean(payload.qualificationType), clean(payload.courseName));
-  }
-
-  if (stage === "professional") {
-    required.push(clean(payload.courseName), clean(payload.yearOfStudy));
-  }
-
-  if (stage === "other") {
-    required.push(clean(payload.courseName));
+  if (ACADEMIC_STAGES.has(payload.educationStage || "")) {
+    required.push(clean(payload.institutionName), clean(payload.yearOfStudy));
   }
 
   if (required.some((value) => !value)) {
@@ -131,31 +119,26 @@ export async function completeOnboarding(payload: OnboardingPayload): Promise<On
 
   const completedAt = new Date().toISOString();
   const updates: ProfileUpsert = {
-      id: userId,
-      email,
-      display_name: clean(payload.displayName),
-      education_stage: clean(payload.educationStage),
-      education_country: clean(payload.educationCountry),
-      year_of_study: clean(payload.yearOfStudy),
-      qualification_type: clean(payload.qualificationType),
-      subject_area: clean(payload.subjectArea),
-      course_name: clean(payload.courseName),
-      institution_name: clean(payload.institutionName),
-      institution_country: clean(payload.institutionCountry),
-      onboarding_completed: true,
-      onboarding_completed_at: completedAt,
-      onboarding_step: payload.onboardingStep ?? 6,
-      updated_at: completedAt,
-    };
-  if (subjects.length) updates.subjects = subjects;
+    id: userId,
+    email,
+    display_name: clean(payload.displayName),
+    education_stage: clean(payload.educationStage),
+    education_country: clean(payload.educationCountry),
+    year_of_study: clean(payload.yearOfStudy),
+    qualification_type: clean(payload.qualificationType),
+    subject_area: clean(payload.subjectArea),
+    course_name: clean(payload.courseName),
+    institution_name: clean(payload.institutionName),
+    institution_country: clean(payload.institutionCountry),
+    study_goals: payload.studyGoals ?? [],
+    onboarding_completed: true,
+    onboarding_completed_at: completedAt,
+    onboarding_step: payload.onboardingStep ?? 7,
+    updated_at: completedAt,
+  };
+  if (payload.subjects?.length) updates.subjects = payload.subjects;
 
-  let { error } = await supabase.from("profiles").upsert(updates, { onConflict: "id" });
-
-  if (error && "subjects" in updates && error.message.toLowerCase().includes("subjects")) {
-    delete updates.subjects;
-    const retry = await supabase.from("profiles").upsert(updates, { onConflict: "id" });
-    error = retry.error;
-  }
+  const error = await upsertProfile(supabase, updates);
 
   if (error) {
     return {

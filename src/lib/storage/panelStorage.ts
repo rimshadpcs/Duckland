@@ -6,7 +6,7 @@ type PanelSide = "left" | "right";
 const PANEL_CONFIG = {
   left: {
     key: LEFT_PANEL_WIDTH_KEY,
-    defaultWidth: 300,
+    defaultWidth: 320,
     minWidth: 220,
     maxWidth: 420,
   },

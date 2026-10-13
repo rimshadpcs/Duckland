@@ -1,7 +1,7 @@
 import { AuthRedirect } from "@src/features/auth/components/AuthRedirect";
 import { RoomOverview } from "@src/features/explanation";
 import { getAuthenticatedUser } from "@src/lib/auth";
-import { getRoomSources } from "@src/lib/repositories/sources";
+import { getRoomSources, type SourceRow } from "@src/lib/repositories/sources";
 import { getRoomLearningPath, type RoomConceptRow, type StudyUnitWithConcepts } from "@src/lib/repositories/study-path";
 import { getStudyRoom } from "@src/lib/repositories/study-rooms";
 
@@ -29,14 +29,13 @@ export default async function Page({
     return <AuthRedirect to="/study" />;
   }
 
-  let source = null;
+  let sources: SourceRow[] = [];
   let units: StudyUnitWithConcepts[] = [];
   let concepts: RoomConceptRow[] = [];
   let loadError: string | null = null;
 
   try {
-    const sources = await getRoomSources(room.id);
-    source = sources.find((item) => item.is_active) || sources[0] || null;
+    sources = await getRoomSources(room.id);
   } catch (error) {
     loadError = error instanceof Error ? error.message : "Could not load source material.";
   }
@@ -56,7 +55,7 @@ export default async function Page({
     <RoomOverview
       authUser={user}
       room={room}
-      source={source}
+      sources={sources}
       units={units}
       concepts={concepts}
       loadError={loadError}

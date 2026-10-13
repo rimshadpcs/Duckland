@@ -21,6 +21,7 @@ export type Database = {
           year_of_study: string | null;
           qualification_type: string | null;
           subjects: Json;
+          study_goals: Json;
           subject_area: string | null;
           course_name: string | null;
           institution_name: string | null;
@@ -42,6 +43,7 @@ export type Database = {
           year_of_study?: string | null;
           qualification_type?: string | null;
           subjects?: Json;
+          study_goals?: Json;
           subject_area?: string | null;
           course_name?: string | null;
           institution_name?: string | null;
@@ -63,6 +65,7 @@ export type Database = {
           year_of_study?: string | null;
           qualification_type?: string | null;
           subjects?: Json;
+          study_goals?: Json;
           subject_area?: string | null;
           course_name?: string | null;
           institution_name?: string | null;

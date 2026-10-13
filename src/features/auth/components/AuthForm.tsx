@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { AlertCircle, MailCheck } from "lucide-react";
 import { createSupabaseBrowserClient } from "@src/lib/supabase/client";
 
 type AuthFormProps = {
@@ -39,12 +39,38 @@ function getAuthRedirectOrigin() {
   return window.location.origin;
 }
 
+function Field({
+  id,
+  label,
+  error,
+  ...inputProps
+}: {
+  id: string;
+  label: string;
+  error?: string;
+} & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="fd-field">
+      <label htmlFor={id} className="fd-label">{label}</label>
+      <input
+        id={id}
+        className="fd-input"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        {...inputProps}
+      />
+      {error ? <small id={`${id}-error`} className="fd-field-error">{error}</small> : null}
+    </div>
+  );
+}
+
 export function AuthForm({ mode, next, initialError = null }: AuthFormProps) {
   const isSignup = mode === "signup";
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [message, setMessage] = useState<string | null>(initialError);
-  const [messageType, setMessageType] = useState<"success" | "error">("error");
+  const [error, setError] = useState<string | null>(initialError);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const switchHref = `${isSignup ? "/login" : "/signup"}?next=${encodeURIComponent(next)}`;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -65,7 +91,7 @@ export function AuthForm({ mode, next, initialError = null }: AuthFormProps) {
     if (isSignup && password !== confirmPassword) nextErrors.confirmPassword = "Passwords must match.";
 
     setFieldErrors(nextErrors);
-    setMessage(null);
+    setError(null);
 
     if (Object.keys(nextErrors).length) return;
 
@@ -74,7 +100,7 @@ export function AuthForm({ mode, next, initialError = null }: AuthFormProps) {
       const supabase = createSupabaseBrowserClient();
 
       if (isSignup) {
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -86,83 +112,95 @@ export function AuthForm({ mode, next, initialError = null }: AuthFormProps) {
           },
         });
 
-        if (error) {
-          setMessageType("error");
-          setMessage(mapAuthError(error.message));
+        if (signUpError) {
+          setError(mapAuthError(signUpError.message));
           return;
         }
 
         if (!data.session) {
-          setMessageType("success");
-          setMessage("Check your email to confirm your account.");
+          setConfirmationEmail(email);
           return;
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-        if (error) {
-          setMessageType("error");
-          setMessage(mapAuthError(error.message));
+        if (signInError) {
+          setError(mapAuthError(signInError.message));
           return;
         }
       }
 
       window.location.assign(nextPath);
-    } catch (error) {
-      setMessageType("error");
-      setMessage(error instanceof Error ? error.message : "Authentication failed. Please try again.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authentication failed. Please try again.");
     } finally {
       setIsPending(false);
     }
   };
 
-  return (
-    <form className="auth-form" onSubmit={handleSubmit}>
-      <input type="hidden" name="next" value={next} />
-
-      {isSignup && (
-        <label>
-          <span>Display name</span>
-          <input name="displayName" autoComplete="name" placeholder="Your name" />
-          {fieldErrors.displayName && <small>{fieldErrors.displayName}</small>}
-        </label>
-      )}
-
-      <label>
-        <span>Email</span>
-        <input name="email" type="email" autoComplete="email" placeholder="you@example.com" />
-        {fieldErrors.email && <small>{fieldErrors.email}</small>}
-      </label>
-
-      <label>
-        <span>Password</span>
-        <input
-          name="password"
-          type="password"
-          autoComplete={isSignup ? "new-password" : "current-password"}
-          placeholder="••••••••"
-        />
-        {fieldErrors.password && <small>{fieldErrors.password}</small>}
-      </label>
-
-      {isSignup && (
-        <label>
-          <span>Confirm password</span>
-          <input name="confirmPassword" type="password" autoComplete="new-password" placeholder="••••••••" />
-          {fieldErrors.confirmPassword && <small>{fieldErrors.confirmPassword}</small>}
-        </label>
-      )}
-
-      {message && (
-        <div className={messageType === "success" ? "auth-message success" : "auth-message error"}>
-          {message}
+  if (confirmationEmail) {
+    return (
+      <div className="fd-auth-form fd-check-inbox" role="status">
+        <div className="fd-icon-tile" aria-hidden="true">
+          <MailCheck size={20} strokeWidth={1.8} />
         </div>
-      )}
+        <div className="fd-auth-copy">
+          <h1>Check your email</h1>
+          <p>
+            We sent a confirmation link to <strong style={{ color: "var(--fd-ink)" }}>{confirmationEmail}</strong>. Open it to finish
+            creating your account.
+          </p>
+        </div>
+        <p className="fd-hint-text">
+          Didn’t get it? Check your spam folder, or{" "}
+          <button type="button" className="fd-link" style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }} onClick={() => setConfirmationEmail(null)}>
+            try a different email
+          </button>
+          .
+        </p>
+      </div>
+    );
+  }
 
-      <button className="auth-submit" type="submit" disabled={isPending}>
-        {isPending ? <Loader2 className="icon-spin" size={18} /> : null}
-        {isPending ? "Working..." : isSignup ? "Create account" : "Log in"}
-      </button>
+  return (
+    <form className="fd-auth-form" onSubmit={handleSubmit} noValidate>
+      <div className="fd-auth-copy">
+        <h1>{isSignup ? "Create your account" : "Log in to keep studying"}</h1>
+        <p>{isSignup ? "Learn anything by explaining it simply." : "Your rooms are where you left them."}</p>
+      </div>
+
+      {error ? (
+        <div className="fd-notice is-error" role="alert">
+          <AlertCircle size={16} strokeWidth={1.8} />
+          <span>{error}</span>
+        </div>
+      ) : null}
+
+      <div className="fd-auth-fields">
+        {isSignup ? (
+          <Field id="displayName" name="displayName" label="Display name" autoComplete="name" placeholder="Your name" error={fieldErrors.displayName} />
+        ) : null}
+        <Field id="email" name="email" type="email" label="Email" autoComplete="email" placeholder="you@example.com" error={fieldErrors.email} />
+        {isSignup ? (
+          <div className="fd-auth-pair">
+            <Field id="password" name="password" type="password" label="Password" autoComplete="new-password" error={fieldErrors.password} />
+            <Field id="confirmPassword" name="confirmPassword" type="password" label="Confirm password" autoComplete="new-password" error={fieldErrors.confirmPassword} />
+          </div>
+        ) : (
+          <Field id="password" name="password" type="password" label="Password" autoComplete="current-password" error={fieldErrors.password} />
+        )}
+      </div>
+
+      <div className="fd-auth-actions">
+        <button className="fd-btn fd-btn-accent fd-btn-lg fd-btn-block" type="submit" disabled={isPending}>
+          {isPending ? <span className="fd-spinner" aria-hidden="true" /> : null}
+          {isPending ? (isSignup ? "Creating account…" : "Logging in…") : isSignup ? "Create account" : "Log in"}
+        </button>
+        <p>
+          {isSignup ? "Already have an account? " : "New to Feynduck? "}
+          <a className="fd-link" href={switchHref}>{isSignup ? "Log in" : "Create an account"}</a>
+        </p>
+      </div>
     </form>
   );
 }

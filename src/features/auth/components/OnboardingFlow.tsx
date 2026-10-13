@@ -1,36 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent } from "react";
-import { ArrowLeft, Check, Loader2, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Search } from "lucide-react";
 import { completeOnboarding, saveOnboardingStep, type OnboardingPayload } from "@src/app/onboarding/actions";
 import type { Json } from "@src/types/database";
 import type { ProfileRow } from "@src/lib/auth";
+import { cn } from "@src/lib/utils";
 
-type StepId = "name" | "stage" | "country" | "year" | "subjects" | "institution" | "programme" | "course" | "context" | "finish";
+type StepId = "name" | "stage" | "university" | "year" | "subject" | "goal" | "ready";
 
-type Option = {
-  value: string;
-  label: string;
-};
+type Option = { value: string; label: string; meta?: string };
 
 type UniversitySuggestion = {
   name: string;
   country: string;
-  website?: string | null;
 };
 
 type Draft = {
   displayName: string;
   educationStage: string;
-  educationCountry: string;
-  yearOfStudy: string;
-  qualificationType: string;
-  subjectArea: string;
-  subjects: string[];
-  courseName: string;
   institutionName: string;
   institutionCountry: string;
+  yearOfStudy: string;
+  subjectArea: string;
+  studyGoals: string[];
 };
+
+const ACADEMIC_STAGES = new Set(["undergraduate", "postgraduate"]);
+const CANT_FIND_UNIVERSITY = "I can’t find my university";
+const PREFER_NOT_TO_SAY = "Prefer not to say";
 
 const stageOptions: Option[] = [
   { value: "secondary_school", label: "School" },
@@ -42,70 +40,11 @@ const stageOptions: Option[] = [
   { value: "other", label: "Other" },
 ];
 
-const countryOptions = [
-  "United Kingdom",
-  "United States",
-  "Canada",
-  "India",
-  "Pakistan",
-  "Bangladesh",
-  "United Arab Emirates",
-  "Saudi Arabia",
-  "Australia",
-  "Ireland",
-  "Germany",
-  "France",
-  "Malaysia",
-  "Singapore",
-  "South Africa",
-  "Nigeria",
-  "Other",
-];
+const yearOptions: Option[] = ["Foundation year", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5+", "Placement year", "Other"].map(
+  (year) => ({ value: year, label: year }),
+);
 
-const schoolYears = [
-  "Year 7",
-  "Year 8",
-  "Year 9",
-  "Year 10",
-  "Year 11",
-  "Year 12",
-  "Year 13",
-  "Grade 6",
-  "Grade 7",
-  "Grade 8",
-  "Grade 9",
-  "Grade 10",
-  "Grade 11",
-  "Grade 12",
-  "Other",
-];
-
-const schoolSubjects = [
-  "English",
-  "Mathematics",
-  "Science",
-  "Biology",
-  "Chemistry",
-  "Physics",
-  "History",
-  "Geography",
-  "Computing",
-  "Languages",
-  "Design and technology",
-  "Art",
-  "Music",
-  "Physical education",
-  "Religious education",
-  "Other",
-];
-
-const collegeYears = ["First year", "Second year", "Third year or later", "Other"];
-const collegeQualifications = ["A levels", "BTEC", "T Level", "Access course", "Apprenticeship", "Other"];
-const collegeSubjects = ["Biology", "Chemistry", "Mathematics", "Health and Social Care", "Computer Science", "Other"];
-const undergraduateYears = ["Foundation year", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5+", "Placement year", "Other"];
-const postgraduateProgrammes = ["Master's", "PhD or doctorate", "Postgraduate diploma or certificate", "Other"];
-const professionalStages = ["Just started", "Early stage", "Midway", "Final stage", "Other"];
-const universityAreas: Option[] = [
+const subjectOptions: Option[] = [
   { value: "medicine_health", label: "Health related" },
   { value: "engineering", label: "Engineering" },
   { value: "computer_science", label: "Computer science" },
@@ -118,79 +57,183 @@ const universityAreas: Option[] = [
   { value: "education", label: "Education" },
   { value: "other", label: "Other" },
 ];
-const healthSubAreas = ["Medicine", "Pre-med", "Dental", "Nursing", "Veterinary", "Pharmacy", "Other"];
 
-function readSubjects(value: Json | undefined): string[] {
+const goalOptions: Option[] = [
+  "Exam revision",
+  "Understanding lectures and readings",
+  "Coursework and essays",
+  "Preparing to teach a topic",
+  "Learning something for myself",
+].map((goal) => ({ value: goal, label: goal }));
+
+function readStringArray(value: Json | undefined): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function initialDraft(profile: ProfileRow | null, email: string | null): Draft {
-  return {
-    displayName: profile?.display_name || email?.split("@")[0] || "",
-    educationStage: profile?.education_stage || "",
-    educationCountry: profile?.education_country || "",
-    yearOfStudy: profile?.year_of_study || "",
-    qualificationType: profile?.qualification_type || "",
-    subjectArea: profile?.subject_area || "",
-    subjects: readSubjects(profile?.subjects),
-    courseName: profile?.course_name || "",
-    institutionName: profile?.institution_name || "",
-    institutionCountry: profile?.institution_country || "",
-  };
+function labelFor(options: Option[], value: string) {
+  return options.find((option) => option.value === value)?.label || value;
 }
 
 function getSteps(stage: string): StepId[] {
-  if (stage === "secondary_school") return ["name", "stage", "country", "year", "subjects", "finish"];
-  if (stage === "college") return ["name", "stage", "country", "year", "subjects", "finish"];
-  if (stage === "undergraduate") return ["name", "stage", "institution", "year", "course", "finish"];
-  if (stage === "postgraduate") return ["name", "stage", "institution", "programme", "course", "finish"];
-  if (stage === "professional") return ["name", "stage", "course", "year", "finish"];
-  if (stage === "teacher") return ["name", "stage", "country", "subjects", "finish"];
-  if (stage === "other") return ["name", "stage", "context", "finish"];
-  return ["name", "stage"];
+  // Until a stage is picked, assume the longest (academic) path so the step count doesn't jump down.
+  const academic = !stage || ACADEMIC_STAGES.has(stage);
+  return ["name", "stage", ...(academic ? (["university", "year"] as StepId[]) : []), "subject", "goal", "ready"];
 }
 
-function stageLabel(value: string) {
-  return stageOptions.find((option) => option.value === value)?.label || value;
+function validate(step: StepId, draft: Draft) {
+  if (step === "name" && draft.displayName.trim().length < 2) return "Enter the name Feynduck should use.";
+  if (step === "stage" && !draft.educationStage) return "Choose where you are in your learning.";
+  if (step === "university" && !draft.institutionName.trim()) return "Choose your university, or one of the options below.";
+  if (step === "year" && !draft.yearOfStudy) return "Choose your year.";
+  if (step === "subject" && !draft.subjectArea) return "Choose the closest area.";
+  return "";
+}
+
+function initialDraft(profile: ProfileRow | null, email: string | null): Draft {
+  const stage = profile?.education_stage || "";
+  const academic = ACADEMIC_STAGES.has(stage);
+  return {
+    displayName: profile?.display_name || email?.split("@")[0] || "",
+    educationStage: stageOptions.some((option) => option.value === stage) ? stage : "",
+    institutionName: academic ? profile?.institution_name || "" : "",
+    institutionCountry: academic ? profile?.institution_country || "" : "",
+    yearOfStudy: academic && yearOptions.some((option) => option.value === profile?.year_of_study) ? profile?.year_of_study || "" : "",
+    subjectArea: subjectOptions.some((option) => option.value === profile?.subject_area) ? profile?.subject_area || "" : "",
+    studyGoals: readStringArray(profile?.study_goals),
+  };
 }
 
 function toPayload(draft: Draft, step: number): OnboardingPayload {
   return {
     displayName: draft.displayName,
     educationStage: draft.educationStage,
-    educationCountry: draft.educationCountry || draft.institutionCountry,
-    yearOfStudy: draft.yearOfStudy,
-    qualificationType: draft.qualificationType,
-    subjects: draft.subjects,
-    subjectArea: draft.subjectArea,
-    courseName: draft.courseName,
+    educationCountry: draft.institutionCountry,
     institutionName: draft.institutionName,
     institutionCountry: draft.institutionCountry,
+    yearOfStudy: draft.yearOfStudy,
+    subjectArea: draft.subjectArea,
+    studyGoals: draft.studyGoals,
     onboardingStep: step,
   };
+}
+
+function CheckMark({ square = false }: { square?: boolean }) {
+  return (
+    <span className={cn("fd-check", square && "is-square")} aria-hidden="true">
+      <Check size={12} strokeWidth={3.2} />
+    </span>
+  );
+}
+
+/** Radio list with roving focus: arrow keys move the selection, Enter selects and continues. */
+function RadioOptions({
+  label,
+  options,
+  value,
+  onChange,
+  onCommit,
+  grid = false,
+}: {
+  label: string;
+  options: Option[];
+  value: string;
+  onChange: (value: string) => void;
+  onCommit: (value: string) => void;
+  grid?: boolean;
+}) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = options.length - 1;
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") nextIndex = index === last ? 0 : index + 1;
+    if (event.key === "ArrowUp" || event.key === "ArrowLeft") nextIndex = index === 0 ? last : index - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = last;
+
+    if (nextIndex !== null) {
+      event.preventDefault();
+      onChange(options[nextIndex].value);
+      refs.current[nextIndex]?.focus();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onChange(options[index].value);
+      onCommit(options[index].value);
+    }
+  };
+
+  return (
+    <div role="radiogroup" aria-label={label} className={cn("fd-options", grid && "is-grid")}>
+      {options.map((option, index) => {
+        const checked = option.value === value;
+        return (
+          <button
+            key={option.value}
+            ref={(element) => {
+              refs.current[index] = element;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            tabIndex={checked || (selectedIndex < 0 && index === 0) ? 0 : -1}
+            className="fd-option"
+            data-option
+            onClick={() => onChange(option.value)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+          >
+            <CheckMark />
+            <span>{option.label}</span>
+            {option.meta ? <span className="fd-option-meta">{option.meta}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function OnboardingFlow({ profile, email }: { profile: ProfileRow | null; email: string | null }) {
   const [draft, setDraft] = useState(() => initialDraft(profile, email));
   const steps = useMemo(() => getSteps(draft.educationStage), [draft.educationStage]);
-  const initialStep = Math.min(Math.max((profile?.onboarding_step || 1) - 1, 0), Math.max(steps.length - 1, 0));
-  const [stepIndex, setStepIndex] = useState(initialStep);
-  const [countryQuery, setCountryQuery] = useState(draft.educationCountry);
-  const [universityQuery, setUniversityQuery] = useState(draft.institutionName);
+  const [stepIndex, setStepIndex] = useState(() => {
+    const startDraft = initialDraft(profile, email);
+    const startSteps = getSteps(startDraft.educationStage);
+    const saved = Math.min(Math.max((profile?.onboarding_step || 1) - 1, 0), startSteps.length - 1);
+    const firstInvalid = startSteps.findIndex((step) => validate(step, startDraft));
+    return firstInvalid >= 0 ? Math.min(saved, firstInvalid) : saved;
+  });
+  const [direction, setDirection] = useState<"forward" | "back">("forward");
+  const [universityQuery, setUniversityQuery] = useState(() => initialDraft(profile, email).institutionName);
   const [universities, setUniversities] = useState<UniversitySuggestion[]>([]);
   const [universityStatus, setUniversityStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-  const nameRef = useRef<HTMLInputElement | null>(null);
-  const currentStep = steps[stepIndex] || "finish";
-  const progress = Math.round(((stepIndex + 1) / steps.length) * 100);
+  const stepRef = useRef<HTMLDivElement | null>(null);
+
+  const currentStep = steps[Math.min(stepIndex, steps.length - 1)];
+  const isValid = !validate(currentStep, draft);
+  const isAcademic = ACADEMIC_STAGES.has(draft.educationStage);
 
   useEffect(() => {
-    if (currentStep === "name") nameRef.current?.focus();
+    if (stepIndex > steps.length - 1) setStepIndex(steps.length - 1);
+  }, [stepIndex, steps.length]);
+
+  useEffect(() => {
+    const root = stepRef.current;
+    if (!root) return;
+    const target =
+      root.querySelector<HTMLElement>("input") ||
+      root.querySelector<HTMLElement>('[data-option][aria-checked="true"]') ||
+      root.querySelector<HTMLElement>("[data-option]");
+    target?.focus({ preventScroll: true });
   }, [currentStep]);
 
   useEffect(() => {
-    if (currentStep !== "institution" || universityQuery.trim().length < 2) {
+    const query = universityQuery.trim();
+    if (currentStep !== "university" || query.length < 2 || query === CANT_FIND_UNIVERSITY || query === PREFER_NOT_TO_SAY) {
       setUniversities([]);
       setUniversityStatus("idle");
       return;
@@ -200,17 +243,17 @@ export function OnboardingFlow({ profile, email }: { profile: ProfileRow | null;
     const timer = window.setTimeout(async () => {
       setUniversityStatus("loading");
       try {
-        const params = new URLSearchParams({ name: universityQuery.trim() });
+        const params = new URLSearchParams({ name: query });
         const response = await fetch(`/api/universities?${params.toString()}`, { signal: controller.signal });
         if (!response.ok) throw new Error("University search failed");
         const data = (await response.json()) as { universities?: UniversitySuggestion[] };
-        setUniversities(data.universities || []);
+        setUniversities((data.universities || []).slice(0, 5));
         setUniversityStatus("idle");
       } catch (searchError) {
         if ((searchError as Error).name === "AbortError") return;
         setUniversityStatus("error");
       }
-    }, 350);
+    }, 300);
 
     return () => {
       window.clearTimeout(timer);
@@ -224,500 +267,376 @@ export function OnboardingFlow({ profile, email }: { profile: ProfileRow | null;
   }
 
   function selectStage(value: string) {
-    updateDraft({
+    const academic = ACADEMIC_STAGES.has(value);
+    setDraft((current) => ({
+      ...current,
       educationStage: value,
-      educationCountry: "",
-      yearOfStudy: "",
-      qualificationType: "",
-      subjectArea: "",
-      subjects: [],
-      courseName: "",
-      institutionName: "",
-      institutionCountry: "",
-    });
-    setCountryQuery("");
-    setUniversityQuery("");
-    setStepIndex(1);
-  }
-
-  function toggleSubject(subject: string) {
-    setDraft((current) => {
-      const exists = current.subjects.includes(subject);
-      return {
-        ...current,
-        subjects: exists ? current.subjects.filter((item) => item !== subject) : [...current.subjects, subject],
-      };
-    });
+      ...(academic ? {} : { institutionName: "", institutionCountry: "", yearOfStudy: "" }),
+    }));
+    if (!academic) setUniversityQuery("");
     setError("");
   }
 
-  function validateStep() {
-    if (currentStep === "name" && draft.displayName.trim().length < 2) return "Enter the name Feynduck should use.";
-    if (currentStep === "stage" && !draft.educationStage) return "Choose where you are in your learning.";
-    if (currentStep === "country" && !draft.educationCountry.trim()) return "Choose or enter your country.";
-    if (currentStep === "year" && !draft.yearOfStudy.trim()) return "Choose your current stage.";
-    if (currentStep === "subjects" && !draft.subjects.length && !draft.courseName.trim()) return "Choose at least one subject or type your own.";
-    if (currentStep === "institution" && !draft.institutionName.trim()) return "Choose your university or use one of the fallback options.";
-    if (currentStep === "programme" && !draft.qualificationType.trim()) return "Choose your programme type.";
-    if (
-      currentStep === "course" &&
-      (draft.educationStage === "undergraduate" || draft.educationStage === "postgraduate") &&
-      !draft.subjectArea.trim() &&
-      !draft.courseName.trim()
-    ) {
-      return "Choose an area or type what you are studying.";
-    }
-    if (
-      currentStep === "course" &&
-      draft.subjectArea === "medicine_health" &&
-      !draft.courseName.trim()
-    ) {
-      return "Choose a health path or type your own.";
-    }
-    if (currentStep === "course" && draft.educationStage === "professional" && !draft.courseName.trim()) {
-      return "Enter what you are studying.";
-    }
-    if (currentStep === "context" && !draft.courseName.trim()) return "Tell us a little about your learning context.";
-    return "";
+  function goTo(index: number, dir: "forward" | "back") {
+    setDirection(dir);
+    setStepIndex(index);
+    setError("");
   }
 
-  function continueFlow() {
-    const validationError = validateStep();
+  function continueFlow(nextDraft: Draft = draft) {
+    const nextSteps = getSteps(nextDraft.educationStage);
+    const step = nextSteps[Math.min(stepIndex, nextSteps.length - 1)];
+    const validationError = validate(step, nextDraft);
     if (validationError) {
       setError(validationError);
       return;
     }
 
-    if (currentStep === "finish") {
+    if (step === "ready") {
       startTransition(async () => {
-        const result = await completeOnboarding(toPayload(draft, steps.length));
+        const result = await completeOnboarding(toPayload(nextDraft, nextSteps.length));
         if (!result.ok) setError(result.message);
       });
       return;
     }
 
-    const nextIndex = Math.min(stepIndex + 1, steps.length - 1);
-    startTransition(async () => {
-      const result = await saveOnboardingStep(toPayload(draft, nextIndex + 1));
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-      setStepIndex(nextIndex);
+    const nextIndex = Math.min(stepIndex + 1, nextSteps.length - 1);
+    goTo(nextIndex, "forward");
+    void saveOnboardingStep(toPayload(nextDraft, nextIndex + 1)).then((result) => {
+      if (!result.ok) setError(result.message);
     });
   }
 
-  function handleEnter(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
+  function goBack() {
+    if (stepIndex === 0) return;
+    goTo(stepIndex - 1, "back");
+  }
+
+  function handleInputEnter(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
       event.preventDefault();
       continueFlow();
     }
   }
 
-  function goBack() {
-    setStepIndex((current) => Math.max(current - 1, 0));
-    setError("");
-  }
+  const summary: Array<{ label: string; value: string; step: StepId }> = [
+    { label: "Name", value: draft.displayName.trim(), step: "name" },
+    { label: "Stage", value: labelFor(stageOptions, draft.educationStage), step: "stage" },
+    ...(isAcademic
+      ? [
+          { label: "University", value: draft.institutionName, step: "university" as StepId },
+          { label: "Year", value: draft.yearOfStudy, step: "year" as StepId },
+        ]
+      : []),
+    { label: "Subject", value: labelFor(subjectOptions, draft.subjectArea), step: "subject" },
+    { label: "Using it for", value: draft.studyGoals.join(", "), step: "goal" },
+  ];
 
-  function renderPills(options: string[], selected: string, onSelect: (value: string) => void) {
-    return (
-      <div className="onboarding-pill-grid">
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={selected === option ? "onboarding-pill selected" : "onboarding-pill"}
-            aria-pressed={selected === option}
-            onClick={() => onSelect(option)}
-          >
-            {option}
-          </button>
-        ))}
-      </div>
-    );
-  }
+  const firstName = draft.displayName.trim().split(/\s+/)[0] || "there";
+  const universityOptions: Option[] = universities.map((university) => ({
+    value: university.name,
+    label: university.name,
+    meta: university.country,
+  }));
 
   function renderStep() {
     if (currentStep === "name") {
       return (
-        <label className="onboarding-field">
-          <span>What should Feynduck call you?</span>
-          <input
-            ref={nameRef}
-            value={draft.displayName}
-            onChange={(event) => updateDraft({ displayName: event.target.value })}
-            onKeyDown={handleEnter}
-            placeholder="Your name"
-            autoComplete="name"
-          />
-        </label>
+        <>
+          <div className="fd-ob-question">
+            <h1>What should Feynduck call you?</h1>
+            <p>This is how you’ll be greeted in your study rooms.</p>
+          </div>
+          <div className="fd-field">
+            <label htmlFor="ob-name" className="fd-label">Your name</label>
+            <input
+              id="ob-name"
+              className="fd-input fd-input-lg"
+              value={draft.displayName}
+              onChange={(event) => updateDraft({ displayName: event.target.value })}
+              onKeyDown={handleInputEnter}
+              placeholder="Your name"
+              autoComplete="name"
+            />
+          </div>
+        </>
       );
     }
 
     if (currentStep === "stage") {
       return (
-        <div className="onboarding-compact-options">
-          {stageOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={draft.educationStage === option.value ? "onboarding-compact-card selected" : "onboarding-compact-card"}
-              aria-pressed={draft.educationStage === option.value}
-              onClick={() => selectStage(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="fd-ob-question">
+            <h1>Where are you in your learning?</h1>
+            <p>Feynduck pitches its questions to your level.</p>
+          </div>
+          <RadioOptions
+            label="Learning stage"
+            options={stageOptions}
+            value={draft.educationStage}
+            onChange={selectStage}
+            onCommit={(value) => continueFlow({ ...draft, educationStage: value })}
+          />
+        </>
       );
     }
 
-    if (currentStep === "country") {
-      const visibleCountries = countryOptions.filter((country) =>
-        country.toLowerCase().includes(countryQuery.toLowerCase()),
-      );
+    if (currentStep === "university") {
+      const extraChoices = [CANT_FIND_UNIVERSITY, PREFER_NOT_TO_SAY];
       return (
-        <div className="onboarding-field">
-          <label htmlFor="country-search">Where are you studying?</label>
-          <div className="onboarding-search">
-            <Search size={17} />
-            <input
-              id="country-search"
-              value={countryQuery}
-              onChange={(event) => {
-                setCountryQuery(event.target.value);
-                updateDraft({ educationCountry: event.target.value });
-              }}
-              onKeyDown={handleEnter}
-              placeholder="Search country"
-            />
+        <>
+          <div className="fd-ob-question">
+            <h1>Which university do you study at?</h1>
           </div>
-          <div className="onboarding-chip-row">
-            {visibleCountries.slice(0, 9).map((country) => (
-              <button
-                key={country}
-                type="button"
-                className={draft.educationCountry === country ? "onboarding-chip selected" : "onboarding-chip"}
-                onClick={() => {
-                  setCountryQuery(country);
-                  updateDraft({ educationCountry: country });
+          <div className="fd-field">
+            <label htmlFor="ob-uni" className="fd-label">Search universities</label>
+            <div className="fd-search">
+              <Search size={18} strokeWidth={1.8} aria-hidden="true" />
+              <input
+                id="ob-uni"
+                type="search"
+                className="fd-input fd-input-lg"
+                value={universityQuery}
+                onChange={(event) => {
+                  setUniversityQuery(event.target.value);
+                  updateDraft({ institutionName: "", institutionCountry: "" });
                 }}
-              >
-                {country}
-              </button>
-            ))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !draft.institutionName && universities[0]) {
+                    event.preventDefault();
+                    const top = universities[0];
+                    updateDraft({ institutionName: top.name, institutionCountry: top.country });
+                    setUniversityQuery(top.name);
+                    return;
+                  }
+                  handleInputEnter(event);
+                }}
+                placeholder="Start typing your university"
+                autoComplete="off"
+              />
+            </div>
           </div>
-        </div>
+          <div className="fd-options">
+            {universityStatus === "loading" ? (
+              <div className="fd-busy" style={{ padding: "4px 2px" }}>
+                <span className="fd-spinner" aria-hidden="true" />
+                Searching universities…
+              </div>
+            ) : null}
+            {universityStatus === "error" ? (
+              <p className="fd-hint-text">Search isn’t available right now. Pick an option below and carry on.</p>
+            ) : null}
+            {universityOptions.length ? (
+              <RadioOptions
+                label="University"
+                options={universityOptions}
+                value={draft.institutionName}
+                onChange={(value) => {
+                  const match = universities.find((university) => university.name === value);
+                  updateDraft({ institutionName: value, institutionCountry: match?.country || "" });
+                }}
+                onCommit={(value) => {
+                  const match = universities.find((university) => university.name === value);
+                  continueFlow({ ...draft, institutionName: value, institutionCountry: match?.country || "" });
+                }}
+              />
+            ) : null}
+            <div className="fd-chip-row">
+              {extraChoices.map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  className="fd-chip-btn"
+                  aria-pressed={draft.institutionName === choice}
+                  onClick={() => updateDraft({ institutionName: choice, institutionCountry: "" })}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
       );
     }
 
     if (currentStep === "year") {
-      if (draft.educationStage === "secondary_school") {
-        return (
-          <label className="onboarding-field">
-            <span>What year or grade are you in?</span>
-            <select value={draft.yearOfStudy} onChange={(event) => updateDraft({ yearOfStudy: event.target.value })}>
-              <option value="">Choose year or grade</option>
-              {schoolYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      }
-
-      if (draft.educationStage === "college") {
-        return (
-          <div className="onboarding-stack compact">
-            {renderPills(collegeYears, draft.yearOfStudy, (value) => updateDraft({ yearOfStudy: value }))}
-            <label className="onboarding-field compact">
-              <span>Qualification</span>
-              <select value={draft.qualificationType} onChange={(event) => updateDraft({ qualificationType: event.target.value })}>
-                <option value="">Choose qualification</option>
-                {collegeQualifications.map((qualification) => (
-                  <option key={qualification} value={qualification}>
-                    {qualification}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        );
-      }
-
-      if (draft.educationStage === "professional") {
-        return renderPills(professionalStages, draft.yearOfStudy, (value) => updateDraft({ yearOfStudy: value }));
-      }
-
-      return renderPills(undergraduateYears, draft.yearOfStudy, (value) => updateDraft({ yearOfStudy: value }));
-    }
-
-    if (currentStep === "subjects") {
-      const options = draft.educationStage === "college" ? collegeSubjects : schoolSubjects;
       return (
-        <div className="onboarding-field">
-          <span>{draft.educationStage === "teacher" ? "What subjects do you teach?" : "What subjects are you studying?"}</span>
-          <div className="onboarding-subject-grid">
-            {options.map((subject) => (
-              <button
-                key={subject}
-                type="button"
-                className={draft.subjects.includes(subject) ? "onboarding-subject selected" : "onboarding-subject"}
-                aria-pressed={draft.subjects.includes(subject)}
-                onClick={() => toggleSubject(subject)}
-              >
-                {subject}
-              </button>
-            ))}
+        <>
+          <div className="fd-ob-question">
+            <h1>What year are you in?</h1>
           </div>
-          <input
-            value={draft.courseName}
-            onChange={(event) => updateDraft({ courseName: event.target.value })}
-            onKeyDown={handleEnter}
-            placeholder="Or type another subject or course"
+          <RadioOptions
+            label="Year"
+            options={yearOptions}
+            value={draft.yearOfStudy}
+            onChange={(value) => updateDraft({ yearOfStudy: value })}
+            onCommit={(value) => continueFlow({ ...draft, yearOfStudy: value })}
+            grid
           />
-        </div>
+        </>
       );
     }
 
-    if (currentStep === "institution") {
+    if (currentStep === "subject") {
       return (
-        <div className="onboarding-field">
-          <label htmlFor="university-search">Which university do you study at?</label>
-          <div className="onboarding-search">
-            <Search size={17} />
-            <input
-              id="university-search"
-              value={universityQuery}
-              onChange={(event) => {
-                setUniversityQuery(event.target.value);
-                updateDraft({ institutionName: event.target.value, institutionCountry: "" });
-              }}
-              onKeyDown={handleEnter}
-              placeholder="Search university"
-            />
+        <>
+          <div className="fd-ob-question">
+            <h1>What are you studying?</h1>
+            <p>Pick the closest area.</p>
           </div>
-          <div className="onboarding-results compact" role="listbox">
-            {universityStatus === "loading" ? (
-              <div className="onboarding-result muted">
-                <Loader2 className="icon-spin" size={16} />
-                Searching universities...
-              </div>
-            ) : null}
-            {universityStatus === "error" ? (
-              <div className="onboarding-result muted">Search is unavailable. You can type it manually.</div>
-            ) : null}
-            {universities.map((university) => (
-              <button
-                key={`${university.name}-${university.country}`}
-                type="button"
-                className="onboarding-result"
-                onClick={() => {
-                  setUniversityQuery(university.name);
-                  updateDraft({
-                    institutionName: university.name,
-                    institutionCountry: university.country,
-                    educationCountry: university.country,
-                  });
-                }}
-              >
-                <span>{university.name}</span>
-                <small>{university.country}</small>
-              </button>
-            ))}
-            <button
-              type="button"
-              className="onboarding-result"
-              onClick={() => updateDraft({ institutionName: universityQuery || "I can't find my university", institutionCountry: "" })}
-            >
-              I can't find my university
-            </button>
-            <button
-              type="button"
-              className="onboarding-result"
-              onClick={() => {
-                setUniversityQuery("Prefer not to say");
-                updateDraft({ institutionName: "Prefer not to say", institutionCountry: "" });
-              }}
-            >
-              Prefer not to say
-            </button>
-          </div>
-        </div>
+          <RadioOptions
+            label="Subject area"
+            options={subjectOptions}
+            value={draft.subjectArea}
+            onChange={(value) => updateDraft({ subjectArea: value })}
+            onCommit={(value) => continueFlow({ ...draft, subjectArea: value })}
+            grid
+          />
+        </>
       );
     }
 
-    if (currentStep === "programme") {
-      return renderPills(postgraduateProgrammes, draft.qualificationType, (value) => updateDraft({ qualificationType: value }));
-    }
-
-    if (currentStep === "course") {
-      if (draft.educationStage === "undergraduate" || draft.educationStage === "postgraduate") {
-        return (
-          <div className="onboarding-field">
-            <span>What area are you studying?</span>
-            <div className="onboarding-subject-grid university">
-              {universityAreas.map((area) => (
+    if (currentStep === "goal") {
+      return (
+        <>
+          <div className="fd-ob-question">
+            <h1>What brings you to Feynduck?</h1>
+            <p>Pick any that apply.</p>
+          </div>
+          <div role="group" aria-label="Goals" className="fd-options">
+            {goalOptions.map((option) => {
+              const checked = draft.studyGoals.includes(option.value);
+              return (
                 <button
-                  key={area.value}
+                  key={option.value}
                   type="button"
-                  className={draft.subjectArea === area.value ? "onboarding-subject selected" : "onboarding-subject"}
-                  aria-pressed={draft.subjectArea === area.value}
+                  role="checkbox"
+                  aria-checked={checked}
+                  className="fd-option"
+                  data-option
                   onClick={() =>
                     updateDraft({
-                      subjectArea: area.value,
-                      courseName: area.value === "medicine_health" || area.value === "other" ? "" : area.label,
+                      studyGoals: checked
+                        ? draft.studyGoals.filter((goal) => goal !== option.value)
+                        : [...draft.studyGoals, option.value],
                     })
                   }
                 >
-                  {area.label}
+                  <CheckMark square />
+                  <span>{option.label}</span>
                 </button>
-              ))}
-            </div>
-
-            {draft.subjectArea === "medicine_health" ? (
-              <div className="onboarding-nested-options">
-                <span>Which health path?</span>
-                <div className="onboarding-pill-grid">
-                  {healthSubAreas.map((path) => (
-                    <button
-                      key={path}
-                      type="button"
-                      className={draft.courseName === path ? "onboarding-pill selected" : "onboarding-pill"}
-                      aria-pressed={draft.courseName === path}
-                      onClick={() => updateDraft({ courseName: path === "Other" ? "" : path })}
-                    >
-                      {path}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {draft.subjectArea === "other" || draft.subjectArea === "medicine_health" ? (
-              <input
-                value={draft.courseName}
-                onChange={(event) => updateDraft({ courseName: event.target.value })}
-                onKeyDown={handleEnter}
-                placeholder={draft.subjectArea === "medicine_health" ? "Other health path" : "Type your course or subject"}
-              />
-            ) : null}
+              );
+            })}
           </div>
-        );
-      }
-
-      return (
-        <label className="onboarding-field">
-          <span>{draft.educationStage === "professional" ? "What qualification are you studying?" : "What are you studying?"}</span>
-          <input
-            value={draft.courseName}
-            onChange={(event) => updateDraft({ courseName: event.target.value })}
-            onKeyDown={handleEnter}
-            placeholder={
-              draft.educationStage === "professional"
-                ? "ACCA, bar exam, nursing board exam..."
-                : "Medicine, Computer Science, Mechanical Engineering, Economics"
-            }
-          />
-        </label>
-      );
-    }
-
-    if (currentStep === "context") {
-      return (
-        <label className="onboarding-field">
-          <span>Tell us a little about your learning context.</span>
-          <textarea
-            value={draft.courseName}
-            onChange={(event) => updateDraft({ courseName: event.target.value })}
-            onKeyDown={handleEnter}
-            placeholder="I am self-studying biology for an entrance exam..."
-          />
-        </label>
+        </>
       );
     }
 
     return (
-      <div className="onboarding-ready compact">
-        <h2>You&apos;re ready to study</h2>
-        <dl>
-          <div>
-            <dt>Name</dt>
-            <dd>{draft.displayName}</dd>
-          </div>
-          <div>
-            <dt>Stage</dt>
-            <dd>{stageLabel(draft.educationStage)}</dd>
-          </div>
-          <div>
-            <dt>{draft.institutionName ? "Course" : "Subjects"}</dt>
-            <dd>{draft.courseName || draft.subjects.join(", ")}</dd>
-          </div>
-          {draft.institutionName ? (
-            <div>
-              <dt>University</dt>
-              <dd>{draft.institutionName}</dd>
+      <>
+        <div className="fd-ob-question">
+          <h1>You’re all set, {firstName}</h1>
+          <p>Check your details, then set up your first study room.</p>
+        </div>
+        <dl className="fd-summary">
+          {summary.map((row) => (
+            <div key={row.label}>
+              <dt>{row.label}</dt>
+              <dd>{row.value || "—"}</dd>
+              <button
+                type="button"
+                className="fd-btn fd-btn-ghost fd-btn-sm"
+                aria-label={`Edit ${row.label.toLowerCase()}`}
+                onClick={() => goTo(steps.indexOf(row.step), "back")}
+              >
+                Edit
+              </button>
             </div>
-          ) : null}
+          ))}
         </dl>
-      </div>
+        <button
+          type="button"
+          className="fd-btn fd-btn-accent fd-btn-xl"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => continueFlow()}
+          disabled={isPending}
+          data-option
+        >
+          {isPending ? <span className="fd-spinner" aria-hidden="true" /> : null}
+          {isPending ? "Setting things up…" : "Set up my first room"}
+          {isPending ? null : <ArrowRight size={16} className="fd-arrow" />}
+        </button>
+      </>
     );
   }
 
-  const questionByStep: Record<StepId, string> = {
-    name: "What should Feynduck call you?",
-    stage: "Where are you in your learning?",
-    country: "Where are you studying?",
-    year:
-      draft.educationStage === "secondary_school"
-        ? "What year or grade are you in?"
-        : draft.educationStage === "undergraduate"
-          ? "What year are you in?"
-          : "What stage are you at?",
-    subjects: draft.educationStage === "teacher" ? "What subjects do you teach?" : "What subjects are you studying?",
-    institution: "Which university do you study at?",
-    programme: "What type of programme is it?",
-    course: draft.educationStage === "professional" ? "What qualification are you studying?" : "What are you studying?",
-    context: "Tell us a little about your learning context.",
-    finish: "You’re ready to study",
-  };
-
   return (
-    <main className="onboarding-page">
-      <button type="button" className="onboarding-back floating" onClick={goBack} disabled={stepIndex === 0 || isPending}>
-        <ArrowLeft size={17} />
-        Back
-      </button>
+    <div className="fd fd-ob">
+      <header className="fd-ob-header">
+        <div>
+          {stepIndex > 0 ? (
+            <button type="button" className="fd-btn fd-btn-ghost fd-ob-back" onClick={goBack} disabled={isPending}>
+              <ArrowLeft size={18} strokeWidth={1.8} />
+              Back
+            </button>
+          ) : null}
+        </div>
+        <div>
+          <span className="fd-brand" style={{ cursor: "default" }}>
+            <img src="/feynduckhead.png" alt="" width={30} height={30} />
+            <span>Feynduck</span>
+          </span>
+        </div>
+        <div>
+          <span className="fd-kicker">Step {stepIndex + 1} of {steps.length}</span>
+        </div>
+      </header>
 
-      <a className="auth-brand onboarding-logo" href="/" aria-label="Feynduck home">
-        <img src="/feynduckhead.png" alt="" />
-        <span>Feynduck</span>
-      </a>
+      <div className="fd-ob-segments" aria-hidden="true">
+        {steps.map((step, index) => (
+          <span key={step} className={index <= stepIndex ? "is-done" : undefined} />
+        ))}
+      </div>
 
-      <section className="onboarding-stage">
-        <div className="onboarding-step-count">Step {stepIndex + 1} of {steps.length}</div>
-        <div className="onboarding-progress" aria-hidden="true">
-          <span style={{ width: `${progress}%` }} />
+      <main className="fd-ob-main">
+        <div className="fd-ob-body">
+          <div
+            key={currentStep}
+            ref={stepRef}
+            className={cn("fd-ob-step", direction === "back" && "is-back")}
+          >
+            {renderStep()}
+          </div>
+
+          {error ? (
+            <div className="fd-notice is-error" role="alert">
+              <AlertCircle size={16} strokeWidth={1.8} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          {currentStep !== "ready" ? (
+            <div className="fd-ob-footer">
+              <span className="fd-hint fd-ob-hint">Press Enter ↵</span>
+              <div>
+                {currentStep === "goal" ? (
+                  <button type="button" className="fd-btn fd-btn-ghost fd-btn-xl" onClick={() => continueFlow()}>
+                    Skip
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="fd-btn fd-btn-accent fd-btn-xl"
+                  aria-disabled={!isValid}
+                  onClick={() => continueFlow()}
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
-        <div className="onboarding-compact-heading">
-          <p>Feynduck setup</p>
-          <h1>{questionByStep[currentStep]}</h1>
-        </div>
-        <div className="onboarding-body compact">{renderStep()}</div>
-        {error ? (
-          <p className="onboarding-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="onboarding-actions">
-          <button type="button" className="onboarding-continue" onClick={continueFlow} disabled={isPending}>
-            {isPending ? <Loader2 className="icon-spin" size={18} /> : <Check size={18} />}
-            {currentStep === "finish" ? "Start studying" : "Continue"}
-          </button>
-        </div>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }

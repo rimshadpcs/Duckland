@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronDown, Lightbulb, Loader2, PanelRightClose, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type PointerEvent } from "react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, RotateCcw } from "lucide-react";
 import type { GapAnalysisResult } from "../types";
 import type { Json } from "@src/types/database";
 import { startInteractionTiming } from "@src/lib/performance/interactionTiming";
+import { cn } from "@src/lib/utils";
 
 type StudyPanelTab = "insights" | "quiz" | "flashcards";
 
@@ -65,8 +66,10 @@ type GapResultPanelProps = {
   activeConceptId?: string | null;
   isConceptSwitching?: boolean;
   onConceptSelect?: (title: string) => void;
-  onClose?: () => void;
 };
+
+const CLEAR_THRESHOLD = 90;
+const SWIPE_THRESHOLD = 64;
 
 function getErrorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object" && "error" in payload) {
@@ -112,149 +115,61 @@ function parseStudyToolsSnapshot(value: unknown): StudyToolsSnapshot | null {
   };
 }
 
-function PanelTabs({ activeTab, onChange }: { activeTab: StudyPanelTab; onChange: (tab: StudyPanelTab) => void }) {
-  const tabs: Array<{ id: StudyPanelTab; label: string }> = [
-    { id: "insights", label: "Feedback" },
-    { id: "quiz", label: "Quiz" },
-    { id: "flashcards", label: "Flashcards" },
-  ];
-
+function SupportEmpty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="study-panel-tabs" role="tablist" aria-label="Study panel sections">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          className={activeTab === tab.id ? "active" : ""}
-          onClick={() => onChange(tab.id)}
-        >
-          {tab.label}
-        </button>
-      ))}
+    <div className="fd-support-empty">
+      <span>{title}</span>
+      <span>{body}</span>
     </div>
   );
 }
 
-function getConceptStatusLabel(concept: PanelConcept) {
-  if (concept.status === "clear") return `Clear${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
-  if (concept.status === "due_for_review") return "Due for recall";
-  if (concept.status === "needs_recall") return "Recall scheduled";
-  if (concept.status === "gap_found") return `Gap found${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
-  if (concept.status === "improving" || concept.status === "explaining") return `Improving${concept.latestClarityScore != null ? ` · ${concept.latestClarityScore}` : ""}`;
-  return "Not started";
-}
-
-function getConceptStatusIcon(status: ConceptStatus) {
-  if (status === "clear") return "✓";
-  if (status === "due_for_review") return "↻";
-  if (status === "needs_recall") return "◷";
-  if (status === "gap_found") return "!";
-  if (status === "improving") return "◐";
-  if (status === "explaining") return "◐";
-  return "○";
-}
-
-function InsightsTab({
-  result,
-  isLoading,
-  hasNotes,
-  hasSelectedConcept,
-}: {
-  result: GapAnalysisResult | null;
-  isLoading: boolean;
-  hasNotes: boolean;
-  hasSelectedConcept: boolean;
-}) {
-  const isClear = result?.status === "clear" && !(result.missingClaims?.length);
-  const mainGap = result?.mainGap ?? result?.gapSummary;
-
-  if (!result && !isLoading) {
-    return (
-      <div className="empty-insights">
-        <Lightbulb size={48} strokeWidth={1.5} />
-        {!hasNotes ? (
-          <>
-            <h4>Waiting for study material</h4>
-            <p>Add notes on the left, then explain the concept to get feedback.</p>
-          </>
-        ) : !hasSelectedConcept ? (
-          <>
-            <h4>Choose a concept to begin</h4>
-            <p>Pick the concept Feynduck should evaluate before you explain.</p>
-          </>
-        ) : (
-          <>
-            <h4>Explain the concept in your own words</h4>
-            <p>Feynduck will identify the missing reasoning link.</p>
-          </>
-        )}
-      </div>
-    );
-  }
-
+function BusyBlock({ label, lines = 2 }: { label: string; lines?: number }) {
   return (
-    <div className="insights-card">
-      <div className="score-section">
-        <span className="score-label">{result?.status === "topic_mismatch" ? "Status" : "Clarity Score"}</span>
-        <span className={`score-value ${result?.status === "topic_mismatch" ? "is-mismatch" : ""}`}>
-          {result?.status === "topic_mismatch" ? "Topic mismatch" : (result ? result.clarityScore : "--")}
-        </span>
+    <div className="fd-busy-card" aria-busy="true" style={{ border: "none", padding: 0 }}>
+      <div className="fd-busy">
+        <span className="fd-spinner" aria-hidden="true" />
+        {label}
       </div>
+      <div className="fd-busy-lines fd-pulse" aria-hidden="true">
+        {Array.from({ length: lines }, (_, index) => (
+          <span key={index} className="fd-skeleton" style={{ width: `${[82, 64, 74, 58][index % 4]}%` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {isClear ? (
-        <div className="insight-card strong is-clear">
-          <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#15803d", margin: "0 0 8px" }}>
-            Clear
-          </h4>
-          <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "var(--ink)", lineHeight: 1.5 }}>
-            {result.chatMessage || "You clearly explained the key mechanism."}
-          </p>
-        </div>
-      ) : (
-        <div className={`insight-card strong ${result?.status === "topic_mismatch" ? "is-mismatch" : "is-gap"} ${isLoading ? "loading-pulse" : ""}`}>
-          <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: result?.status === "topic_mismatch" ? "#eab308" : "var(--amber-dark)", margin: "0 0 8px" }}>
-            {result?.status === "topic_mismatch" ? "Topic mismatch" : "Main Gap"}
-          </h4>
-          <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "var(--ink)", lineHeight: 1.5 }}>
-            {isLoading ? "Analyzing reasoning..." : mainGap}
-          </p>
-        </div>
-      )}
+function ToolError({ message }: { message: string }) {
+  return (
+    <div className="fd-notice is-error" role="alert">
+      <AlertCircle size={16} strokeWidth={1.8} />
+      <span>{message}</span>
+    </div>
+  );
+}
 
-      {!isClear && result?.socraticQuestion && (
-        <div className={`insight-card highlight is-socratic ${isLoading ? "loading-pulse" : ""}`}>
-          <h4 style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#8a5a0a", margin: "0 0 8px" }}>
-            <AlertCircle size={14} /> Socratic Question
-          </h4>
-          <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "#6f4a05", lineHeight: 1.5 }}>
-            {isLoading ? "..." : result.socraticQuestion}
-          </p>
-        </div>
-      )}
-
-      {result?.status !== "topic_mismatch" && !isClear && (
-        <div className={`insight-card is-why ${isLoading ? "loading-pulse" : ""}`}>
-          <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", margin: "0 0 8px" }}>
-            Why it matters
-          </h4>
-          <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.5 }}>
-            {isLoading ? "..." : result?.whyItMatters}
-          </p>
-        </div>
-      )}
-
-      {!isClear && (
-        <div className={`insight-card is-retry ${isLoading ? "loading-pulse" : ""}`}>
-          <h4 style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", margin: "0 0 8px" }}>
-            Try again
-          </h4>
-          <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--ink)", lineHeight: 1.5 }}>
-            {isLoading ? "..." : result?.suggestedReExplanationPrompt}
-          </p>
-        </div>
-      )}
+function PagerButtons({
+  label,
+  index,
+  total,
+  onPrevious,
+  onNext,
+}: {
+  label: string;
+  index: number;
+  total: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div>
+      <button type="button" className="fd-icon-btn fd-icon-btn-sm" aria-label={`Previous ${label}`} disabled={index === 0} onClick={onPrevious}>
+        <ArrowLeft size={14} strokeWidth={2} />
+      </button>
+      <button type="button" className="fd-icon-btn fd-icon-btn-sm" aria-label={`Next ${label}`} disabled={index >= total - 1} onClick={onNext}>
+        <ArrowRight size={14} strokeWidth={2} />
+      </button>
     </div>
   );
 }
@@ -276,12 +191,8 @@ export function GapResultPanel({
   activeConceptId = null,
   isConceptSwitching = false,
   onConceptSelect,
-  onClose,
 }: GapResultPanelProps) {
-  const panelStyle = {
-    width: width ? `${width}px` : undefined,
-    transition: isDragging ? "none" : undefined,
-  };
+  const panelStyle = width ? { width: `${width}px` } : undefined;
 
   const [activeTab, setActiveTab] = useState<StudyPanelTab>("insights");
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -297,7 +208,6 @@ export function GapResultPanel({
   const [cardIndex, setCardIndex] = useState(0);
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [flashcardReviewState, setFlashcardReviewState] = useState<Record<string, FlashcardReviewState>>({});
-  const [isConceptSwitcherOpen, setIsConceptSwitcherOpen] = useState(false);
   const [isTabPending, startTabTransition] = useTransition();
   const hydratedStudyToolsKeyRef = useRef<string | null>(null);
 
@@ -530,344 +440,434 @@ export function GapResultPanel({
     }
   };
 
+  const [dragX, setDragX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const toolsReady = hasCompletedExplanation || quizQuestions.length > 0 || flashcards.length > 0;
+  const visibleTab: StudyPanelTab = toolsReady ? activeTab : "insights";
+
   const handleTabChange = (tab: StudyPanelTab) => {
     startTabTransition(() => setActiveTab(tab));
   };
 
-  useEffect(() => {
-    if (!isConceptSwitcherOpen) return;
+  const goToQuestion = (index: number) => {
+    setQuizIndex(Math.max(0, Math.min(quizQuestions.length - 1, index)));
+    setSelectedAnswerIndex(null);
+    setCheckedAnswerIndex(null);
+  };
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsConceptSwitcherOpen(false);
-    };
+  const goToCard = (index: number) => {
+    setCardIndex(Math.max(0, Math.min(flashcards.length - 1, index)));
+    setIsCardRevealed(false);
+  };
 
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [isConceptSwitcherOpen]);
+  const handleCardPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    swipeStartRef.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleCardPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (!isSwiping) {
+      if (Math.abs(dx) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swipeStartRef.current = null;
+        return;
+      }
+      setIsSwiping(true);
+    }
+    setDragX(dx);
+  };
+
+  const handleCardPointerEnd = () => {
+    if (isSwiping) {
+      if (dragX <= -SWIPE_THRESHOLD && cardIndex < flashcards.length - 1) goToCard(cardIndex + 1);
+      else if (dragX >= SWIPE_THRESHOLD && cardIndex > 0) goToCard(cardIndex - 1);
+    }
+    swipeStartRef.current = null;
+    setIsSwiping(false);
+    setDragX(0);
+  };
+
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      goToCard(cardIndex + 1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      goToCard(cardIndex - 1);
+    } else if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      setIsCardRevealed((current) => !current);
+    }
+  };
+
+  const weakSpots = concepts
+    .filter((concept) => concept.status === "gap_found" || concept.status === "improving")
+    .sort((first, second) => (first.latestClarityScore ?? 0) - (second.latestClarityScore ?? 0));
+  const dueForRecall = concepts.filter((concept) => concept.status === "due_for_review");
+  const conceptScore = typeof result?.clarityScore === "number" ? result.clarityScore : activeConcept?.latestClarityScore ?? null;
+  const isConceptClear = result
+    ? result.status === "clear" && (result.clarityScore ?? 0) >= CLEAR_THRESHOLD
+    : activeConcept?.status === "clear" || activeConcept?.status === "needs_recall" || activeConcept?.status === "due_for_review";
+  const attempts = explanationAttempts.length;
+  const attemptLabel = `${attempts} attempt${attempts === 1 ? "" : "s"}`;
+
+  const renderProgress = () => {
+    if (!hasNotes) {
+      return <SupportEmpty title="Waiting for study material" body="Quizzes and flashcards are built from the gaps in your explanations." />;
+    }
+    if (!hasSelectedConcept) {
+      return <SupportEmpty title="Pick a concept to begin" body="Your clarity score, quiz and flashcards appear after your first explanation." />;
+    }
+
+    return (
+      <div className={cn("fd-support-body", isTabPending && "is-pending")} key="progress" style={{ gap: 20 }}>
+        <div className="fd-support-group">
+          <span>This concept</span>
+          <div className="fd-stat-card">
+            <div>
+              <span>Clarity</span>
+              <span className={cn("fd-stat-big", isLoading && "fd-pulse")}>{isLoading ? "…" : conceptScore ?? "—"}</span>
+            </div>
+            <div className={cn("fd-bar", isConceptClear ? "is-success" : "is-amber")} aria-hidden="true">
+              <span style={{ width: `${isLoading ? 0 : conceptScore ?? 0}%` }} />
+            </div>
+            <span className="fd-muted" style={{ fontSize: 12 }}>
+              {isLoading
+                ? "Checking your latest explanation…"
+                : conceptScore == null
+                  ? "Explain it once to get a clarity score."
+                  : isConceptClear
+                    ? `${attemptLabel} · marked clear`
+                    : `${attemptLabel} · reach ${CLEAR_THRESHOLD} to mark it clear`}
+            </span>
+          </div>
+        </div>
+
+        {topicMismatchNotice ? <div className="fd-notice is-amber">{topicMismatchNotice}</div> : null}
+
+        {dueForRecall.length ? (
+          <div className="fd-support-group">
+            <span>Due for recall</span>
+            {dueForRecall.map((concept) => (
+              <button
+                key={concept.id}
+                type="button"
+                className="fd-weak-item"
+                aria-current={concept.id === activeConceptId ? "true" : undefined}
+                onClick={() => onConceptSelect?.(concept.title)}
+              >
+                <span>{concept.title}</span>
+                <span className="fd-dot" data-status="due_for_review" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="fd-support-group">
+          <span>Weak spots in this room</span>
+          {weakSpots.length ? (
+            weakSpots.map((concept) => (
+              <button
+                key={concept.id}
+                type="button"
+                className="fd-weak-item"
+                aria-current={concept.id === activeConceptId ? "true" : undefined}
+                onClick={() => onConceptSelect?.(concept.title)}
+              >
+                <span>{concept.title}</span>
+                <span className="fd-path-score">{concept.latestClarityScore ?? "—"}</span>
+              </button>
+            ))
+          ) : (
+            <span className="fd-muted" style={{ fontSize: 13 }}>No weak spots yet. They show up as you explain concepts.</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderQuiz = () => (
+    <div className={cn("fd-support-body", isTabPending && "is-pending")} key="quiz">
+      <div className="fd-support-row">
+        <span className="fd-eyebrow">Built from your gaps</span>
+        {quizQuestions.length && !quizLoading ? <span className="fd-kicker">{quizIndex + 1} / {quizQuestions.length}</span> : null}
+      </div>
+      {topicMismatchNotice ? <div className="fd-notice is-amber">{topicMismatchNotice}</div> : null}
+
+      {!quizQuestions.length && !quizLoading ? (
+        <div className="fd-tool-generate">
+          <p>Generate 3–5 questions on {selectedConcept || "this concept"}, focused on your latest gaps.</p>
+          {quizError ? <ToolError message={quizError} /> : null}
+          <button type="button" className="fd-btn fd-btn-accent" onClick={generateQuiz} disabled={!hasCompletedExplanation}>
+            Generate quiz
+          </button>
+        </div>
+      ) : null}
+
+      {quizLoading ? <BusyBlock label="Building a quiz around your weak spots…" lines={3} /> : null}
+
+      {currentQuestion && !quizLoading ? (
+        <>
+          <fieldset className="fd-quiz-options" key={currentQuestion.id}>
+            <legend className="fd-quiz-q">{currentQuestion.question}</legend>
+            {currentQuestion.options.map((option, optionIndex) => {
+              const isPicked = selectedAnswerIndex === optionIndex;
+              const isCorrect = currentQuestion.correctAnswerIndex === optionIndex;
+              const mark = isAnswerChecked && isCorrect ? "Correct" : isAnswerChecked && isPicked ? "Your pick" : "";
+              return (
+                <button
+                  key={`${currentQuestion.id}-${optionIndex}`}
+                  type="button"
+                  className={cn(
+                    "fd-quiz-option",
+                    isPicked && !isAnswerChecked && "is-picked",
+                    isAnswerChecked && isCorrect && "is-correct",
+                    isAnswerChecked && isPicked && !isCorrect && "is-wrong",
+                  )}
+                  aria-pressed={isPicked}
+                  disabled={isAnswerChecked}
+                  onClick={() => setSelectedAnswerIndex(optionIndex)}
+                >
+                  <span className="fd-radio" aria-hidden="true" />
+                  <span>{option}</span>
+                  {mark ? <span className="fd-quiz-mark">{mark}</span> : null}
+                </button>
+              );
+            })}
+          </fieldset>
+
+          {isAnswerChecked ? (
+            <div className="fd-verdict" role="status">
+              <strong>
+                {checkedAnswerIndex === currentQuestion.correctAnswerIndex
+                  ? "Correct"
+                  : `Not quite — the answer is “${currentQuestion.options[currentQuestion.correctAnswerIndex]}”`}
+              </strong>
+              <p>{currentQuestion.explanation}</p>
+            </div>
+          ) : null}
+
+          {isAnswerChecked ? (
+            checkedAnswerIndex === currentQuestion.correctAnswerIndex ? (
+              <button
+                type="button"
+                className="fd-btn fd-btn-accent"
+                style={{ alignSelf: "flex-start" }}
+                onClick={() => goToQuestion(quizIndex < quizQuestions.length - 1 ? quizIndex + 1 : 0)}
+              >
+                {quizIndex < quizQuestions.length - 1 ? "Next question" : "Start again"}
+                <ArrowRight size={16} className="fd-arrow" />
+              </button>
+            ) : (
+              <button type="button" className="fd-btn fd-btn-secondary" style={{ alignSelf: "flex-start" }} onClick={() => goToQuestion(quizIndex)}>
+                Try again
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              className="fd-btn fd-btn-accent"
+              style={{ alignSelf: "flex-start" }}
+              disabled={selectedAnswerIndex === null}
+              onClick={() => setCheckedAnswerIndex(selectedAnswerIndex)}
+            >
+              Check answer
+            </button>
+          )}
+
+          <div className="fd-tool-foot">
+            <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={generateQuiz}>
+              <RotateCcw size={14} strokeWidth={2} />
+              Regenerate
+            </button>
+            <PagerButtons
+              label="question"
+              index={quizIndex}
+              total={quizQuestions.length}
+              onPrevious={() => goToQuestion(quizIndex - 1)}
+              onNext={() => goToQuestion(quizIndex + 1)}
+            />
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+
+  const renderFlashcards = () => (
+    <div className={cn("fd-support-body", isTabPending && "is-pending")} key="flashcards">
+      <div className="fd-support-row">
+        <span className="fd-eyebrow">From your weak spots</span>
+        {flashcards.length && !flashcardsLoading && !isFlashcardRoundComplete ? (
+          <span className="fd-kicker">{cardIndex + 1} / {flashcards.length}</span>
+        ) : null}
+      </div>
+      {topicMismatchNotice ? <div className="fd-notice is-amber">{topicMismatchNotice}</div> : null}
+
+      {!flashcards.length && !flashcardsLoading ? (
+        <div className="fd-tool-generate">
+          <p>Build 4–8 review cards from {selectedConcept || "this concept"} and the weak links in your explanation.</p>
+          {flashcardsError ? <ToolError message={flashcardsError} /> : null}
+          <button type="button" className="fd-btn fd-btn-accent" onClick={generateFlashcards} disabled={!hasCompletedExplanation}>
+            Generate flashcards
+          </button>
+        </div>
+      ) : null}
+
+      {flashcardsLoading ? <BusyBlock label="Creating focused review cards…" /> : null}
+
+      {isFlashcardRoundComplete && !flashcardsLoading ? (
+        <>
+          <div className="fd-flashcard is-entering" style={{ minHeight: 0 }}>
+            <span className="fd-pill is-success" style={{ alignSelf: "flex-start" }}>Round complete</span>
+            <p className="fd-flashcard-front">
+              {understoodFlashcardCount} understood · {needsReviewFlashcardCount} to review
+            </p>
+          </div>
+          <div className="fd-review-btns">
+            <button
+              type="button"
+              className="fd-btn fd-btn-accent"
+              disabled={!needsReviewFlashcardCount}
+              onClick={() => {
+                const firstNeedsReviewIndex = flashcards.findIndex((card) => flashcardReviewState[card.id] === "needs_review");
+                goToCard(firstNeedsReviewIndex >= 0 ? firstNeedsReviewIndex : 0);
+              }}
+            >
+              Review weak cards
+            </button>
+            <button
+              type="button"
+              className="fd-btn fd-btn-secondary"
+              onClick={() => {
+                setFlashcardReviewState({});
+                goToCard(0);
+              }}
+            >
+              Review all again
+            </button>
+          </div>
+        </>
+      ) : currentCard && !flashcardsLoading ? (
+        <>
+          <div
+            key={currentCard.id}
+            className={cn("fd-flashcard", isSwiping ? "is-dragging" : "is-entering")}
+            style={isSwiping ? { transform: `translateX(${dragX}px) rotate(${dragX / 40}deg)`, opacity: 1 - Math.min(Math.abs(dragX) / 500, 0.35) } : undefined}
+            tabIndex={0}
+            role="group"
+            aria-roledescription="flashcard"
+            aria-label={`Card ${cardIndex + 1} of ${flashcards.length}`}
+            onPointerDown={handleCardPointerDown}
+            onPointerMove={handleCardPointerMove}
+            onPointerUp={handleCardPointerEnd}
+            onPointerCancel={handleCardPointerEnd}
+            onKeyDown={handleCardKeyDown}
+          >
+            <span
+              className={cn("fd-pill", currentCard.priority === "high" && "is-amber")}
+              style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 600, padding: "3px 8px" }}
+            >
+              {currentCard.priority === "high" ? "High priority" : currentCard.priority === "medium" ? "Medium priority" : "Low priority"}
+            </span>
+            <p className="fd-flashcard-front">{currentCard.front}</p>
+            {isCardRevealed ? <p className="fd-flashcard-back">{currentCard.back}</p> : null}
+            <div className="fd-flashcard-spacer" />
+            <button
+              type="button"
+              className={cn("fd-btn", isCardRevealed ? "fd-btn-secondary" : "fd-btn-accent")}
+              onClick={() => setIsCardRevealed((current) => !current)}
+            >
+              {isCardRevealed ? "Hide answer" : "Reveal answer"}
+            </button>
+          </div>
+
+          {isCardRevealed ? (
+            <div className="fd-review-btns" style={{ animation: "fd-rise-in 0.25s var(--fd-ease-out)" }}>
+              <button
+                type="button"
+                className="fd-btn fd-btn-secondary is-understood"
+                aria-pressed={currentCardReviewState === "understood"}
+                onClick={() => markFlashcard("understood")}
+              >
+                <Check size={14} strokeWidth={2.2} />
+                Understood
+              </button>
+              <button
+                type="button"
+                className="fd-btn fd-btn-secondary is-review"
+                aria-pressed={currentCardReviewState === "needs_review"}
+                onClick={() => markFlashcard("needs_review")}
+              >
+                Needs review
+              </button>
+            </div>
+          ) : null}
+
+          <p className="fd-swipe-hint">Swipe the card or use ← → to move between cards</p>
+
+          <div className="fd-tool-foot">
+            <button type="button" className="fd-btn fd-btn-ghost fd-btn-sm" onClick={generateFlashcards}>
+              <RotateCcw size={14} strokeWidth={2} />
+              Regenerate
+            </button>
+            <PagerButtons
+              label="card"
+              index={cardIndex}
+              total={flashcards.length}
+              onPrevious={() => goToCard(cardIndex - 1)}
+              onNext={() => goToCard(cardIndex + 1)}
+            />
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+
+  const tabs: Array<[StudyPanelTab, string]> = [
+    ["insights", "Progress"],
+    ["quiz", "Quiz"],
+    ["flashcards", "Flashcards"],
+  ];
 
   return (
-    <aside className="dashboard-panel right-panel" style={panelStyle}>
-      <div className="panel-header study-panel-header">
-        <div className="support-panel-title-row">
-          <h3 style={{ fontFamily: "inherit", fontWeight: 700 }}>Support</h3>
-          {onClose ? (
+    <aside className={cn("fd-panel is-right", isDragging && "is-dragging")} style={panelStyle} aria-label="Support">
+      <div className="fd-support-tabs">
+        <div role="tablist" aria-label="Support tools" className="fd-segmented">
+          {tabs.map(([id, label]) => (
             <button
+              key={id}
               type="button"
-              className="panel-toggle-btn"
-              onClick={onClose}
-              aria-label="Close support panel"
+              role="tab"
+              aria-selected={visibleTab === id}
+              disabled={id !== "insights" && !toolsReady}
+              title={id !== "insights" && !toolsReady ? "Available after your first explanation" : undefined}
+              onClick={() => handleTabChange(id)}
             >
-              <PanelRightClose size={18} />
+              {label}
             </button>
-          ) : null}
+          ))}
         </div>
-        {activeConcept ? (
-          <div className="concept-switcher">
-            <button
-              type="button"
-              className="concept-switcher-trigger"
-              aria-expanded={isConceptSwitcherOpen}
-              onClick={() => setIsConceptSwitcherOpen((current) => !current)}
-            >
-              <span>
-                <small>Current concept</small>
-                <strong>{activeConcept.title}</strong>
-              </span>
-              <em>{getConceptStatusLabel(activeConcept)}</em>
-              <ChevronDown size={16} />
-            </button>
-            {isConceptSwitcherOpen ? (
-              <div className="concept-switcher-popover">
-                <div className="concept-switcher-title">This study room</div>
-                {concepts.map((concept) => (
-                  <button
-                    key={concept.id}
-                    type="button"
-                    className={concept.id === activeConceptId ? "active" : ""}
-                    onClick={() => {
-                      onConceptSelect?.(concept.title);
-                      setIsConceptSwitcherOpen(false);
-                    }}
-                  >
-                    <span aria-hidden="true">{getConceptStatusIcon(concept.status)}</span>
-                    <span>
-                      <strong>{concept.title}</strong>
-                      <small>{getConceptStatusLabel(concept)}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <PanelTabs activeTab={activeTab} onChange={handleTabChange} />
       </div>
 
-      <div className={`panel-content study-panel-content ${isTabPending || isConceptSwitching ? "is-pending" : ""}`}>
-        {isConceptSwitching ? (
-          <div className="study-tool-loading skeleton-block local-panel-loading" aria-live="polite">
-            <Loader2 className="icon-spin" size={18} />
-            Loading {selectedConcept || "concept"}...
-            <span />
-            <span />
-          </div>
-        ) : null}
-
-        {!isConceptSwitching && activeTab === "insights" && (
-          <InsightsTab
-            result={result}
-            isLoading={isLoading}
-            hasNotes={hasNotes}
-            hasSelectedConcept={hasSelectedConcept}
-          />
-        )}
-
-        {!isConceptSwitching && activeTab === "quiz" && (
-          <div className="study-tool">
-            <div>
-              <span className="study-tool-label">Built from your gaps</span>
-              {topicMismatchNotice && <p className="study-tool-note">{topicMismatchNotice}</p>}
-            </div>
-
-            {!hasCompletedExplanation && (
-              <div className="empty-insights compact">
-                <Lightbulb size={36} strokeWidth={1.5} />
-                <h4>Complete an explanation first</h4>
-                <p>Then generate questions from your weak spots.</p>
-              </div>
-            )}
-
-            {hasCompletedExplanation && !quizQuestions.length && !quizLoading && (
-              <div className="study-tool-empty">
-                <p>Generate 3-5 questions focused on the selected concept and your latest gaps.</p>
-                {quizError && <div className="study-tool-error">{quizError}</div>}
-                <button className="study-tool-primary" type="button" onClick={generateQuiz}>
-                  Generate quiz
-                </button>
-              </div>
-            )}
-
-            {quizLoading && (
-              <div className="study-tool-loading skeleton-block">
-                <Loader2 className="icon-spin" size={18} />
-                Building a quiz around your weak spots...
-                <span />
-                <span />
-                <span />
-              </div>
-            )}
-
-            {currentQuestion && !quizLoading && (
-              <div className="study-tool-session">
-                <div className="study-tool-card">
-                  <span className="study-tool-focus">{currentQuestion.focus}</span>
-                  <h4>{currentQuestion.question}</h4>
-                  <div className="quiz-options">
-                    {currentQuestion.options.map((option, optionIndex) => {
-                      const isSelected = selectedAnswerIndex === optionIndex;
-                      const isCorrect = currentQuestion.correctAnswerIndex === optionIndex;
-                      const isCheckedSelected = isAnswerChecked && isSelected;
-
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          className={[
-                            "quiz-option",
-                            isSelected ? "selected" : "",
-                            isAnswerChecked && isCorrect ? "correct" : "",
-                            isCheckedSelected && !isCorrect ? "incorrect" : "",
-                          ].filter(Boolean).join(" ")}
-                          disabled={isAnswerChecked}
-                          onClick={() => setSelectedAnswerIndex(optionIndex)}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {!isAnswerChecked ? (
-                    <button
-                      className="study-tool-primary"
-                      type="button"
-                      disabled={selectedAnswerIndex === null}
-                      onClick={() => setCheckedAnswerIndex(selectedAnswerIndex)}
-                    >
-                      Check answer
-                    </button>
-                  ) : (
-                    <div className="answer-feedback">
-                      <strong>{checkedAnswerIndex === currentQuestion.correctAnswerIndex ? "Correct" : "Not quite"}</strong>
-                      <p>{currentQuestion.explanation}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="study-tool-nav">
-                  <button
-                    type="button"
-                    aria-label="Previous question"
-                    disabled={quizIndex === 0}
-                    onClick={() => {
-                      setQuizIndex((current) => Math.max(0, current - 1));
-                      setSelectedAnswerIndex(null);
-                      setCheckedAnswerIndex(null);
-                    }}
-                  >
-                    <ArrowLeft size={16} />
-                  </button>
-                  <span>{quizIndex + 1} / {quizQuestions.length}</span>
-                  <button
-                    type="button"
-                    aria-label="Next question"
-                    disabled={quizIndex === quizQuestions.length - 1}
-                    onClick={() => {
-                      setQuizIndex((current) => Math.min(quizQuestions.length - 1, current + 1));
-                      setSelectedAnswerIndex(null);
-                      setCheckedAnswerIndex(null);
-                    }}
-                  >
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-                <button className="study-tool-secondary" type="button" onClick={generateQuiz}>
-                  <RotateCcw size={14} /> Regenerate
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isConceptSwitching && activeTab === "flashcards" && (
-          <div className="study-tool">
-            <div>
-              <span className="study-tool-label">Focused on your weak spots</span>
-              {topicMismatchNotice && <p className="study-tool-note">{topicMismatchNotice}</p>}
-            </div>
-
-            {!hasCompletedExplanation && (
-              <div className="empty-insights compact">
-                <Lightbulb size={36} strokeWidth={1.5} />
-                <h4>Complete an explanation first</h4>
-                <p>Build focused review cards after your first explanation.</p>
-              </div>
-            )}
-
-            {hasCompletedExplanation && !flashcards.length && !flashcardsLoading && (
-              <div className="study-tool-empty">
-                <p>Generate 4-8 cards from the selected concept, source material, and your weak links.</p>
-                {flashcardsError && <div className="study-tool-error">{flashcardsError}</div>}
-                <button className="study-tool-primary" type="button" onClick={generateFlashcards}>
-                  Generate flashcards
-                </button>
-              </div>
-            )}
-
-            {flashcardsLoading && (
-              <div className="study-tool-loading skeleton-block">
-                <Loader2 className="icon-spin" size={18} />
-                Creating focused review cards...
-                <span />
-                <span />
-              </div>
-            )}
-
-            {isFlashcardRoundComplete && !flashcardsLoading ? (
-              <div className="study-tool-session">
-                <div className="study-tool-card review-summary">
-                  <span className="study-tool-focus">Review complete</span>
-                  <h4>Round complete</h4>
-                  <p>{understoodFlashcardCount} understood</p>
-                  <p>{needsReviewFlashcardCount} need review</p>
-                </div>
-                <button
-                  className="study-tool-primary"
-                  type="button"
-                  onClick={() => {
-                    const firstNeedsReviewIndex = flashcards.findIndex((card) => flashcardReviewState[card.id] === "needs_review");
-                    setCardIndex(firstNeedsReviewIndex >= 0 ? firstNeedsReviewIndex : 0);
-                    setIsCardRevealed(false);
-                  }}
-                >
-                  Review weak cards
-                </button>
-                <button
-                  className="study-tool-secondary"
-                  type="button"
-                  onClick={() => {
-                    setFlashcardReviewState({});
-                    setCardIndex(0);
-                    setIsCardRevealed(false);
-                  }}
-                >
-                  Review all again
-                </button>
-              </div>
-            ) : currentCard && !flashcardsLoading && (
-              <div className="study-tool-session">
-                <div className={`flashcard ${isCardRevealed ? "revealed" : ""}`}>
-                  <span className={`priority-pill ${currentCard.priority}`}>{currentCard.priority} priority</span>
-                  <h4>{currentCard.front}</h4>
-                  {isCardRevealed ? (
-                    <p>{currentCard.back}</p>
-                  ) : (
-                    <button className="study-tool-primary" type="button" onClick={() => setIsCardRevealed(true)}>
-                      Reveal answer
-                    </button>
-                  )}
-                </div>
-                {isCardRevealed && (
-                  <div className="flashcard-actions">
-                    <button
-                      type="button"
-                      className={currentCardReviewState === "understood" ? "active understood" : ""}
-                      aria-pressed={currentCardReviewState === "understood"}
-                      onClick={() => markFlashcard("understood")}
-                    >
-                      <Check size={14} /> Understood
-                    </button>
-                    <button
-                      type="button"
-                      className={currentCardReviewState === "needs_review" ? "active needs-review" : ""}
-                      aria-pressed={currentCardReviewState === "needs_review"}
-                      onClick={() => markFlashcard("needs_review")}
-                    >
-                      Needs review
-                    </button>
-                  </div>
-                )}
-                <div className="study-tool-nav">
-                  <button
-                    type="button"
-                    aria-label="Previous flashcard"
-                    disabled={cardIndex === 0}
-                    onClick={() => {
-                      setCardIndex((current) => Math.max(0, current - 1));
-                      setIsCardRevealed(false);
-                    }}
-                  >
-                    <ArrowLeft size={16} />
-                  </button>
-                  <span>{cardIndex + 1} / {flashcards.length}</span>
-                  <button
-                    type="button"
-                    aria-label="Next flashcard"
-                    disabled={cardIndex === flashcards.length - 1}
-                    onClick={() => {
-                      setCardIndex((current) => Math.min(flashcards.length - 1, current + 1));
-                      setIsCardRevealed(false);
-                    }}
-                  >
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-                <button className="study-tool-secondary" type="button" onClick={generateFlashcards}>
-                  <RotateCcw size={14} /> Regenerate
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {isConceptSwitching ? (
+        <div className="fd-support-body">
+          <BusyBlock label={`Loading ${selectedConcept || "concept"}…`} />
+        </div>
+      ) : visibleTab === "quiz" ? (
+        renderQuiz()
+      ) : visibleTab === "flashcards" ? (
+        renderFlashcards()
+      ) : (
+        renderProgress()
+      )}
     </aside>
   );
 }

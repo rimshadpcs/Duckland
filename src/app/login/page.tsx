@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Brand } from "@src/components/app/AppHeader";
 import { AuthForm } from "@src/features/auth/components/AuthForm";
 
 export const dynamic = "force-dynamic";
@@ -24,26 +24,14 @@ export default async function LoginPage({
     : null;
 
   return (
-    <main className="auth-page">
-      <div className="auth-shell">
-        <a className="auth-back-link" href="/start">
-          ← Back
-        </a>
-        <a className="auth-brand" href="/">
-          <img src="/feynduckhead.png" alt="" />
-          <span>Feynduck</span>
-        </a>
-        <section className="auth-card">
-          <div className="auth-copy">
-            <p>Welcome back</p>
-            <h1>Log in to keep studying.</h1>
-          </div>
-          <AuthForm mode="login" next={next} initialError={initialError} />
-          <p className="auth-switch">
-            New to Feynduck? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create an account</Link>
-          </p>
-        </section>
-      </div>
-    </main>
+    <div className="fd fd-auth">
+      <header className="fd-auth-header">
+        <Brand href="/" />
+        <a className="fd-text-link" href={`/signup?next=${encodeURIComponent(next)}`}>Create account</a>
+      </header>
+      <main className="fd-auth-main">
+        <AuthForm mode="login" next={next} initialError={initialError} />
+      </main>
+    </div>
   );
 }
