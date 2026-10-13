@@ -1,4 +1,4 @@
-export { EvaluationError, evaluateExplanation } from "./api/evaluateExplanation";
+export { evaluateExplanation } from "./api/evaluateExplanation";
 export type { EvaluationResult } from "./api/evaluateExplanation";
 export { ExplainForm } from "./components/ExplainForm";
 export { LandingPage } from "./components/LandingPage";

@@ -1,29 +1,20 @@
 import type { ExplanationRequest, ExplanationResult } from "../types";
 import { createMockExplanationResult } from "./mockResult";
-import { getOpenAIClient, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
+import {
+  generateJson,
+  getAIKeyStatus,
+  getEvaluatorModel,
+  jsonEnum,
+  jsonInteger,
+  jsonNullableString,
+  jsonObject,
+  jsonString,
+  jsonStringArray,
+} from "@src/lib/ai/claude";
 import { gapEvaluationPrompt } from "../prompts/gapEvaluationPrompt";
 import { evaluateExpirationLimitedCoverage } from "./expirationCoverage.mjs";
 import { evaluateInsulinResistanceCoverage, isInsulinResistanceSource } from "./insulinCoverage.mjs";
 import { evaluateNextTokenPredictionCoverage } from "./nextTokenCoverage.mjs";
-
-export type EvaluationErrorCode =
-  | "openai_not_configured"
-  | "openai_invalid_key"
-  | "openai_billing"
-  | "openai_service_error"
-  | "openai_invalid_response";
-
-export class EvaluationError extends Error {
-  code: EvaluationErrorCode;
-  status: number;
-
-  constructor(code: EvaluationErrorCode, message: string, status: number) {
-    super(message);
-    this.name = "EvaluationError";
-    this.code = code;
-    this.status = status;
-  }
-}
 
 export type EvaluationResult = {
   result: ExplanationResult;
@@ -31,72 +22,31 @@ export type EvaluationResult = {
   warning?: string;
 };
 
-function getOpenAIErrorDetails(error: unknown) {
-  const candidate = error as {
-    status?: number;
-    code?: string;
-    type?: string;
-    message?: string;
-  };
-
-  return {
-    status: candidate.status,
-    code: candidate.code,
-    type: candidate.type,
-    message: candidate.message,
-  };
-}
-
-function mapOpenAIError(error: unknown): EvaluationError {
-  const details = getOpenAIErrorDetails(error);
-
-  if (isLocalDevelopment()) {
-    console.error("[OpenAI] evaluation failed", {
-      status: details.status,
-      code: details.code,
-      type: details.type,
-      message: details.message,
-    });
-  }
-
-  if (details.status === 401) {
-    return new EvaluationError(
-      "openai_invalid_key",
-      "OpenAI rejected the API key. Check OPENAI_API_KEY.",
-      401,
-    );
-  }
-
-  if (details.code === "insufficient_quota" || details.status === 402) {
-    return new EvaluationError(
-      "openai_billing",
-      "OpenAI billing or credits are not available for this key.",
-      402,
-    );
-  }
-
-  if (details.status === 429) {
-    return new EvaluationError(
-      "openai_service_error",
-      "OpenAI is rate limiting requests right now. Please try again shortly.",
-      503,
-    );
-  }
-
-  if (details.status && details.status >= 500) {
-    return new EvaluationError(
-      "openai_service_error",
-      "OpenAI is temporarily unavailable. Please try again shortly.",
-      503,
-    );
-  }
-
-  return new EvaluationError(
-    "openai_service_error",
-    "Feynduck could not get a valid response from OpenAI.",
-    502,
-  );
-}
+// Matches the JSON shape described at the end of gapEvaluationPrompt.
+const explanationResultSchema = jsonObject({
+  status: jsonEnum(["gap_found", "clear", "topic_mismatch"]),
+  sourceTopic: jsonString,
+  explanationTopic: jsonString,
+  clarityScore: { anyOf: [jsonInteger, { type: "null" }] },
+  gapType: jsonEnum([
+    "missing_mechanism",
+    "unclear_definition",
+    "unsupported_claim",
+    "incomplete_sequence",
+    "topic_mismatch",
+  ]),
+  gapSummary: jsonNullableString,
+  mainGap: jsonNullableString,
+  scoreReason: jsonString,
+  coveredClaims: jsonStringArray,
+  missingClaims: jsonStringArray,
+  coreClaims: jsonStringArray,
+  whyItMatters: jsonString,
+  socraticQuestion: jsonNullableString,
+  suggestedReExplanationPrompt: jsonString,
+  chatMessage: jsonString,
+  resolvedGaps: jsonStringArray,
+});
 
 function includesCardiacOutputFormula(text: string) {
   const lower = text.toLowerCase();
@@ -600,77 +550,42 @@ export async function evaluateExplanation(
   request: ExplanationRequest,
   options: { allowMock: boolean },
 ): Promise<EvaluationResult> {
-  const model = process.env.OPENAI_EVALUATOR_MODEL || "gpt-5.4-mini";
-  logOpenAIConfig(model);
-
-  const openai = getOpenAIClient();
-
-  if (!openai) {
-    if (options.allowMock) {
-      return {
-        result: createMockExplanationResult(request),
-        mockMode: true,
-        warning: "Using mock feedback because OpenAI is not configured.",
-      };
-    }
-
-    throw new EvaluationError(
-      "openai_not_configured",
-      "OpenAI is not configured. Add a valid OPENAI_API_KEY.",
-      500,
-    );
-  }
-
-  try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "system",
-          content: gapEvaluationPrompt,
-        },
-        {
-          role: "user",
-          content: [
-            `Selected concept: ${request.selectedConcept || "Not specified"}`,
-            `Notes: ${request.notes}`,
-            request.previousExplanations?.length
-              ? `Previous explanation attempts:\n${request.previousExplanations.join("\n\n")}`
-              : "",
-            request.previousMainGaps?.length
-              ? `Previous main gaps:\n${request.previousMainGaps.join("\n")}`
-              : "",
-            request.previousSocraticQuestions?.length
-              ? `Previous Socratic questions:\n${request.previousSocraticQuestions.join("\n")}`
-              : "",
-            request.resolvedGaps?.length
-              ? `Already resolved gaps:\n${request.resolvedGaps.join("\n")}`
-              : "",
-            `Explanation: ${request.explanation}`,
-          ].filter(Boolean).join("\n\n"),
-        },
-      ],
-      response_format: { type: "json_object" },
-    });
-
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new EvaluationError(
-        "openai_invalid_response",
-        "OpenAI returned an empty evaluator response.",
-        502,
-      );
-    }
-
+  if (options.allowMock && getAIKeyStatus() === "missing") {
     return {
-      result: normaliseEvaluationResult(JSON.parse(content) as ExplanationResult, request),
-      mockMode: false,
+      result: createMockExplanationResult(request),
+      mockMode: true,
+      warning: "Using mock feedback because ANTHROPIC_API_KEY is not set.",
     };
-  } catch (error) {
-    if (error instanceof EvaluationError) {
-      throw error;
-    }
-
-    throw mapOpenAIError(error);
   }
+
+  const result = await generateJson({
+    route: "explain",
+    model: getEvaluatorModel(),
+    effort: "medium",
+    system: gapEvaluationPrompt,
+    // The notes stay identical across attempts, so they come first and are cached.
+    context: `Notes:\n${request.notes}`,
+    prompt: [
+      `Selected concept: ${request.selectedConcept || "Not specified"}`,
+      request.previousExplanations?.length
+        ? `Previous explanation attempts:\n${request.previousExplanations.join("\n\n")}`
+        : "",
+      request.previousMainGaps?.length
+        ? `Previous main gaps:\n${request.previousMainGaps.join("\n")}`
+        : "",
+      request.previousSocraticQuestions?.length
+        ? `Previous Socratic questions:\n${request.previousSocraticQuestions.join("\n")}`
+        : "",
+      request.resolvedGaps?.length
+        ? `Already resolved gaps:\n${request.resolvedGaps.join("\n")}`
+        : "",
+      `Explanation: ${request.explanation}`,
+    ].filter(Boolean).join("\n\n"),
+    schema: explanationResultSchema,
+  });
+
+  return {
+    result: normaliseEvaluationResult(result as ExplanationResult, request),
+    mockMode: false,
+  };
 }

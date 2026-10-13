@@ -1,5 +1,20 @@
 import { NextResponse } from "next/server";
-import { getOpenAIClient, getOpenAIKeyStatus, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
+import {
+  generateJson,
+  getStudyToolsModel,
+  jsonArray,
+  jsonEnum,
+  jsonObject,
+  jsonString,
+} from "@src/lib/ai/claude";
+import { aiErrorResponse, guardUserAIRequest, jsonError } from "@src/lib/api/guards";
+import {
+  MAX_SOURCE_CHARS,
+  SOURCE_TOO_LARGE_MESSAGE,
+  cleanText,
+  recentStrings,
+  summariseEvaluation,
+} from "@src/lib/api/input";
 
 type FlashcardsBody = {
   sourceMaterial?: unknown;
@@ -45,14 +60,17 @@ Return only JSON:
 }
 `;
 
-function getOpenAIErrorStatus(error: unknown) {
-  const candidate = error as { status?: number; code?: string };
-  if (candidate.status === 401) return 401;
-  if (candidate.status === 402 || candidate.code === "insufficient_quota") return 402;
-  if (candidate.status === 429) return 503;
-  if (candidate.status && candidate.status >= 500) return 502;
-  return 500;
-}
+const flashcardsSchema = jsonObject({
+  cards: jsonArray(
+    jsonObject({
+      id: jsonString,
+      front: jsonString,
+      back: jsonString,
+      focus: jsonString,
+      priority: jsonEnum(["high", "medium", "low"]),
+    }),
+  ),
+});
 
 function cleanCards(cards: unknown): Flashcard[] {
   if (!Array.isArray(cards)) return [];
@@ -83,80 +101,53 @@ function cleanCards(cards: unknown): Flashcard[] {
 }
 
 export async function POST(request: Request) {
+  const blocked = await guardUserAIRequest();
+  if (blocked) return blocked;
+
   let body: FlashcardsBody;
 
   try {
     body = (await request.json()) as FlashcardsBody;
   } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    return jsonError("Request body must be valid JSON.", 400);
   }
 
   if (typeof body.sourceMaterial !== "string" || body.sourceMaterial.trim().length < 10) {
-    return NextResponse.json({ error: "Source material is required." }, { status: 400 });
+    return jsonError("Source material is required.", 400);
   }
 
-  if (body.sourceMaterial.length > 30000) {
-    return NextResponse.json({ error: "Source material is too large for flashcard generation." }, { status: 400 });
+  if (body.sourceMaterial.length > MAX_SOURCE_CHARS) {
+    return jsonError(SOURCE_TOO_LARGE_MESSAGE, 413);
   }
 
-  if (typeof body.selectedConcept !== "string" || body.selectedConcept.trim().length < 2) {
-    return NextResponse.json({ error: "Selected concept is required." }, { status: 400 });
+  const selectedConcept = cleanText(body.selectedConcept, 160);
+  if (selectedConcept.length < 2) {
+    return jsonError("Selected concept is required.", 400);
   }
-
-  const keyStatus = getOpenAIKeyStatus();
-  if (keyStatus.state === "placeholder" || keyStatus.state === "malformed") {
-    return NextResponse.json({ error: "OpenAI API key is invalid." }, { status: 401 });
-  }
-
-  const openai = getOpenAIClient();
-  if (!openai) {
-    return NextResponse.json({ error: "OpenAI is not configured for flashcard generation." }, { status: 503 });
-  }
-
-  const model = process.env.OPENAI_STUDY_TOOLS_MODEL || process.env.OPENAI_EVALUATOR_MODEL || "gpt-4o-mini";
-  logOpenAIConfig(model);
 
   try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: flashcardsPrompt },
-        {
-          role: "user",
-          content: JSON.stringify({
-            sourceMaterial: body.sourceMaterial.trim(),
-            selectedConcept: body.selectedConcept.trim(),
-            explanationAttempts: Array.isArray(body.explanationAttempts)
-              ? body.explanationAttempts.filter((attempt): attempt is string => typeof attempt === "string").slice(-5)
-              : [],
-            latestEvaluation: body.latestEvaluation,
-          }),
-        },
-      ],
-      response_format: { type: "json_object" },
-    });
+    const generated = (await generateJson({
+      route: "flashcards",
+      model: getStudyToolsModel(),
+      effort: "low",
+      system: flashcardsPrompt,
+      context: `Source material:\n${body.sourceMaterial.trim()}`,
+      prompt: JSON.stringify({
+        selectedConcept,
+        explanationAttempts: recentStrings(body.explanationAttempts),
+        latestEvaluation: summariseEvaluation(body.latestEvaluation),
+      }),
+      schema: flashcardsSchema,
+    })) as { cards?: unknown };
 
-    const content = response.choices[0].message.content;
-    if (!content) {
-      return NextResponse.json({ error: "OpenAI returned an empty flashcard response." }, { status: 502 });
-    }
-
-    const parsed = JSON.parse(content) as { cards?: unknown };
-    const cards = cleanCards(parsed.cards);
+    const cards = cleanCards(generated.cards);
 
     if (!cards.length) {
-      return NextResponse.json({ error: "Flashcard generation returned no usable cards." }, { status: 500 });
+      return jsonError("Flashcard generation returned no usable cards.", 502);
     }
 
     return NextResponse.json({ cards });
   } catch (error) {
-    if (isLocalDevelopment()) {
-      console.error("[OpenAI] flashcard generation failed", error);
-    }
-
-    return NextResponse.json(
-      { error: "Feynduck could not generate flashcards right now." },
-      { status: getOpenAIErrorStatus(error) },
-    );
+    return aiErrorResponse(error, "Feynduck could not generate flashcards right now.");
   }
 }

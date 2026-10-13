@@ -2122,7 +2122,7 @@ export function ExplainForm({
       setVoiceInputError(null);
       const formData = new FormData();
       formData.append("audio", audioBlob, "feynduck-study.webm");
-      const response = await fetch("/api/demo-transcribe", {
+      const response = await fetch("/api/transcribe", {
         method: "POST",
         body: formData,
       });

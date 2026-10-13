@@ -1,16 +1,37 @@
 import { NextResponse } from "next/server";
-import { getOpenAIClient, getOpenAIKeyStatus, isLocalDevelopment, logOpenAIConfig } from "@src/lib/openai";
+import {
+  generateJson,
+  getStudyToolsModel,
+  jsonArray,
+  jsonObject,
+  jsonString,
+  jsonStringArray,
+} from "@src/lib/ai/claude";
+import { aiErrorResponse, guardUserAIRequest, jsonError } from "@src/lib/api/guards";
+import { MAX_SOURCE_CHARS, SOURCE_TOO_LARGE_MESSAGE, cleanText } from "@src/lib/api/input";
 import { getRoomLearningPath, saveGeneratedStudyPath, type GeneratedStudyPath } from "@src/lib/repositories/study-path";
 import { getCombinedRoomSourceContent } from "@src/lib/repositories/sources";
 
 type StudyPathRequestBody = {
   roomId?: unknown;
-  source?: unknown;
-  sourceTitle?: unknown;
   force?: unknown;
 };
 
-const COMBINED_SOURCE_CHARACTER_LIMIT = 120_000;
+const studyPathSchema = jsonObject({
+  units: jsonArray(
+    jsonObject({
+      title: jsonString,
+      description: jsonString,
+      concepts: jsonArray(
+        jsonObject({
+          title: jsonString,
+          description: jsonString,
+          prerequisites: jsonStringArray,
+        }),
+      ),
+    }),
+  ),
+});
 
 const studyPathPrompt = `
 You create a structured learning path for Feynduck from a student's source material.
@@ -51,10 +72,6 @@ Return only JSON:
   ]
 }
 `;
-
-function cleanText(value: unknown, maxLength: number) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
-}
 
 const vagueTitlePrefixes = [
   "role of",
@@ -189,35 +206,33 @@ function cleanStudyPath(value: unknown, source: string): GeneratedStudyPath {
 }
 
 export async function POST(request: Request) {
+  const blocked = await guardUserAIRequest();
+  if (blocked) return blocked;
+
   let body: StudyPathRequestBody;
 
   try {
     body = (await request.json()) as StudyPathRequestBody;
   } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    return jsonError("Request body must be valid JSON.", 400);
   }
 
   const roomId = cleanText(body.roomId, 80);
   const force = body.force === true;
-  const suppliedSource = typeof body.source === "string" ? body.source.trim() : "";
-  const suppliedSourceTitle = cleanText(body.sourceTitle, 120);
 
-  if (!roomId) return NextResponse.json({ error: "roomId is required." }, { status: 400 });
+  if (!roomId) return jsonError("roomId is required.", 400);
 
+  // Row-level security scopes this to the signed-in user's rooms, so another user's roomId has no sources.
   const combinedSource = await getCombinedRoomSourceContent(roomId);
-  const source = combinedSource.content.trim() || suppliedSource;
-  const sourceTitle = combinedSource.sourceCount
-    ? combinedSource.sources.map((item) => item.title).join(", ")
-    : suppliedSourceTitle;
+  const source = combinedSource.content.trim();
+  const sourceTitle = combinedSource.sources.map((item) => item.title).join(", ");
 
-  if (!combinedSource.sourceCount && source.length < 10) {
-    return NextResponse.json({ error: "Add material before generating a learning path." }, { status: 400 });
+  if (!combinedSource.sourceCount || source.length < 10) {
+    return jsonError("Add material before generating a learning path.", 400);
   }
 
-  if (combinedSource.totalCharacters > COMBINED_SOURCE_CHARACTER_LIMIT) {
-    return NextResponse.json({
-      error: "This room has too much active material to map at once.\n\nExclude a source, split the material into another room, or add a smaller section.",
-    }, { status: 413 });
+  if (combinedSource.totalCharacters > MAX_SOURCE_CHARS) {
+    return jsonError(SOURCE_TOO_LARGE_MESSAGE, 413);
   }
 
   const existing = await getRoomLearningPath(roomId);
@@ -225,40 +240,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ units: existing.units, concepts: existing.concepts, reused: true });
   }
 
-  const keyStatus = getOpenAIKeyStatus();
-  if (keyStatus.state === "placeholder" || keyStatus.state === "malformed") {
-    return NextResponse.json({ error: "OpenAI API key is invalid." }, { status: 401 });
+  let path: GeneratedStudyPath;
+  try {
+    const generated = await generateJson({
+      route: "study-path",
+      model: getStudyToolsModel(),
+      effort: "medium",
+      system: studyPathPrompt,
+      context: `Source title: ${sourceTitle || "Untitled source"}\n\nSource material:\n${source}`,
+      prompt: "Build the learning path for this source material.",
+      schema: studyPathSchema,
+    });
+    path = cleanStudyPath(generated, source);
+  } catch (error) {
+    return aiErrorResponse(error, "I couldn't build a learning path from that source yet.");
   }
 
-  const openai = getOpenAIClient();
-  let path: GeneratedStudyPath | null = null;
-
-  if (openai) {
-    const model = process.env.OPENAI_CONCEPT_MODEL || process.env.OPENAI_EVALUATOR_MODEL || "gpt-4o-mini";
-    logOpenAIConfig(model);
-
-    try {
-      const response = await openai.chat.completions.create({
-        model,
-        messages: [
-          { role: "system", content: studyPathPrompt },
-          { role: "user", content: `Source title: ${sourceTitle || "Untitled source"}\n\nSource material:\n${source}` },
-        ],
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices[0].message.content;
-      if (!content) throw new Error("Empty study path response.");
-      path = cleanStudyPath(JSON.parse(content), source);
-    } catch (error) {
-      if (isLocalDevelopment()) {
-        console.error("[OpenAI] study path generation failed", error);
-      }
-    }
-  }
-
-  if (!path?.units.length) {
-    return NextResponse.json({ error: "I couldn't build a learning path from that source yet." }, { status: 502 });
+  if (!path.units.length) {
+    return jsonError("I couldn't build a learning path from that source yet.", 502);
   }
 
   const savedPath = await saveGeneratedStudyPath(roomId, path, { mergeExisting: force });

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+// Only voice transcription still uses OpenAI; every text feature runs on Claude (src/lib/ai/claude.ts).
 let openai: OpenAI | null = null;
 
 export type OpenAIKeyStatus =
@@ -24,22 +25,6 @@ export function getOpenAIKeyStatus(): OpenAIKeyStatus {
   }
 
   return { state: "valid", hasKey: true, isPlaceholder: false };
-}
-
-export function isLocalDevelopment() {
-  return process.env.NODE_ENV !== "production";
-}
-
-export function logOpenAIConfig(model: string) {
-  if (!isLocalDevelopment()) return;
-
-  const keyStatus = getOpenAIKeyStatus();
-  console.info("[OpenAI] config", {
-    hasKey: keyStatus.hasKey,
-    isPlaceholder: keyStatus.isPlaceholder,
-    keyState: keyStatus.state,
-    model,
-  });
 }
 
 export function getOpenAIClient(): OpenAI | null {

@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
-import { EvaluationError, evaluateExplanation } from "@src/features/explanation/api/evaluateExplanation";
-import { getOpenAIKeyStatus, isLocalDevelopment } from "@src/lib/openai";
+import { evaluateExplanation } from "@src/features/explanation/api/evaluateExplanation";
+import { isLocalDevelopment } from "@src/lib/ai/claude";
+import { aiErrorResponse, guardUserAIRequest, jsonError } from "@src/lib/api/guards";
+import {
+  MAX_EXPLANATION_CHARS,
+  MAX_SOURCE_CHARS,
+  SOURCE_TOO_LARGE_MESSAGE,
+  cleanText,
+  recentStrings,
+} from "@src/lib/api/input";
 
 type ExplainBody = {
   notes?: unknown;
@@ -13,73 +21,50 @@ type ExplainBody = {
 };
 
 export async function POST(request: Request) {
+  const blocked = await guardUserAIRequest();
+  if (blocked) return blocked;
+
   let body: ExplainBody;
 
   try {
     body = (await request.json()) as ExplainBody;
   } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    return jsonError("Request body must be valid JSON.", 400);
   }
 
-  // Validation: 400 if missing or too short (e.g., < 10 chars)
   if (typeof body.notes !== "string" || body.notes.trim().length < 10) {
-    return NextResponse.json(
-      { error: "Notes are required and must be at least 10 characters long." },
-      { status: 400 },
-    );
+    return jsonError("Notes are required and must be at least 10 characters long.", 400);
+  }
+
+  if (body.notes.length > MAX_SOURCE_CHARS) {
+    return jsonError(SOURCE_TOO_LARGE_MESSAGE, 413);
   }
 
   if (typeof body.explanation !== "string" || body.explanation.trim().length < 10) {
-    return NextResponse.json(
-      { error: "Explanation is required and must be at least 10 characters long." },
-      { status: 400 },
-    );
+    return jsonError("Explanation is required and must be at least 10 characters long.", 400);
   }
 
-  if (typeof body.selectedConcept !== "string" || body.selectedConcept.trim().length < 2) {
-    return NextResponse.json(
-      { error: "Selected concept is required before evaluating an explanation." },
-      { status: 400 },
-    );
+  if (body.explanation.length > MAX_EXPLANATION_CHARS) {
+    return jsonError("Keep your explanation under 10,000 characters.", 413);
   }
 
-  const keyStatus = getOpenAIKeyStatus();
-  const allowMock = isLocalDevelopment() && keyStatus.state === "missing";
-
-  if (keyStatus.state === "placeholder" || keyStatus.state === "malformed") {
-    return NextResponse.json(
-      { error: "OpenAI API key is invalid. Set a real OPENAI_API_KEY on the server." },
-      { status: 401 },
-    );
-  }
-
-  if (keyStatus.state === "missing" && !allowMock) {
-    return NextResponse.json(
-      { error: "OpenAI is not configured. Set OPENAI_API_KEY on the server." },
-      { status: 500 },
-    );
+  const selectedConcept = cleanText(body.selectedConcept, 160);
+  if (selectedConcept.length < 2) {
+    return jsonError("Selected concept is required before evaluating an explanation.", 400);
   }
 
   try {
     const evaluation = await evaluateExplanation(
       {
         notes: body.notes.trim(),
-        selectedConcept: body.selectedConcept.trim(),
+        selectedConcept,
         explanation: body.explanation.trim(),
-        previousExplanations: Array.isArray(body.previousExplanations)
-          ? body.previousExplanations.filter((item): item is string => typeof item === "string")
-          : undefined,
-        previousMainGaps: Array.isArray(body.previousMainGaps)
-          ? body.previousMainGaps.filter((item): item is string => typeof item === "string")
-          : undefined,
-        previousSocraticQuestions: Array.isArray(body.previousSocraticQuestions)
-          ? body.previousSocraticQuestions.filter((item): item is string => typeof item === "string")
-          : undefined,
-        resolvedGaps: Array.isArray(body.resolvedGaps)
-          ? body.resolvedGaps.filter((item): item is string => typeof item === "string")
-          : undefined,
+        previousExplanations: recentStrings(body.previousExplanations),
+        previousMainGaps: recentStrings(body.previousMainGaps),
+        previousSocraticQuestions: recentStrings(body.previousSocraticQuestions),
+        resolvedGaps: recentStrings(body.resolvedGaps, 12),
       },
-      { allowMock },
+      { allowMock: isLocalDevelopment() },
     );
 
     return NextResponse.json({
@@ -88,16 +73,6 @@ export async function POST(request: Request) {
       warning: evaluation.warning,
     });
   } catch (error) {
-    if (error instanceof EvaluationError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
-    }
-
-    return NextResponse.json(
-      { error: "Feynduck could not evaluate this explanation right now." },
-      { status: 502 },
-    );
+    return aiErrorResponse(error, "Feynduck could not evaluate this explanation right now.");
   }
 }

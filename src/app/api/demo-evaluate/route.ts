@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { getOpenAIClient, getOpenAIKeyStatus, logOpenAIConfig } from "@src/lib/openai";
+import { generateJson, getEvaluatorModel, jsonInteger, jsonObject, jsonString } from "@src/lib/ai/claude";
+import { aiErrorResponse, guardDemoAIRequest, jsonError } from "@src/lib/api/guards";
 
-const DEMO_EVALUATOR_MODEL =
-  process.env.OPENAI_DEMO_EVALUATOR_MODEL || process.env.OPENAI_EVALUATOR_MODEL || "gpt-5.4-mini";
+// The public demo always grades this one question; the topic and question are never taken from the request.
+const DEMO_TOPIC = "Krebs cycle and oxygen";
+const DEMO_QUESTION = "Explain why the Krebs cycle needs oxygen, even though oxygen is not directly used in the cycle.";
+const MAX_TRANSCRIPT_CHARS = 4_000;
 
 type DemoEvaluateBody = {
   transcript?: unknown;
-  topic?: unknown;
-  question?: unknown;
 };
 
 type DemoEvaluation = {
@@ -23,8 +24,8 @@ const demoEvaluationPrompt = `
 You evaluate a student's spoken Feynduck demo explanation.
 
 Demo context:
-- Topic: Krebs cycle and oxygen.
-- Question: Explain why the Krebs cycle needs oxygen, even though oxygen is not directly used in the cycle.
+- Topic: ${DEMO_TOPIC}.
+- Question: ${DEMO_QUESTION}
 - The expected missing causal link is that oxygen is the final electron acceptor in the electron transport chain. Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated. Without NAD+, the Krebs cycle cannot keep running.
 
 Rules:
@@ -32,10 +33,28 @@ Rules:
 - Identify the main missing causal link.
 - Be concise and student-readable.
 - Ask exactly one Socratic follow-up question.
-- Return only valid JSON matching the requested schema.
 - Use a clarity score from 0 to 100.
 - If the student gives the broad idea but misses NADH/ETC/NAD+ regeneration, score around 55-70.
+
+Example output:
+{
+  "clarityScore": 62,
+  "scoreLabel": "Getting there",
+  "summary": "You identified that oxygen matters, but skipped why the Krebs cycle cannot continue.",
+  "missingLink": "Without oxygen, NADH cannot unload electrons through the electron transport chain, so NAD+ is not regenerated.",
+  "followUpQuestion": "What happens to NADH when oxygen is unavailable?",
+  "hint": "Think about where NADH normally delivers its electrons."
+}
 `;
+
+const demoEvaluationSchema = jsonObject({
+  clarityScore: jsonInteger,
+  scoreLabel: jsonString,
+  summary: jsonString,
+  missingLink: jsonString,
+  followUpQuestion: jsonString,
+  hint: jsonString,
+});
 
 function cleanEvaluation(value: unknown): DemoEvaluation | null {
   if (!value || typeof value !== "object") return null;
@@ -62,71 +81,45 @@ function cleanEvaluation(value: unknown): DemoEvaluation | null {
 }
 
 export async function POST(request: Request) {
+  const blocked = await guardDemoAIRequest(request);
+  if (blocked) return blocked;
+
   let body: DemoEvaluateBody;
 
   try {
     body = (await request.json()) as DemoEvaluateBody;
   } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    return jsonError("Request body must be valid JSON.", 400);
   }
 
-  if (typeof body.transcript !== "string" || body.transcript.trim().length < 4) {
-    return NextResponse.json({ error: "Transcript is required." }, { status: 400 });
+  const transcript = typeof body.transcript === "string" ? body.transcript.trim() : "";
+  if (transcript.length < 4) {
+    return jsonError("Transcript is required.", 400);
   }
 
-  const keyStatus = getOpenAIKeyStatus();
-  if (keyStatus.state === "placeholder" || keyStatus.state === "malformed") {
-    return NextResponse.json({ error: "OpenAI API key is invalid." }, { status: 401 });
+  if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+    return jsonError("Keep the demo answer under 4,000 characters.", 413);
   }
-
-  const openai = getOpenAIClient();
-  if (!openai) {
-    return NextResponse.json({ error: "OpenAI is not configured for demo evaluation." }, { status: 503 });
-  }
-
-  logOpenAIConfig(DEMO_EVALUATOR_MODEL);
 
   try {
-    const response = await openai.chat.completions.create({
-      model: DEMO_EVALUATOR_MODEL,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: demoEvaluationPrompt },
-        {
-          role: "user",
-          content: JSON.stringify({
-            topic: typeof body.topic === "string" ? body.topic : "Krebs cycle and oxygen",
-            question:
-              typeof body.question === "string"
-                ? body.question
-                : "Explain why the Krebs cycle needs oxygen, even though oxygen is not directly used in the cycle.",
-            transcript: body.transcript.trim(),
-            requiredJsonShape: {
-              clarityScore: 62,
-              scoreLabel: "Getting there",
-              summary: "You identified that oxygen matters, but skipped why the Krebs cycle cannot continue.",
-              missingLink:
-                "Without oxygen, NADH cannot unload electrons through the electron transport chain, so NAD+ is not regenerated.",
-              followUpQuestion: "What happens to NADH when oxygen is unavailable?",
-              hint: "Think about where NADH normally delivers its electrons.",
-            },
-          }),
-        },
-      ],
-    });
+    const evaluation = cleanEvaluation(
+      await generateJson({
+        route: "demo-evaluate",
+        model: getEvaluatorModel(),
+        effort: "low",
+        system: demoEvaluationPrompt,
+        prompt: `Student transcript:\n${transcript}`,
+        schema: demoEvaluationSchema,
+        maxTokens: 4_000,
+      }),
+    );
 
-    const raw = response.choices[0]?.message?.content;
-    const parsed = raw ? cleanEvaluation(JSON.parse(raw)) : null;
-    if (!parsed) {
-      return NextResponse.json({ error: "OpenAI returned an incomplete demo evaluation." }, { status: 502 });
+    if (!evaluation) {
+      return jsonError("Feynduck returned an incomplete demo evaluation.", 502);
     }
 
-    return NextResponse.json(parsed);
+    return NextResponse.json(evaluation);
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("[OpenAI] demo evaluation failed", error);
-    }
-
-    return NextResponse.json({ error: "Feynduck could not evaluate that explanation." }, { status: 502 });
+    return aiErrorResponse(error, "Feynduck could not evaluate that explanation.");
   }
 }
