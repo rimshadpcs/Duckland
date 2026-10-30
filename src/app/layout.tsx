@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./dashboard-polishes.css";
 import "./app-ui.css";
+import "./landing.css";
 
 const geist = Geist({
   subsets: ["latin"],

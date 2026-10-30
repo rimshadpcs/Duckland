@@ -60,21 +60,20 @@ export function ProductPreview() {
   };
 
   return (
-    <section className="section product-preview" id="preview">
-      <SectionHeader
-        label="product preview"
-        title="See how Feynduck tests your understanding."
-        copy="Watch Feynduck move from your materials to the step you skipped, a clearer explanation, and a simple view of what you can explain."
-      />
-      <div className="preview-layout landing-preview-layout reveal">
-        <div className="preview-sidebar">
-          <div className="preview-tabs" aria-label="Product preview steps">
+    <section className="lp-section" id="preview">
+      <div className="lp-wrap">
+        <SectionHeader
+          label="product preview"
+          title="See how Feynduck tests your understanding."
+          copy="Watch Feynduck move from your materials to the step you skipped, a clearer explanation, and a simple view of what you can explain."
+        />
+        <div className="lp-preview lp-reveal">
+          <div className="lp-preview-steps" aria-label="Product preview steps">
             {previewItems.map((item, index) => (
               <PreviewNavItem
                 active={active === index}
                 description={item.description}
                 icon={item.icon}
-                index={index}
                 key={item.title}
                 onClick={() => selectPreview(index)}
                 progress={active === index ? progress : 0}
@@ -82,17 +81,14 @@ export function ProductPreview() {
               />
             ))}
           </div>
-        </div>
 
-        <div className="demo-stage" data-active-step={active}>
-          <div className="preview-step-explainer">
-            <span>What happens here</span>
-            <p>{activeState.explanation}</p>
+          <div className="lp-preview-stage">
+            <div className="lp-preview-note">
+              <span className="fd-kicker">{String(active + 1).padStart(2, "0")}</span>
+              <p>{activeState.explanation}</p>
+            </div>
+            <DashboardPreview activeStep={active} />
           </div>
-          <div className="cursor-simulation" aria-hidden="true">
-            <span />
-          </div>
-          <DashboardPreview activeStep={active} />
         </div>
       </div>
     </section>

@@ -8,8 +8,8 @@ export function SectionHeader({
   copy?: string;
 }) {
   return (
-    <div className="section-header reveal">
-      <p className="section-label">{label}</p>
+    <div className="lp-head lp-reveal">
+      <p className="fd-eyebrow is-amber">{label}</p>
       <h2>{title}</h2>
       {copy ? <p>{copy}</p> : null}
     </div>

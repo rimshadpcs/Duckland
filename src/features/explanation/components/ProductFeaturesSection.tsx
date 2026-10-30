@@ -1,4 +1,4 @@
-import { GitBranch, Library, Link2, MessageCircleMore } from "lucide-react";
+import { Check, Library, Link2, MessageCircleMore } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 
 const loopStages = [
@@ -43,36 +43,36 @@ const featureGroups = [
 
 export function ProductFeaturesSection() {
   return (
-    <section className="section product-features">
-      <SectionHeader
-        label="what you get"
-        title="A better way to test your understanding."
-        copy="Study Rooms, flashcards, and quizzes all support the same outcome: explain the idea, find the gap, and practise from memory until it is clear."
-      />
-      <div className="feature-loop reveal">
-        <div className="loop-diagram" aria-label="Feynduck study loop">
+    <section className="lp-section">
+      <div className="lp-wrap">
+        <SectionHeader
+          label="what you get"
+          title="A better way to test your understanding."
+          copy="Study Rooms, flashcards, and quizzes all support the same outcome: explain the idea, find the gap, and practise from memory until it is clear."
+        />
+        <div className="lp-flow lp-reveal" aria-label="Feynduck study loop">
           {loopStages.map((stage, index) => (
-            <article className="loop-stage" key={stage.title}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
+            <article key={stage.title}>
+              <span className="fd-kicker">{String(index + 1).padStart(2, "0")}</span>
               <h3>{stage.title}</h3>
               <p>{stage.copy}</p>
             </article>
           ))}
         </div>
-        <div className="feature-grid">
+        <div className="lp-grid-3 lp-reveal">
           {featureGroups.map((feature) => {
             const Icon = feature.icon;
             return (
-              <article className="feature-card" key={feature.title}>
-                <span>
-                  <Icon size={18} />
+              <article className="lp-card lp-feature" key={feature.title}>
+                <span className="fd-icon-tile">
+                  <Icon size={18} strokeWidth={1.8} />
                 </span>
                 <h3>{feature.title}</h3>
                 <p>{feature.copy}</p>
-                <ul>
+                <ul className="lp-list">
                   {feature.items.map((item) => (
                     <li key={item}>
-                      <GitBranch size={14} />
+                      <Check size={15} strokeWidth={2} />
                       {item}
                     </li>
                   ))}

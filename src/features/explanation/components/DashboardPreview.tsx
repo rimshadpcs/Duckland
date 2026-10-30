@@ -1,7 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Check, FileText, Link2, Loader2, Mic, Type, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowUp,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Lightbulb,
+  Link2,
+  Loader2,
+  Mic,
+  Type,
+  Upload,
+  X,
+} from "lucide-react";
 import { Duck } from "./Duck";
 
 type DashboardPreviewProps = {
@@ -30,11 +43,10 @@ const panelClass = (panel: "source" | "conversation" | "insights", activeStep: n
     (activeStep === 5 && panel !== "insights");
 
   return [
-    "landing-preview-panel",
-    panel,
+    "lp-app-panel",
+    `is-${panel}`,
     isActive ? "is-active" : "",
     shouldMute ? "is-muted" : "",
-    (activeStep === 0 || activeStep === 1) && panel === "insights" ? "is-quiet" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -329,13 +341,11 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     micLabel = "Explain by voice",
     disabled = false,
     helper,
-    secondary = false,
   }: {
     placeholder: string;
     micLabel?: string;
     disabled?: boolean;
     helper?: string;
-    secondary?: boolean;
   }) => {
     const isBusy = voiceStatus === "transcribing" || isDemoEvaluating;
     const isRecording = voiceStatus === "recording";
@@ -348,29 +358,16 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
         : helper);
 
     return (
-    <div
-      className={[
-        "landing-composer",
-        "is-multiline",
-        disabled ? "is-disabled" : "is-active voice-enabled",
-        isVoiceActive && !disabled ? "is-recording" : "",
-        isReadyToEdit && !disabled ? "is-ready-to-check" : "",
-        secondary ? "is-secondary" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <button
-        className="landing-mic-button"
-        type="button"
-        aria-label={isRecording ? "Stop recording" : micLabel}
-        aria-pressed={isRecording}
-        disabled={disabled || isVoiceActive}
-        onClick={startRecording}
+      <div
+        className={[
+          "fd-composer",
+          disabled ? "is-disabled" : "",
+          isVoiceActive && !disabled ? "is-recording" : "",
+          isReadyToEdit && !disabled ? "is-ready" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
-        {isBusy ? <Loader2 className="icon-spin" size={16} /> : <Mic size={16} />}
-      </button>
-      <div className="landing-composer-copy">
         <textarea
           key={isVoiceActive ? "voice" : "idle"}
           aria-label={placeholder}
@@ -388,43 +385,91 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
           }
           rows={2}
         />
-        {isVoiceActive ? (
-          <div className="voice-inline-status" aria-live="polite">
-            <span className="voice-inline-dot" />
-            <small>{voiceStatusLabel} · {formatRecordingTime(recordingSeconds)}</small>
+        <div className="fd-composer-foot">
+          {isVoiceActive ? (
+            <div aria-live="polite">
+              <span className={`fd-rec ${voiceStatus === "transcribing" ? "is-muted" : ""}`}>
+                <span />
+                {voiceStatusLabel} · {formatRecordingTime(recordingSeconds)}
+              </span>
+              <span className="lp-wave" aria-hidden="true">
+                {waveformBars.slice(0, 14).map((level, index) => (
+                  <span key={index} style={{ transform: `scaleY(${0.2 + level * 0.8})` }} />
+                ))}
+              </span>
+            </div>
+          ) : (
+            <span className="fd-hint-text">{helperText}</span>
+          )}
+          <div>
+            {isVoiceActive ? (
+              <>
+                <button
+                  className="fd-icon-btn fd-icon-btn-sm"
+                  type="button"
+                  aria-label="Cancel voice explanation"
+                  disabled={isBusy}
+                  onClick={cancelRecording}
+                >
+                  <X size={14} />
+                </button>
+                <button
+                  className="fd-btn fd-btn-dark fd-btn-sm"
+                  type="button"
+                  aria-label="Use this voice explanation"
+                  disabled={!isRecording || isBusy}
+                  onClick={confirmRecording}
+                >
+                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Check size={14} />}
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="fd-icon-btn fd-icon-btn-sm"
+                  type="button"
+                  aria-label={micLabel}
+                  disabled={disabled || isBusy}
+                  onClick={startRecording}
+                >
+                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Mic size={14} />}
+                </button>
+                <button
+                  className="fd-btn fd-btn-accent fd-btn-sm"
+                  type="button"
+                  aria-label="Send explanation"
+                  disabled={disabled || isDemoEvaluating || !voiceDraft.trim()}
+                  onClick={evaluateDemoAnswer}
+                >
+                  {isDemoEvaluating ? <Loader2 className="lp-spin" size={14} /> : isReadyToEdit ? "Check" : <ArrowUp size={14} />}
+                </button>
+              </>
+            )}
           </div>
-        ) : helperText ? <small>{helperText}</small> : null}
-        {isVoiceActive ? (
-          <div className="voice-inline-waveform" aria-hidden="true">
-            {waveformBars.slice(0, 18).map((level, index) => (
-              <span key={index} style={{ transform: `scaleY(${0.28 + level})` }} />
-            ))}
-          </div>
-        ) : null}
-      </div>
-      {isVoiceActive ? (
-        <div className="voice-inline-actions">
-          <button type="button" aria-label="Cancel voice explanation" disabled={isBusy} onClick={cancelRecording}>
-            <X size={14} />
-          </button>
-          <button type="button" aria-label="Use this voice explanation" disabled={!isRecording || isBusy} onClick={confirmRecording}>
-            {isBusy ? <Loader2 className="icon-spin" size={14} /> : <Check size={15} />}
-          </button>
         </div>
-      ) : (
-        <button
-          className={isReadyToEdit ? "landing-check-button" : ""}
-          type="button"
-          aria-label="Send explanation"
-          disabled={disabled || isDemoEvaluating || !voiceDraft.trim()}
-          onClick={evaluateDemoAnswer}
-        >
-          {isDemoEvaluating ? <Loader2 className="icon-spin" size={14} /> : isReadyToEdit ? "Check" : "↑"}
-        </button>
-      )}
-    </div>
+      </div>
     );
   };
+
+  const renderClarity = (score: number | null, label = "Clarity") => (
+    <div className="lp-clarity">
+      <span>{label}</span>
+      <div className="fd-score">
+        <div className={`fd-bar is-thin ${score !== null && score >= 80 ? "is-success" : "is-amber"}`}>
+          <span style={{ width: `${score ?? 0}%` }} />
+        </div>
+        <span className="fd-score-num">{score ?? "--"}</span>
+      </div>
+    </div>
+  );
+
+  const renderInsight = (label: string, text: string, tone: "" | "is-gap" | "is-question" = "", pending = false) => (
+    <div className={["lp-insight", tone, pending ? "is-pending" : ""].filter(Boolean).join(" ")}>
+      <span>{label}</span>
+      <p>{text}</p>
+    </div>
+  );
 
   const renderInsightsPanel = () => {
     if (hasVoiceDemo) {
@@ -432,29 +477,30 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
 
       return (
         <>
-          <div className={`landing-insight-card missing-link ${isPending ? "pending" : ""}`}>
-            <span>Skipped step</span>
-            <p>
-              {demoEvaluation?.missingLink ||
-                (voiceStatus === "recording"
-                  ? "Record your explanation, then Feynduck will look for the step you skipped."
-                  : voiceStatus === "ready_to_edit"
-                    ? "Review the transcript, edit it if needed, then send it to Feynduck."
-                  : "Looking for how NADH, the electron transport chain, and NAD+ regeneration connect.")}
-            </p>
-          </div>
-          <div className={`landing-insight-card why ${isPending ? "pending" : ""}`}>
-            <span>What&apos;s unclear</span>
-            <p>{demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops."}</p>
-          </div>
-          <div className={`landing-insight-card socratic ${isPending ? "pending" : ""}`}>
-            <span>Follow-up question</span>
-            <p>{demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis."}</p>
-          </div>
-          <div className={`landing-score-card compact ${demoEvaluation ? "is-active" : "pending"}`}>
-            <span>{demoEvaluation?.scoreLabel || "Clarity"}</span>
-            <strong>{demoEvaluation?.clarityScore ?? "--"}</strong>
-          </div>
+          {renderInsight(
+            "Skipped step",
+            demoEvaluation?.missingLink ||
+              (voiceStatus === "recording"
+                ? "Record your explanation, then Feynduck will look for the step you skipped."
+                : voiceStatus === "ready_to_edit"
+                  ? "Review the transcript, edit it if needed, then send it to Feynduck."
+                  : "Looking for how NADH, the electron transport chain, and NAD+ regeneration connect."),
+            "is-gap",
+            isPending,
+          )}
+          {renderInsight(
+            "What's unclear",
+            demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops.",
+            "",
+            isPending,
+          )}
+          {renderInsight(
+            "Follow-up question",
+            demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis.",
+            "is-question",
+            isPending,
+          )}
+          {renderClarity(demoEvaluation?.clarityScore ?? null, demoEvaluation?.scoreLabel || "Clarity")}
         </>
       );
     }
@@ -462,22 +508,10 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 0) {
       return (
         <>
-          <div className="landing-insight-card">
-            <span>Skipped step</span>
-            <p>Waiting for study material.</p>
-          </div>
-          <div className="landing-insight-card">
-            <span>Why it matters</span>
-            <p>Add your materials so Feynduck has context.</p>
-          </div>
-          <div className="landing-insight-card socratic">
-            <span>Follow-up question</span>
-            <p>Feynduck will ask one targeted question after your explanation.</p>
-          </div>
-          <div className="landing-score-card compact">
-            <span>Clarity</span>
-            <strong>--</strong>
-          </div>
+          {renderInsight("Skipped step", "Waiting for study material.")}
+          {renderInsight("Why it matters", "Add your materials so Feynduck has context.")}
+          {renderInsight("Follow-up question", "Feynduck will ask one targeted question after your explanation.", "is-question")}
+          {renderClarity(null)}
         </>
       );
     }
@@ -485,22 +519,10 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 1) {
       return (
         <>
-          <div className="landing-insight-card pending">
-            <span>Skipped step</span>
-            <p>Waiting for your explanation.</p>
-          </div>
-          <div className="landing-insight-card pending">
-            <span>Why it matters</span>
-            <p>Feynduck will identify the step you skipped.</p>
-          </div>
-          <div className="landing-insight-card pending">
-            <span>Follow-up question</span>
-            <p>Appears after your explanation is analysed.</p>
-          </div>
-          <div className="landing-score-card compact pending">
-            <span>Clarity</span>
-            <strong>— —</strong>
-          </div>
+          {renderInsight("Skipped step", "Waiting for your explanation.", "", true)}
+          {renderInsight("Why it matters", "Feynduck will identify the step you skipped.", "", true)}
+          {renderInsight("Follow-up question", "Appears after your explanation is analysed.", "", true)}
+          {renderClarity(null)}
         </>
       );
     }
@@ -508,22 +530,10 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 4) {
       return (
         <>
-          <div className="landing-insight-card missing-link">
-            <span>Skipped step</span>
-            <p>You connected eosinophils to inflammation, but not yet to the mediators they release.</p>
-          </div>
-          <div className="landing-insight-card why">
-            <span>Why it matters</span>
-            <p>This explains how eosinophils actively worsen airway inflammation.</p>
-          </div>
-          <div className="landing-insight-card socratic">
-            <span>Follow-up question</span>
-            <p>What do activated eosinophils release that can damage airway tissue?</p>
-          </div>
-          <div className="landing-score-card compact is-active">
-            <span>Clarity</span>
-            <strong>86</strong>
-          </div>
+          {renderInsight("Skipped step", "You connected eosinophils to inflammation, but not yet to the mediators they release.", "is-gap")}
+          {renderInsight("Why it matters", "This explains how eosinophils actively worsen airway inflammation.")}
+          {renderInsight("Follow-up question", "What do activated eosinophils release that can damage airway tissue?", "is-question")}
+          {renderClarity(86)}
         </>
       );
     }
@@ -531,86 +541,71 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     if (activeStep === 5) {
       return (
         <>
-          <div className="landing-insight-card missing-link">
-            <span>Skipped step</span>
-            <p>Eosinophils release granule proteins and inflammatory mediators.</p>
-          </div>
-          <div className="landing-insight-card retry">
-            <span>Try again</span>
-            <p>Practise the link between mediator release, tissue damage, and airway reactivity.</p>
-          </div>
-          <div className="landing-insight-card socratic">
-            <span>Follow-up question</span>
-            <p>Why are eosinophils more than just a marker of allergy?</p>
-          </div>
-          <div className="landing-score-card compact">
-            <span>Clarity</span>
-            <strong>86</strong>
-          </div>
+          {renderInsight("Skipped step", "Eosinophils release granule proteins and inflammatory mediators.", "is-gap")}
+          {renderInsight("Try again", "Practise the link between mediator release, tissue damage, and airway reactivity.")}
+          {renderInsight("Follow-up question", "Why are eosinophils more than just a marker of allergy?", "is-question")}
+          {renderClarity(86)}
         </>
       );
     }
 
     return (
       <>
-        <div className="landing-insight-card missing-link">
-          <span>Skipped step</span>
-          <p>You said eosinophils are involved in allergy, but did not explain what they release.</p>
-        </div>
-        <div className="landing-insight-card why">
-          <span>Why it matters</span>
-          <p>The release step shows how eosinophils actively drive airway inflammation.</p>
-        </div>
-        <div className="landing-insight-card socratic">
-          <span>Follow-up question</span>
-          <p>What do activated eosinophils release that can damage or irritate airway tissue?</p>
-        </div>
-        <div className="landing-score-card compact">
-          <span>Clarity</span>
-          <strong>68</strong>
-        </div>
+        {renderInsight("Skipped step", "You said eosinophils are involved in allergy, but did not explain what they release.", "is-gap")}
+        {renderInsight("Why it matters", "The release step shows how eosinophils actively drive airway inflammation.")}
+        {renderInsight("Follow-up question", "What do activated eosinophils release that can damage or irritate airway tissue?", "is-question")}
+        {renderClarity(68)}
       </>
     );
   };
 
+  const duckMessage = (content: ReactNode) => (
+    <div className="lp-msg is-duck">
+      <Duck />
+      {typeof content === "string" ? <p>{content}</p> : content}
+    </div>
+  );
+
+  const studentMessage = (text: string, active = false) => (
+    <div className={`lp-msg is-student ${active ? "is-active" : ""}`}>
+      <span>You</span>
+      <p>{text}</p>
+    </div>
+  );
+
+  const tryThis = (question: string) => (
+    <div className="fd-ask">
+      <Lightbulb size={15} strokeWidth={1.8} />
+      <div>
+        <span>Try this</span>
+        <span>{question}</span>
+      </div>
+    </div>
+  );
+
   const renderVoiceDemoConversation = () => (
-    <div className="landing-chat-panel voice-demo-chat">
-      <div className="landing-chat-scroll" aria-live="polite">
-        <div className="landing-message duck-message">
-          <Duck />
-          <p>{demoQuestion}</p>
-        </div>
+    <div className="lp-chat">
+      <div className="lp-chat-scroll" aria-live="polite">
+        {duckMessage(demoQuestion)}
         {voiceStatus === "recording" ? (
-          <div className="landing-context-chip is-recording">Recording... speak your explanation, then confirm.</div>
+          <span className="fd-pill is-danger">Recording... speak your explanation, then confirm.</span>
         ) : null}
         {voiceStatus === "ready_to_edit" && voiceDraft.trim() ? (
-          <div className="landing-context-chip is-ready">Transcript ready. You can edit it or add another sentence.</div>
+          <span className="fd-pill is-amber">Transcript ready. You can edit it or add another sentence.</span>
         ) : null}
-        {demoTranscript ? (
-          <div className="landing-message student-message is-active">
-            <span>You</span>
-            <p>{demoTranscript}</p>
-          </div>
-        ) : null}
-        {voiceStatus === "transcribing" || isDemoEvaluating ? (
-          <div className="landing-message duck-message">
-            <Duck />
-            <p>{voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the step you skipped..."}</p>
-          </div>
-        ) : null}
-        {demoEvaluation ? (
-          <div className="landing-message duck-message">
-            <Duck />
-            <div className="landing-message-stack">
-              <p>{demoEvaluation.summary}</p>
-              <div className="landing-try-card">
-                <span>Try this</span>
-                <p>{demoEvaluation.followUpQuestion}</p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {voiceError ? <div className="landing-context-chip is-error">{voiceError}</div> : null}
+        {demoTranscript ? studentMessage(demoTranscript, true) : null}
+        {voiceStatus === "transcribing" || isDemoEvaluating
+          ? duckMessage(voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the step you skipped...")
+          : null}
+        {demoEvaluation
+          ? duckMessage(
+              <div className="lp-msg-stack">
+                <p>{demoEvaluation.summary}</p>
+                {tryThis(demoEvaluation.followUpQuestion)}
+              </div>,
+            )
+          : null}
+        {voiceError ? <span className="fd-pill is-danger">{voiceError}</span> : null}
       </div>
       {renderComposer({
         placeholder: "Explain why the Krebs cycle needs oxygen...",
@@ -620,344 +615,308 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     </div>
   );
 
+  const renderConversation = () => {
+    if (hasVoiceDemo) return renderVoiceDemoConversation();
+
+    if (activeStep === 0) {
+      return (
+        <div className="lp-chat">
+          <div className="lp-empty">
+            <span className="fd-empty-tile">
+              <FileText size={20} strokeWidth={1.8} />
+            </span>
+            <h3>Add material to begin</h3>
+            <p>Once your source is ready, Feynduck will ask you to explain the concept in your own words.</p>
+          </div>
+          {renderComposer({
+            placeholder: "Add your materials first...",
+            disabled: true,
+            helper: "Type or explain by voice after adding material.",
+          })}
+        </div>
+      );
+    }
+
+    if (activeStep === 1) {
+      return (
+        <div className="lp-chat">
+          <div className="lp-chat-scroll">
+            {duckMessage("What are you trying to understand from this material?")}
+            <div className="lp-focus">
+              <div>
+                <span>Selected focus</span>
+                <strong>Role of eosinophils</strong>
+                <p>How eosinophils drive allergic airway inflammation</p>
+              </div>
+              <button className="fd-btn fd-btn-secondary fd-btn-sm" type="button">Change</button>
+            </div>
+            {duckMessage("Got it. Explain the role of eosinophils in your own words. Don't worry about getting it perfect.")}
+            {studentMessage(
+              "Eosinophils are white blood cells involved in allergies and infections. They release chemicals that affect inflammation and are often mentioned in asthma.",
+            )}
+          </div>
+          {renderComposer({ placeholder: "Explain what you understand..." })}
+        </div>
+      );
+    }
+
+    if (activeStep === 3) {
+      return (
+        <div className="lp-chat">
+          <div className="lp-chat-scroll">
+            {duckMessage("Explain the role of eosinophils in your own words.")}
+            {studentMessage(
+              "Eosinophils are immune cells involved in allergic inflammation and parasite defence. In the airway, they can collect during allergic inflammation and irritate the airway.",
+            )}
+            {duckMessage(
+              <div className="lp-msg-stack">
+                <p>You&apos;re close — you named the inflammation, but skipped what eosinophils release.</p>
+                {tryThis("What do activated eosinophils release that can damage airway tissue?")}
+              </div>,
+            )}
+            <div className="lp-divider">Use the feedback to rebuild the answer</div>
+            {studentMessage(
+              "Eosinophils are granulocytic white blood cells that release toxic granule proteins and inflammatory mediators. These substances can damage airway tissue, increase swelling, and make the airway more reactive.",
+              true,
+            )}
+          </div>
+          {renderComposer({
+            placeholder: "Re-explain Role of eosinophils...",
+            micLabel: "Re-explain by voice",
+            helper: "Use Feynduck's question to rebuild your explanation.",
+          })}
+        </div>
+      );
+    }
+
+    if (activeStep === 4) {
+      return (
+        <div className="lp-chat">
+          <div className="lp-chat-scroll">
+            {studentMessage(
+              "Eosinophils defend against parasites and drive allergic airway inflammation by releasing granule proteins and inflammatory mediators that damage tissue and increase airway reactivity.",
+            )}
+            {duckMessage("Exactly — you connected eosinophils to how they worsen airway inflammation.")}
+            <span className="fd-pill is-success">Clarity improved: 60 → 85</span>
+          </div>
+          {renderComposer({ placeholder: "Start another explanation...", micLabel: "Explain by voice" })}
+        </div>
+      );
+    }
+
+    if (activeStep === 5) {
+      return (
+        <div className="lp-chat">
+          <div className="lp-chat-scroll">
+            {duckMessage("You skipped the link between eosinophil activation and mediator release.")}
+            <span className="fd-pill">This gap was used to build focused study tools.</span>
+          </div>
+          {renderComposer({ placeholder: "Ask Feynduck about this gap...", micLabel: "Ask by voice" })}
+        </div>
+      );
+    }
+
+    return (
+      <div className="lp-chat">
+        <div className="lp-chat-scroll">
+          {duckMessage("Explain the role of eosinophils in your own words.")}
+          {studentMessage(
+            "Eosinophils are white blood cells that help the immune system. They are involved in allergies and sometimes infections.",
+          )}
+          {showFeedback
+            ? duckMessage(
+                "You're close — you named the association, but skipped what eosinophils release. What do eosinophils release that can irritate airway tissue?",
+              )
+            : null}
+        </div>
+        {renderComposer({ placeholder: "Explain what you understand..." })}
+      </div>
+    );
+  };
+
+  const sourceActions = (
+    <div className="lp-app-actions">
+      <button className="fd-btn fd-btn-secondary fd-btn-sm" type="button">
+        <Upload size={13} />
+        Upload files
+      </button>
+      <button className="fd-btn fd-btn-secondary fd-btn-sm" type="button">
+        <Type size={13} />
+        Paste text
+      </button>
+      <button className="fd-btn fd-btn-secondary fd-btn-sm" type="button">
+        <Link2 size={13} />
+        Add link
+      </button>
+    </div>
+  );
+
+  const renderSources = () => {
+    if (hasVoiceDemo) {
+      return (
+        <div className="lp-notes">
+          <span className="fd-eyebrow">Source notes</span>
+          <p>Oxygen is not directly consumed in the Krebs cycle.</p>
+          <p>NADH delivers electrons to the electron transport chain, where oxygen acts as the final electron acceptor.</p>
+          <p>Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated and the Krebs cycle cannot continue.</p>
+        </div>
+      );
+    }
+
+    if (activeStep === 0) {
+      return (
+        <>
+          <div className="lp-app-intro">
+            <h3>Add your materials</h3>
+            <p>Bring in what you&apos;re studying so Feynduck can base its feedback on the right context.</p>
+          </div>
+          <div className="lp-drop">
+            <Upload size={20} strokeWidth={1.8} />
+            <strong>Drop files here</strong>
+            <small>PDF, PPTX, DOCX, or notes</small>
+          </div>
+          {sourceActions}
+          <p className="lp-app-helper">Add one or multiple sources to this study room.</p>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="lp-file">
+          <span className="fd-file-badge is-sm">PDF</span>
+          <div>
+            <strong>Asthma Inflammation Lecture.pdf</strong>
+            <small>12 pages · Ready</small>
+          </div>
+        </div>
+        <div className="lp-file">
+          <span className="fd-file-badge is-sm">TXT</span>
+          <div>
+            <strong>Medicine Finals Notes</strong>
+            <small>Pasted text</small>
+          </div>
+        </div>
+        {sourceActions}
+        <p className="lp-app-helper">Material is loaded and ready.</p>
+      </>
+    );
+  };
+
   const renderQuizPanel = () => (
-    <div className="landing-tool-panel">
-      <div className="landing-tool-kicker">Question 1 of 3</div>
-      <div className="landing-quiz-card">
+    <>
+      <span className="lp-tool-kicker">Question 1 of 3</span>
+      <div className="lp-quiz">
         <p>What makes eosinophils active drivers of allergic airway inflammation?</p>
-        <ol type="A">
+        <ol>
           <li>They only mark that allergy is present</li>
-          <li className="selected">They release mediators that irritate airway tissue</li>
+          <li className="is-selected">They release mediators that irritate airway tissue</li>
           <li>They stop all immune inflammation</li>
           <li>They directly carry oxygen into the airway</li>
         </ol>
-        <div className="landing-tool-nav" aria-label="Quiz question navigation">
-          <button type="button" aria-label="Previous question">←</button>
-          <span>1 / 3</span>
-          <button type="button" aria-label="Next question">→</button>
-        </div>
       </div>
-    </div>
+      <div className="lp-tool-nav" aria-label="Quiz question navigation">
+        <button className="fd-icon-btn fd-icon-btn-sm is-plain" type="button" aria-label="Previous question">
+          <ChevronLeft size={14} />
+        </button>
+        <span>1 / 3</span>
+        <button className="fd-icon-btn fd-icon-btn-sm is-plain" type="button" aria-label="Next question">
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </>
   );
 
   const renderFlashcardsPanel = () => (
-    <div className="landing-tool-panel">
-      <div className="landing-tool-kicker">Card 1 of 5</div>
-      <div className="landing-flashcard">
+    <>
+      <span className="lp-tool-kicker">Card 1 of 5</span>
+      <div className="lp-card-face">
         <span>Front</span>
         <p>What do activated eosinophils release?</p>
-        <small>Flip card</small>
       </div>
-      <div className="landing-flashcard answer">
+      <div className="lp-card-face is-back">
         <span>Back</span>
         <p>Granule proteins and inflammatory mediators</p>
       </div>
-      <div className="landing-tool-nav" aria-label="Flashcard navigation">
-        <button type="button" aria-label="Previous flashcard">←</button>
+      <div className="lp-tool-nav" aria-label="Flashcard navigation">
+        <button className="fd-icon-btn fd-icon-btn-sm is-plain" type="button" aria-label="Previous flashcard">
+          <ChevronLeft size={14} />
+        </button>
         <span>1 / 5</span>
-        <button type="button" aria-label="Next flashcard">→</button>
+        <button className="fd-icon-btn fd-icon-btn-sm is-plain" type="button" aria-label="Next flashcard">
+          <ChevronRight size={14} />
+        </button>
       </div>
-    </div>
+    </>
   );
 
+  const headerStatus =
+    voiceStatus === "recording"
+      ? "Recording"
+      : voiceStatus === "transcribing"
+        ? "Transcribing"
+        : isDemoEvaluating
+          ? "Analysing"
+          : voiceStatus === "ready_to_edit"
+            ? "Transcript ready"
+            : demoEvaluation
+              ? "Skipped step found"
+              : status;
+  const statusTone =
+    voiceStatus === "recording"
+      ? "is-danger"
+      : headerStatus === "Skipped step found" || headerStatus === "Re-explain the gap"
+        ? "is-amber"
+        : headerStatus === "Clarity tracked" || headerStatus === "Built from your gap"
+          ? "is-success"
+          : "";
+
   return (
-    <div className={`landing-dashboard-preview ${compact ? "compact" : ""}`}>
-      <div className="landing-dashboard-window">
-        <div className="landing-dashboard-topbar">
-          <div className="landing-dashboard-brand">
-            <Duck />
-            <strong>Feynduck</strong>
-          </div>
-          <div className="landing-dashboard-room breadcrumb">
+    <div className={`lp-app ${compact ? "is-compact" : ""} ${hasVoiceDemo ? "has-voice" : ""}`}>
+      <div className="lp-app-header">
+        <div>
+          <img src="/feynduckhead.png" alt="" width={22} height={22} />
+          <nav className="fd-crumbs" aria-label="Mock breadcrumb">
             <span>{hasVoiceDemo ? "Biology" : "Asthma"}</span>
+            <span aria-hidden="true">/</span>
             <b>{hasVoiceDemo ? "Krebs cycle" : "Role of eosinophils"}</b>
-          </div>
-          <div className="landing-dashboard-status">
-            {voiceStatus === "recording"
-              ? "Recording"
-              : voiceStatus === "transcribing"
-                ? "Transcribing"
-                : isDemoEvaluating
-                  ? "Analysing"
-                  : voiceStatus === "ready_to_edit"
-                    ? "Transcript ready"
-                    : demoEvaluation ? "Skipped step found" : status}
-          </div>
+          </nav>
         </div>
+        <span className={`fd-pill ${statusTone}`}>{headerStatus}</span>
+      </div>
 
-        <div className="landing-dashboard-body">
-          <aside className={panelClass("source", activeStep)}>
-            <div className="landing-panel-title">Your materials</div>
-            {hasVoiceDemo ? (
-              <div className="landing-source-card">
-                <span>Source notes</span>
-                <p>Oxygen is not directly consumed in the Krebs cycle.</p>
-                <p>NADH delivers electrons to the electron transport chain, where oxygen acts as the final electron acceptor.</p>
-                <p>Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated and the Krebs cycle cannot continue.</p>
-              </div>
-            ) : activeStep === 0 ? (
-              <div className="landing-source-import">
-                <div className="landing-source-import-copy">
-                  <h3>Add your materials</h3>
-                  <p>Bring in what you&apos;re studying so Feynduck can base its feedback on the right context.</p>
-                </div>
+      <div className="lp-app-body">
+        <aside className={panelClass("source", activeStep)}>
+          <div className="lp-app-panel-head">Your materials</div>
+          <div className="lp-app-panel-body">{renderSources()}</div>
+        </aside>
 
-                <div className="landing-drop-zone">
-                  <Upload size={22} />
-                  <strong>Drop files here</strong>
-                  <small>PDF, PPTX, DOCX, or notes</small>
-                </div>
+        <section className={panelClass("conversation", activeStep)}>
+          <div className="lp-app-panel-head">Conversation</div>
+          {renderConversation()}
+        </section>
 
-                <div className="landing-source-actions">
-                  <button type="button">
-                    <Upload size={14} />
-                    Upload files
-                  </button>
-                  <button type="button">
-                    <Type size={14} />
-                    Paste text
-                  </button>
-                  <button type="button">
-                    <Link2 size={14} />
-                    Add link
-                  </button>
-                </div>
-
-                <p className="landing-source-helper">Add one or multiple sources to this study room.</p>
-              </div>
-            ) : activeStep > 0 ? (
-              <div className="landing-attached-sources">
-                <div className="landing-attached-source-card">
-                  <span className="landing-file-icon">
-                    <FileText size={18} />
-                  </span>
-                  <div>
-                  <strong>Asthma Inflammation Lecture.pdf</strong>
-                  <small>PDF · 12 pages</small>
-                  </div>
-                  <em>Ready</em>
-                </div>
-                <div className="landing-attached-source-card secondary">
-                  <span className="landing-file-icon">
-                    <Type size={18} />
-                  </span>
-                  <div>
-                    <strong>Medicine Finals Notes</strong>
-                    <small>Pasted text</small>
-                  </div>
-                </div>
-                <div className="landing-source-actions">
-                  <button type="button">
-                    <Upload size={14} />
-                    Upload files
-                  </button>
-                  <button type="button">
-                    <Type size={14} />
-                    Paste text
-                  </button>
-                  <button type="button">
-                    <Link2 size={14} />
-                    Add link
-                  </button>
-                </div>
-                <p className="landing-source-helper">Material is loaded and ready.</p>
-              </div>
-            ) : (
-              <div className="landing-source-card">
-                <span>Source notes</span>
-                <p>
-                  Eosinophils are granulocytic white blood cells involved in allergic airway inflammation.
-                </p>
-                <p>
-                  When activated, they release granule proteins and inflammatory mediators.
-                </p>
-                <p>
-                  These substances can irritate airway tissue, increase swelling, and worsen airway reactivity.
-                </p>
-              </div>
-            )}
-          </aside>
-
-          <section className={panelClass("conversation", activeStep)}>
-            <div className="landing-panel-title">Conversation</div>
-            {hasVoiceDemo ? (
-              renderVoiceDemoConversation()
-            ) : activeStep === 0 ? (
-              <>
-                <div className="landing-empty-state">
-                  <FileText size={22} />
-                  <h3>Add material to begin</h3>
-                  <p>Once your source is ready, Feynduck will ask you to explain the concept in your own words.</p>
-                </div>
-                {renderComposer({
-                  placeholder: "Add your materials first...",
-                  disabled: true,
-                  helper: "Type or explain by voice after adding material.",
-                })}
-              </>
-            ) : activeStep === 1 ? (
-              <div className="landing-chat-panel goal-selection-chat">
-                <div className="landing-chat-scroll">
-                  <div className="landing-message duck-message">
-                    <Duck />
-                  <p>What are you trying to understand from this material?</p>
-                  </div>
-                  <div className="landing-selected-focus">
-                    <div>
-                      <span>Selected focus</span>
-                      <strong>Role of eosinophils</strong>
-                      <p>How eosinophils drive allergic airway inflammation</p>
-                    </div>
-                    <button type="button">Change</button>
-                  </div>
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <p>Got it. Explain the role of eosinophils in your own words. Don&apos;t worry about getting it perfect.</p>
-                  </div>
-                  <div className="landing-message student-message">
-                    <span>You</span>
-                    <p>
-                      Eosinophils are white blood cells involved in allergies and infections. They release
-                      chemicals that affect inflammation and are often mentioned in asthma.
-                    </p>
-                  </div>
-                </div>
-                {renderComposer({ placeholder: "Explain what you understand..." })}
-              </div>
-            ) : activeStep === 3 ? (
-              <div className="landing-chat-panel reexplain-chat">
-                <div className="landing-chat-scroll">
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <p>Explain the role of eosinophils in your own words.</p>
-                  </div>
-                  <div className="landing-message student-message">
-                    <span>You</span>
-                    <p>
-                      Eosinophils are immune cells involved in allergic inflammation and parasite defence.
-                      In the airway, they can collect during allergic inflammation and irritate the airway.
-                    </p>
-                  </div>
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <div className="landing-message-stack">
-                      <p>You&apos;re close — you named the inflammation, but skipped what eosinophils release.</p>
-                      <div className="landing-try-card">
-                        <span>Try this</span>
-                        <p>What do activated eosinophils release that can damage airway tissue?</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="landing-next-step">
-                    <span />
-                    <p>Use the feedback to rebuild the answer</p>
-                    <span />
-                  </div>
-                  <div className="landing-message student-message is-active">
-                    <span>You</span>
-                    <p>
-                      Eosinophils are granulocytic white blood cells that release toxic granule proteins
-                      and inflammatory mediators. These substances can damage airway tissue, increase
-                      swelling, and make the airway more reactive.
-                    </p>
-                  </div>
-                </div>
-                {renderComposer({
-                  placeholder: "Re-explain Role of eosinophils...",
-                  micLabel: "Re-explain by voice",
-                  helper: "Use Feynduck's question to rebuild your explanation.",
-                })}
-              </div>
-            ) : activeStep === 4 ? (
-              <div className="landing-chat-panel clarity-chat">
-                <div className="landing-chat-scroll">
-                  <div className="landing-message student-message">
-                    <span>You</span>
-                    <p>
-                      Eosinophils defend against parasites and drive allergic airway inflammation by
-                      releasing granule proteins and inflammatory mediators that damage tissue and
-                      increase airway reactivity.
-                    </p>
-                  </div>
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <p>Exactly — you connected eosinophils to how they worsen airway inflammation.</p>
-                  </div>
-                  <div className="landing-context-chip">Clarity improved: 60 → 85</div>
-                </div>
-                {renderComposer({
-                  placeholder: "Start another explanation...",
-                  micLabel: "Explain by voice",
-                })}
-              </div>
-            ) : activeStep === 5 ? (
-              <div className="landing-chat-panel gap-tools-chat">
-                <div className="landing-chat-scroll">
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <p>You skipped the link between eosinophil activation and mediator release.</p>
-                  </div>
-                  <div className="landing-context-chip">This gap was used to build focused study tools.</div>
-                </div>
-                {renderComposer({
-                  placeholder: "Ask Feynduck about this gap...",
-                  micLabel: "Ask by voice",
-                  secondary: true,
-                })}
-              </div>
-            ) : (
-              <div className="landing-chat-panel">
-                <div className="landing-chat-scroll">
-                  <div className="landing-message duck-message">
-                    <Duck />
-                    <p>Explain the role of eosinophils in your own words.</p>
-                  </div>
-                  <div className={`landing-message student-message ${activeStep === 1 ? "is-active" : ""}`}>
-                    <span>You</span>
-                    <p>
-                      Eosinophils are white blood cells that help the immune system. They are involved
-                      in allergies and sometimes infections.
-                    </p>
-                  </div>
-                  {showFeedback ? (
-                    <div className="landing-message duck-message">
-                      <Duck />
-                      <p>
-                        You&apos;re close — you named the association, but skipped what eosinophils release.
-                        What do eosinophils release that can irritate airway tissue?
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-                {renderComposer({ placeholder: "Explain what you understand..." })}
-              </div>
-            )}
-          </section>
-
-          <aside className={panelClass("insights", activeStep)}>
-            <div className="landing-panel-title">Support</div>
-            <div className="landing-study-tools">
-              <div className="landing-tool-tabs" role="tablist" aria-label="Study panel tabs">
-                {studyToolTabs.map((tab) => (
-                  <button
-                    aria-selected={activeToolTab === tab.id}
-                    className={activeToolTab === tab.id ? "active" : ""}
-                    key={tab.id}
-                    onClick={() => setActiveToolTab(tab.id)}
-                    role="tab"
-                    type="button"
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {activeToolTab === "insights" ? <div className="landing-tool-panel">{renderInsightsPanel()}</div> : null}
-              {activeToolTab === "quiz" ? renderQuizPanel() : null}
-              {activeToolTab === "flashcards" ? renderFlashcardsPanel() : null}
-            </div>
-          </aside>
-        </div>
+        <aside className={panelClass("insights", activeStep)}>
+          <div className="lp-app-panel-head">Support</div>
+          <div className="fd-segmented is-compact" role="tablist" aria-label="Study panel tabs">
+            {studyToolTabs.map((tab) => (
+              <button
+                aria-selected={activeToolTab === tab.id}
+                key={tab.id}
+                onClick={() => setActiveToolTab(tab.id)}
+                role="tab"
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="lp-app-panel-body">
+            {activeToolTab === "insights" ? renderInsightsPanel() : null}
+            {activeToolTab === "quiz" ? renderQuizPanel() : null}
+            {activeToolTab === "flashcards" ? renderFlashcardsPanel() : null}
+          </div>
+        </aside>
       </div>
     </div>
   );

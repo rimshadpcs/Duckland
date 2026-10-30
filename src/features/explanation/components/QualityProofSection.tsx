@@ -2,38 +2,47 @@ import { SectionHeader } from "./SectionHeader";
 
 export function QualityProofSection() {
   return (
-    <section className="quality-proof section">
-      <SectionHeader
-        label="see what Feynduck catches"
-        title="The missing step in your explanation becomes visible."
-      />
-      <div className="diff-board reveal">
-        <div className="diff-toolbar">
-          <span>Student explanation diff</span>
-          <small>Hover the improved version</small>
-        </div>
-        <div className="proof-grid">
-          <article className="proof-card before">
-            <span>Before</span>
-            <p>
-              Cardiac output is how much blood the heart pumps. If stroke volume goes down,
-              the heart beats faster to make up for it.
-            </p>
-            <small>Sounds right. But the formula link is missing.</small>
-          </article>
-          <article className="proof-card after">
-            <span>After Feynduck</span>
-            <p>
-              Cardiac output equals heart rate{" "}
-              <mark>multiplied by stroke volume</mark>. If stroke volume falls, heart rate has to
-              increase to help keep the product stable, so the body compensates by pumping more
-              often per minute.
-            </p>
-            <div className="diff-callout">
-              <strong>How the ideas connect</strong>
-              <small>The explanation now connects the compensation to the formula. Clarity Score: 58 → 84.</small>
+    <section className="lp-section">
+      <div className="lp-wrap">
+        <SectionHeader
+          label="see what Feynduck catches"
+          title="The missing step in your explanation becomes visible."
+        />
+        <div className="lp-diff lp-reveal">
+          <div className="fd-feedback-head">
+            <div>
+              <h2>Student explanation diff</h2>
             </div>
-          </article>
+            <span className="fd-kicker">Cardiac output</span>
+          </div>
+          <div className="lp-diff-grid">
+            <article>
+              <span className="fd-pill is-danger">Before</span>
+              <p>
+                Cardiac output is how much blood the heart pumps. If stroke volume goes down,
+                the heart beats faster to make up for it.
+              </p>
+              <small>Sounds right. But the formula link is missing.</small>
+            </article>
+            <article>
+              <span className="fd-pill is-success">After Feynduck</span>
+              <p>
+                Cardiac output equals heart rate{" "}
+                <mark>multiplied by stroke volume</mark>. If stroke volume falls, heart rate has to
+                increase to help keep the product stable, so the body compensates by pumping more
+                often per minute.
+              </p>
+              <div className="lp-diff-note">
+                <div>
+                  <strong>How the ideas connect</strong>
+                  <span>The explanation now connects the compensation to the formula.</span>
+                </div>
+                <span className="lp-diff-score" aria-label="Clarity Score improved from 58 to 84">
+                  <s>58</s> → 84
+                </span>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>
