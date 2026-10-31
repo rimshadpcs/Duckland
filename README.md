@@ -46,6 +46,5 @@ The admin page requires login and only allows emails listed in `WAITLIST_ADMIN_E
 
 ## Routing Note
 
-For production deployment of `app.feynduck.com`:
-- If using a dynamic Next.js deployment (e.g., Vercel), use `middleware.ts` to rewrite the subdomain to the `/study` route.
-- Since the current configuration uses `output: "export"` for static hosting (e.g., Netlify), you should configure subdomain-based redirects at the hosting provider level (e.g., using Netlify Redirects or Edge Functions) to point `app.feynduck.com` to the study content.
+The site runs on Cloudflare Workers through OpenNext (`npm run deploy`, or the Workers Builds trigger on pushes to `main`).
+`src/middleware.ts` handles `app.feynduck.com`: it sends `/` to login (then `/study`) and rewrites `/session` paths under `/study`, so no redirect rules are needed at the host.
