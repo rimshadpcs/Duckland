@@ -853,6 +853,22 @@ html[data-theme="obsidian"] .fd-landing .lp-card.is-strong {
   font-weight: 700;
 }
 
+.fd-landing .lp-step-gain {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1.5px dashed rgba(27, 26, 23, 0.25);
+  color: var(--fd-ink-2);
+  font-size: 15px;
+}
+
+.fd-landing .lp-step-gain b {
+  color: var(--sk-blue);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 /* Method: dictionary entries as index cards */
 .fd-landing .lp-define {
   border-radius: 6px;

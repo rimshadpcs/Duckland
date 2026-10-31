@@ -15,6 +15,7 @@ export function HowItWorksSection() {
         <SectionHeader
           label="how it works"
           title="From “I think I know it” to a clearer explanation."
+          copy="What you do at each step, and what you get out of it."
         />
         <figure className="sk-banner lp-reveal">
           <img
@@ -27,7 +28,7 @@ export function HowItWorksSection() {
         <ol className="lp-steps">
           {steps.map((step, index) => {
             const StepIcon = step.icon;
-            const isCoreStep = index === 3;
+            const isCoreStep = index === 2;
 
             return (
               <li className={`lp-step lp-reveal ${isCoreStep ? "is-core" : ""}`} key={step.title}>
@@ -40,6 +41,10 @@ export function HowItWorksSection() {
                 {isCoreStep ? <span className="fd-eyebrow is-amber">The Feynduck moment</span> : null}
                 <h3>{step.title}</h3>
                 <p>{step.copy}</p>
+                <p className="lp-step-gain">
+                  <b>You get</b>
+                  {step.gain}
+                </p>
               </li>
             );
           })}
