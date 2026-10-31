@@ -13,7 +13,7 @@ type Beat = {
   notes: number;
 };
 
-// Sarah's session from the Live mode overview, looped. Live mode is in development, so this is a concept.
+// A student's session from the Live mode overview, looped. Live mode is in development, so this is a concept.
 const beats: Beat[] = [
   {
     mood: "listening",
@@ -87,7 +87,7 @@ const duckNotes = [
   { label: "Wrong fact: “through the aorta”", when: "asked straight away" },
   { label: "Fancy word: “electrical system”", when: "tiny nudge" },
   { label: "Skipped: blood goes back to the heart", when: "saved for the end" },
-  { label: "She found the gap herself", when: "Clarity 54 → 81" },
+  { label: "The student found the gap", when: "Clarity 54 → 81" },
 ];
 
 const rules = [
@@ -167,7 +167,7 @@ export function LiveModeSection() {
                 {beat.status}
               </span>
               <p className={`sk-live-caption is-${beat.speaker}`} key={beatIndex}>
-                <b>{beat.speaker === "duck" ? "Feynduck" : "Sarah"}</b>
+                <b>{beat.speaker === "duck" ? "Feynduck" : "Student"}</b>
                 {beat.caption}
               </p>
             </div>
