@@ -10,7 +10,6 @@ import { HowItWorksSection } from "./HowItWorksSection";
 import { MethodSection } from "./MethodSection";
 import { Navbar } from "./Navbar";
 import { PricingSection } from "./PricingSection";
-import { ProductFeaturesSection } from "./ProductFeaturesSection";
 import { ProductPreview } from "./ProductPreview";
 import { QualityProofSection } from "./QualityProofSection";
 import { UniversityMarquee } from "./UniversityMarquee";
@@ -42,7 +41,7 @@ export function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  const studyHref = "/duck-watch";
+  const studyHref = "#waitlist";
 
   return (
     <main className="fd fd-landing">
@@ -54,11 +53,10 @@ export function LandingPage() {
       <HowItWorksSection />
       <ProductPreview />
       <MethodSection />
-      <ProductFeaturesSection />
       <AudienceSection />
       <PricingSection />
       <FAQSection />
-      <FinalCTASection studyHref={studyHref} />
+      <FinalCTASection />
       <Footer studyHref={studyHref} />
     </main>
   );

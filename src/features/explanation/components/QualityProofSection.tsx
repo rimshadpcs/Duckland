@@ -5,7 +5,6 @@ export function QualityProofSection() {
     <section className="lp-section">
       <div className="lp-wrap">
         <SectionHeader
-          label="see what Feynduck catches"
           title="The missing step in your explanation becomes visible."
         />
         <div className="lp-diff lp-reveal">

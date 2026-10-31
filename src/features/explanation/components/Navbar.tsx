@@ -14,7 +14,6 @@ export function Navbar({ studyHref = "/start" }: { studyHref?: string }) {
             <a href="#how">How it works</a>
             <a href="#method">The method</a>
             <a href="#pricing">Pricing</a>
-            <a href="#waitlist">Waitlist</a>
           </nav>
         </div>
         <div className="fd-header-right">
@@ -24,7 +23,7 @@ export function Navbar({ studyHref = "/start" }: { studyHref?: string }) {
             href={studyHref}
             onClick={() => trackEvent("cta_clicked", { location: "nav", href: studyHref })}
           >
-            Study with Feynduck
+            Join the waitlist
             <ArrowRight className="fd-arrow" size={15} strokeWidth={2} />
           </a>
         </div>

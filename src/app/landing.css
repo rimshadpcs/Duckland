@@ -1331,44 +1331,6 @@
   height: auto;
 }
 
-/* ---------- What you get ---------- */
-
-.lp-flow {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 16px;
-  overflow: hidden;
-  border: 1px solid var(--fd-border);
-  border-radius: 12px;
-  background: var(--fd-surface);
-}
-
-.lp-flow article {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 20px;
-}
-
-.lp-flow article + article {
-  border-left: 1px solid var(--fd-divider);
-}
-
-.lp-flow h3 {
-  font-size: 15px;
-}
-
-.lp-flow p {
-  color: var(--fd-muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.lp-feature .lp-list li > svg {
-  color: var(--fd-ink-3);
-}
-
 /* ---------- Audience ---------- */
 
 .lp-audience {
@@ -1723,13 +1685,6 @@
     padding: 0;
   }
 
-  .lp-flow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .lp-flow article:nth-child(3) {
-    border-left: none;
-  }
 
   .lp-flow article:nth-child(n + 3) {
     border-top: 1px solid var(--fd-divider);
