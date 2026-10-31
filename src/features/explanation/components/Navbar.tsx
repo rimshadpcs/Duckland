@@ -13,7 +13,6 @@ export function Navbar({ studyHref = "/start" }: { studyHref?: string }) {
           <nav className="lp-nav" aria-label="Page sections">
             <a href="#how">How it works</a>
             <a href="#method">The method</a>
-            <a href="#pricing">Pricing</a>
           </nav>
         </div>
         <div className="fd-header-right">

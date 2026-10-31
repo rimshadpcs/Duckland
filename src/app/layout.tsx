@@ -4,6 +4,7 @@ import "./globals.css";
 import "./dashboard-polishes.css";
 import "./app-ui.css";
 import "./landing.css";
+import "./landing-sketch.css";
 
 const geist = Geist({
   subsets: ["latin"],

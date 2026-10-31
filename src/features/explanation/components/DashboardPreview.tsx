@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowUp,
-  Check,
   ChevronLeft,
   ChevronRight,
   FileText,
   Lightbulb,
   Link2,
-  Loader2,
   Mic,
   Type,
   Upload,
-  X,
 } from "lucide-react";
 import { Duck } from "./Duck";
 
@@ -53,20 +50,6 @@ const panelClass = (panel: "source" | "conversation" | "insights", activeStep: n
 };
 
 type StudyToolTab = "insights" | "quiz" | "flashcards";
-type VoiceDemoStatus = "idle" | "recording" | "transcribing" | "ready_to_edit" | "error";
-
-type DemoEvaluation = {
-  clarityScore: number;
-  scoreLabel: string;
-  summary: string;
-  missingLink: string;
-  followUpQuestion: string;
-  hint: string;
-};
-
-const demoTopic = "Krebs cycle and oxygen";
-const demoQuestion = "Explain why the Krebs cycle needs oxygen, even though oxygen is not directly used in the cycle.";
-const waveformBarCount = 34;
 
 const studyToolTabs: { id: StudyToolTab; label: string }[] = [
   { id: "insights", label: "Feedback" },
@@ -74,268 +57,16 @@ const studyToolTabs: { id: StudyToolTab; label: string }[] = [
   { id: "flashcards", label: "Flashcards" },
 ];
 
-function formatRecordingTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60).toString();
-  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
-}
-
-function appendTranscript(existingText: string, transcript: string) {
-  const existing = existingText.trim();
-  const next = transcript.trim();
-  if (!existing) return next;
-  if (!next) return existing;
-  return `${existing}\n\n${next}`;
-}
-
 export function DashboardPreview({ activeStep = 0, compact = false }: DashboardPreviewProps) {
   const [activeToolTab, setActiveToolTab] = useState<StudyToolTab>(activeStep === 5 ? "quiz" : "insights");
-  const [voiceStatus, setVoiceStatus] = useState<VoiceDemoStatus>("idle");
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [demoTranscript, setDemoTranscript] = useState<string | null>(null);
-  const [demoEvaluation, setDemoEvaluation] = useState<DemoEvaluation | null>(null);
-  const [isDemoEvaluating, setIsDemoEvaluating] = useState(false);
-  const [voiceDraft, setVoiceDraft] = useState("");
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [waveformBars, setWaveformBars] = useState<number[]>(() => Array.from({ length: waveformBarCount }, () => 0.18));
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingStartedAtRef = useRef<number>(0);
-  const shouldSubmitRecordingRef = useRef(false);
-  const isSubmittingVoiceRef = useRef(false);
   const status = statusLabels[activeStep] ?? statusLabels[0];
   const showFeedback = activeStep >= 2;
-  const hasVoiceDemo = Boolean(demoTranscript || demoEvaluation || voiceStatus !== "idle");
 
   useEffect(() => {
     setActiveToolTab(activeStep === 5 ? "quiz" : "insights");
   }, [activeStep]);
 
-  useEffect(() => {
-    return () => {
-      mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
-      cleanupRecording();
-    };
-  }, []);
-
-  const cleanupRecording = () => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    if (recordingTimerRef.current) {
-      window.clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    void audioContextRef.current?.close();
-    audioContextRef.current = null;
-    analyserRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-    mediaRecorderRef.current = null;
-    setRecordingSeconds(0);
-    setWaveformBars(Array.from({ length: waveformBarCount }, () => 0.18));
-  };
-
-  const startLocalAudioMeter = (stream: MediaStream) => {
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
-
-    const audioContext = new AudioContextCtor();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 128;
-    analyser.smoothingTimeConstant = 0.72;
-    const source = audioContext.createMediaStreamSource(stream);
-    source.connect(analyser);
-    audioContextRef.current = audioContext;
-    analyserRef.current = analyser;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-
-    const tick = () => {
-      analyser.getByteFrequencyData(data);
-      const bucketSize = Math.max(1, Math.floor(data.length / waveformBarCount));
-      const nextBars = Array.from({ length: waveformBarCount }, (_, index) => {
-        const start = index * bucketSize;
-        const bucket = data.slice(start, start + bucketSize);
-        const average = bucket.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.length);
-        return Math.max(0.14, Math.min(1, average / 150));
-      });
-      setWaveformBars(nextBars);
-      animationFrameRef.current = window.requestAnimationFrame(tick);
-    };
-
-    tick();
-    recordingStartedAtRef.current = Date.now();
-    recordingTimerRef.current = window.setInterval(() => {
-      setRecordingSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000));
-    }, 250);
-  };
-
-  const submitVoiceRecording = async (audioBlob: Blob) => {
-    if (isSubmittingVoiceRef.current) return;
-    isSubmittingVoiceRef.current = true;
-    setVoiceError(null);
-
-    try {
-      if (audioBlob.size < 512) {
-        throw new Error("Recording was empty. Try speaking for a little longer.");
-      }
-
-      setVoiceStatus("transcribing");
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "feynduck-demo.webm");
-      const transcribeResponse = await fetch("/api/demo-transcribe", {
-        method: "POST",
-        body: formData,
-      });
-      const transcribePayload = (await transcribeResponse.json()) as { transcript?: string; error?: string };
-
-      if (!transcribeResponse.ok || !transcribePayload.transcript) {
-        throw new Error(transcribePayload.error || "Feynduck could not transcribe that recording.");
-      }
-
-      const transcript = transcribePayload.transcript.trim();
-      setVoiceDraft((current) => appendTranscript(current, transcript));
-      setVoiceStatus("ready_to_edit");
-    } catch (error) {
-      setVoiceStatus("error");
-      setVoiceError(error instanceof Error ? error.message : "Voice explanation failed. Try again.");
-    } finally {
-      isSubmittingVoiceRef.current = false;
-    }
-  };
-
-  const evaluateDemoAnswer = async () => {
-    const transcript = voiceDraft.trim();
-    if (!transcript || isDemoEvaluating) return;
-
-    try {
-      setIsDemoEvaluating(true);
-      setVoiceError(null);
-      setDemoTranscript(transcript);
-      const evaluateResponse = await fetch("/api/demo-evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          topic: demoTopic,
-          question: demoQuestion,
-        }),
-      });
-      const evaluationPayload = (await evaluateResponse.json()) as Partial<DemoEvaluation> & { error?: string };
-
-      if (!evaluateResponse.ok || typeof evaluationPayload.clarityScore !== "number") {
-        throw new Error(evaluationPayload.error || "Feynduck could not evaluate that explanation.");
-      }
-
-      setDemoEvaluation({
-        clarityScore: evaluationPayload.clarityScore,
-        scoreLabel: evaluationPayload.scoreLabel || "Getting there",
-        summary: evaluationPayload.summary || "Feynduck found the main gap in your explanation.",
-        missingLink: evaluationPayload.missingLink || "The missing link is how oxygen keeps NAD+ regeneration going.",
-        followUpQuestion: evaluationPayload.followUpQuestion || "What happens to NADH when oxygen is unavailable?",
-        hint: evaluationPayload.hint || "Think about where NADH normally delivers its electrons.",
-      });
-      setActiveToolTab("insights");
-      setVoiceStatus("idle");
-    } catch (error) {
-      setVoiceError(error instanceof Error ? error.message : "Voice evaluation failed. Try again.");
-    } finally {
-      setIsDemoEvaluating(false);
-    }
-  };
-
-  const stopRecording = (shouldSubmit: boolean) => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state !== "recording") return;
-    shouldSubmitRecordingRef.current = shouldSubmit;
-    recorder.stop();
-  };
-
-  const cancelRecording = () => {
-    if (voiceStatus === "recording") {
-      stopRecording(false);
-      return;
-    }
-
-    cleanupRecording();
-    setVoiceStatus("idle");
-  };
-
-  const confirmRecording = () => {
-    if (voiceStatus !== "recording") return;
-    stopRecording(true);
-    setVoiceStatus("transcribing");
-  };
-
-  const startRecording = async () => {
-    if (voiceStatus === "recording") {
-      return;
-    }
-
-    if (voiceStatus === "transcribing" || isDemoEvaluating) return;
-
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setVoiceStatus("error");
-      setVoiceError("Voice recording is not supported in this browser.");
-      return;
-    }
-
-    try {
-      setVoiceStatus("recording");
-      setVoiceError(null);
-      setDemoTranscript(null);
-      setDemoEvaluation(null);
-      audioChunksRef.current = [];
-      shouldSubmitRecordingRef.current = false;
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-      startLocalAudioMeter(stream);
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "";
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-      recorder.onerror = () => {
-        cleanupRecording();
-        setVoiceStatus("error");
-        setVoiceError("Recording failed. Try again.");
-      };
-      recorder.onstop = () => {
-        const type = recorder.mimeType || "audio/webm";
-        const blob = new Blob(audioChunksRef.current, { type });
-        const shouldSubmit = shouldSubmitRecordingRef.current;
-        cleanupRecording();
-        if (shouldSubmit) {
-          void submitVoiceRecording(blob);
-        } else {
-          setVoiceStatus("idle");
-        }
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-    } catch (error) {
-      cleanupRecording();
-      setVoiceStatus("error");
-      const isDenied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
-      setVoiceError(isDenied ? "Microphone permission was denied." : "Could not start the microphone.");
-    }
-  };
-
+  // A picture of the app's composer: the landing page makes no AI calls, so nothing here is interactive.
   const renderComposer = ({
     placeholder,
     micLabel = "Explain by voice",
@@ -346,111 +77,22 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     micLabel?: string;
     disabled?: boolean;
     helper?: string;
-  }) => {
-    const isBusy = voiceStatus === "transcribing" || isDemoEvaluating;
-    const isRecording = voiceStatus === "recording";
-    const isReadyToEdit = voiceStatus === "ready_to_edit" && Boolean(voiceDraft.trim());
-    const isVoiceActive = isRecording || voiceStatus === "transcribing";
-    const voiceStatusLabel = voiceStatus === "transcribing" ? "Transcribing" : "Listening";
-    const helperText = voiceError ||
-      (isReadyToEdit
-        ? "Transcript ready. Edit it, add another voice note, or check it."
-        : helper);
-
-    return (
-      <div
-        className={[
-          "fd-composer",
-          disabled ? "is-disabled" : "",
-          isVoiceActive && !disabled ? "is-recording" : "",
-          isReadyToEdit && !disabled ? "is-ready" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <textarea
-          key={isVoiceActive ? "voice" : "idle"}
-          aria-label={placeholder}
-          disabled={disabled || isVoiceActive || isDemoEvaluating}
-          value={voiceDraft}
-          onChange={(event) => setVoiceDraft(event.target.value)}
-          placeholder={
-            isRecording && !disabled
-              ? "Listening..."
-              : voiceStatus === "transcribing" && !disabled
-                ? "Transcribing your explanation..."
-                : isDemoEvaluating && !disabled
-                  ? "Feynduck is checking the missing link..."
-                  : placeholder
-          }
-          rows={2}
-        />
-        <div className="fd-composer-foot">
-          {isVoiceActive ? (
-            <div aria-live="polite">
-              <span className={`fd-rec ${voiceStatus === "transcribing" ? "is-muted" : ""}`}>
-                <span />
-                {voiceStatusLabel} · {formatRecordingTime(recordingSeconds)}
-              </span>
-              <span className="lp-wave" aria-hidden="true">
-                {waveformBars.slice(0, 14).map((level, index) => (
-                  <span key={index} style={{ transform: `scaleY(${0.2 + level * 0.8})` }} />
-                ))}
-              </span>
-            </div>
-          ) : (
-            <span className="fd-hint-text">{helperText}</span>
-          )}
-          <div>
-            {isVoiceActive ? (
-              <>
-                <button
-                  className="fd-icon-btn fd-icon-btn-sm"
-                  type="button"
-                  aria-label="Cancel voice explanation"
-                  disabled={isBusy}
-                  onClick={cancelRecording}
-                >
-                  <X size={14} />
-                </button>
-                <button
-                  className="fd-btn fd-btn-dark fd-btn-sm"
-                  type="button"
-                  aria-label="Use this voice explanation"
-                  disabled={!isRecording || isBusy}
-                  onClick={confirmRecording}
-                >
-                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Check size={14} />}
-                  Done
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="fd-icon-btn fd-icon-btn-sm"
-                  type="button"
-                  aria-label={micLabel}
-                  disabled={disabled || isBusy}
-                  onClick={startRecording}
-                >
-                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Mic size={14} />}
-                </button>
-                <button
-                  className="fd-btn fd-btn-accent fd-btn-sm"
-                  type="button"
-                  aria-label="Send explanation"
-                  disabled={disabled || isDemoEvaluating || !voiceDraft.trim()}
-                  onClick={evaluateDemoAnswer}
-                >
-                  {isDemoEvaluating ? <Loader2 className="lp-spin" size={14} /> : isReadyToEdit ? "Check" : <ArrowUp size={14} />}
-                </button>
-              </>
-            )}
-          </div>
+  }) => (
+    <div className={["fd-composer", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")} inert>
+      <textarea aria-label={placeholder} placeholder={placeholder} rows={2} readOnly />
+      <div className="fd-composer-foot">
+        <span className="fd-hint-text">{helper}</span>
+        <div>
+          <span className="fd-icon-btn fd-icon-btn-sm" aria-label={micLabel}>
+            <Mic size={14} />
+          </span>
+          <span className="fd-btn fd-btn-accent fd-btn-sm">
+            <ArrowUp size={14} />
+          </span>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderClarity = (score: number | null, label = "Clarity") => (
     <div className="lp-clarity">
@@ -472,39 +114,6 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
   );
 
   const renderInsightsPanel = () => {
-    if (hasVoiceDemo) {
-      const isPending = voiceStatus === "recording" || voiceStatus === "transcribing" || isDemoEvaluating;
-
-      return (
-        <>
-          {renderInsight(
-            "Skipped step",
-            demoEvaluation?.missingLink ||
-              (voiceStatus === "recording"
-                ? "Record your explanation, then Feynduck will look for the step you skipped."
-                : voiceStatus === "ready_to_edit"
-                  ? "Review the transcript, edit it if needed, then send it to Feynduck."
-                  : "Looking for how NADH, the electron transport chain, and NAD+ regeneration connect."),
-            "is-gap",
-            isPending,
-          )}
-          {renderInsight(
-            "What's unclear",
-            demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops.",
-            "",
-            isPending,
-          )}
-          {renderInsight(
-            "Follow-up question",
-            demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis.",
-            "is-question",
-            isPending,
-          )}
-          {renderClarity(demoEvaluation?.clarityScore ?? null, demoEvaluation?.scoreLabel || "Clarity")}
-        </>
-      );
-    }
-
     if (activeStep === 0) {
       return (
         <>
@@ -583,41 +192,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     </div>
   );
 
-  const renderVoiceDemoConversation = () => (
-    <div className="lp-chat">
-      <div className="lp-chat-scroll" aria-live="polite">
-        {duckMessage(demoQuestion)}
-        {voiceStatus === "recording" ? (
-          <span className="fd-pill is-danger">Recording... speak your explanation, then confirm.</span>
-        ) : null}
-        {voiceStatus === "ready_to_edit" && voiceDraft.trim() ? (
-          <span className="fd-pill is-amber">Transcript ready. You can edit it or add another sentence.</span>
-        ) : null}
-        {demoTranscript ? studentMessage(demoTranscript, true) : null}
-        {voiceStatus === "transcribing" || isDemoEvaluating
-          ? duckMessage(voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the step you skipped...")
-          : null}
-        {demoEvaluation
-          ? duckMessage(
-              <div className="lp-msg-stack">
-                <p>{demoEvaluation.summary}</p>
-                {tryThis(demoEvaluation.followUpQuestion)}
-              </div>,
-            )
-          : null}
-        {voiceError ? <span className="fd-pill is-danger">{voiceError}</span> : null}
-      </div>
-      {renderComposer({
-        placeholder: "Explain why the Krebs cycle needs oxygen...",
-        micLabel: "Explain out loud",
-        helper: voiceError || "Use your voice to try the Krebs cycle demo.",
-      })}
-    </div>
-  );
-
   const renderConversation = () => {
-    if (hasVoiceDemo) return renderVoiceDemoConversation();
-
     if (activeStep === 0) {
       return (
         <div className="lp-chat">
@@ -752,17 +327,6 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
   );
 
   const renderSources = () => {
-    if (hasVoiceDemo) {
-      return (
-        <div className="lp-notes">
-          <span className="fd-eyebrow">Source notes</span>
-          <p>Oxygen is not directly consumed in the Krebs cycle.</p>
-          <p>NADH delivers electrons to the electron transport chain, where oxygen acts as the final electron acceptor.</p>
-          <p>Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated and the Krebs cycle cannot continue.</p>
-        </div>
-      );
-    }
-
     if (activeStep === 0) {
       return (
         <>
@@ -850,36 +414,23 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     </>
   );
 
-  const headerStatus =
-    voiceStatus === "recording"
-      ? "Recording"
-      : voiceStatus === "transcribing"
-        ? "Transcribing"
-        : isDemoEvaluating
-          ? "Analysing"
-          : voiceStatus === "ready_to_edit"
-            ? "Transcript ready"
-            : demoEvaluation
-              ? "Skipped step found"
-              : status;
+  const headerStatus = status;
   const statusTone =
-    voiceStatus === "recording"
-      ? "is-danger"
-      : headerStatus === "Skipped step found" || headerStatus === "Re-explain the gap"
-        ? "is-amber"
-        : headerStatus === "Clarity tracked" || headerStatus === "Built from your gap"
-          ? "is-success"
-          : "";
+    headerStatus === "Skipped step found" || headerStatus === "Re-explain the gap"
+      ? "is-amber"
+      : headerStatus === "Clarity tracked" || headerStatus === "Built from your gap"
+        ? "is-success"
+        : "";
 
   return (
-    <div className={`lp-app ${compact ? "is-compact" : ""} ${hasVoiceDemo ? "has-voice" : ""}`}>
+    <div className={`lp-app ${compact ? "is-compact" : ""}`}>
       <div className="lp-app-header">
         <div>
           <img src="/feynduckhead.png" alt="" width={22} height={22} />
           <nav className="fd-crumbs" aria-label="Mock breadcrumb">
-            <span>{hasVoiceDemo ? "Biology" : "Asthma"}</span>
+            <span>{"Asthma"}</span>
             <span aria-hidden="true">/</span>
-            <b>{hasVoiceDemo ? "Krebs cycle" : "Role of eosinophils"}</b>
+            <b>{"Role of eosinophils"}</b>
           </nav>
         </div>
         <span className={`fd-pill ${statusTone}`}>{headerStatus}</span>

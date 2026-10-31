@@ -2,7 +2,7 @@ import { SectionHeader } from "./SectionHeader";
 
 export function QualityProofSection() {
   return (
-    <section className="lp-section">
+    <section className="lp-section sk-panel is-orange">
       <div className="lp-wrap">
         <SectionHeader
           title="The missing step in your explanation becomes visible."
