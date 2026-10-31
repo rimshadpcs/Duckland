@@ -217,7 +217,7 @@ export function DuckRun() {
       ) : null}
 
       <div className="sk-run-duck" ref={duckRef} aria-hidden="true">
-        <img src="/feynduckhead.png" alt="" width={DUCK_SIZE} height={DUCK_SIZE} />
+        <img src="/feynduck-run.webp" alt="" width={DUCK_SIZE} height={DUCK_SIZE * 1.5} />
       </div>
       {Array.from({ length: POOL_SIZE }, (_, index) => (
         <div
