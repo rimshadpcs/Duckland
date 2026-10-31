@@ -175,14 +175,17 @@ html[data-theme="obsidian"] .sk-btn {
 
 /* Hero picture: an explanation as a chain of steps, with the duck catching the gap */
 .sk-chain-figure {
+  width: 100%;
+  max-width: 470px;
+  margin: 0;
+}
+
+.sk-chain-stage {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 128px;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  max-width: 470px;
-  margin: 0;
   padding-top: 92px;
 }
 
@@ -315,6 +318,57 @@ html[data-theme="obsidian"] .sk-step {
 .sk-chain-figure.is-asking .sk-chain-bubble {
   opacity: 1;
   transform: none;
+}
+
+.sk-chain-label {
+  position: absolute;
+  top: 62px;
+  left: 4px;
+  color: var(--fd-ink-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sk-chain-steps {
+  display: grid;
+  gap: 8px;
+  margin-top: 56px;
+  padding: 0;
+  list-style: none;
+}
+
+.sk-chain-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fd-ink-4);
+  font-size: 15px;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.sk-chain-steps li > span {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-family: var(--sk-display);
+  font-size: 14px;
+  font-weight: 800;
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.sk-chain-steps li.is-active {
+  color: var(--fd-ink);
+}
+
+.sk-chain-steps li.is-active > span {
+  border-color: #1b1a17;
+  background: var(--sk-yellow);
+  color: #1b1a17;
 }
 
 .sk-chain-score {
