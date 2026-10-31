@@ -2,13 +2,10 @@
 
 import { ArrowRight } from "lucide-react";
 import { trackEvent } from "@src/lib/analytics";
-import { useThemeMode } from "@src/lib/useThemeMode";
 import { HandUnderline } from "./HandMarks";
+import { HeroChain } from "./HeroChain";
 
 export function HeroSection({ studyHref = "/start" }: { studyHref?: string }) {
-  const { themeMode, mounted } = useThemeMode();
-  const isDark = mounted && themeMode === "obsidian";
-
   return (
     <section className="lp-wrap sk-hero" id="top">
       <div className="sk-hero-copy lp-reveal">
@@ -38,19 +35,14 @@ export function HeroSection({ studyHref = "/start" }: { studyHref?: string }) {
             href="#try"
             onClick={() => trackEvent("cta_clicked", { location: "hero_secondary", href: "#try" })}
           >
-            Try it on a real question
+            See it catch a gap
           </a>
         </div>
       </div>
 
-      <figure className="sk-hero-art lp-reveal">
-        <img
-          src={isDark ? "/feynduck_hero_dark.webp" : "/feynduck_hero.webp"}
-          alt="A teacher in the style of Richard Feynman explaining A to B to C at a blackboard, with a rubber duck on the chalk ledge"
-          width={1254}
-          height={1254}
-        />
-      </figure>
+      <div className="sk-hero-art lp-reveal">
+        <HeroChain />
+      </div>
     </section>
   );
 }

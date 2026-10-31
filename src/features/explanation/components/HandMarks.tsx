@@ -19,3 +19,11 @@ export function HandCircle() {
     </svg>
   );
 }
+
+export function HandArrowDown() {
+  return (
+    <svg className="sk-arrow-down sk-draw" viewBox="0 0 24 44" aria-hidden="true">
+      <path d="M12 2 C 10 14, 14 24, 12 38 M5 30 L12 40 L19 31" pathLength={1} />
+    </svg>
+  );
+}

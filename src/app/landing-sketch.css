@@ -108,7 +108,7 @@ html[data-theme="obsidian"] .sk-btn {
 
 .sk-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
   gap: 40px;
   padding: 72px 24px 64px;
@@ -124,7 +124,7 @@ html[data-theme="obsidian"] .sk-btn {
 .sk-hero h1 {
   color: var(--fd-ink);
   font-family: var(--sk-display);
-  font-size: clamp(44px, 5vw, 70px);
+  font-size: clamp(44px, 4.6vw, 66px);
   font-weight: 800;
   line-height: 0.98;
   letter-spacing: -0.035em;
@@ -169,16 +169,183 @@ html[data-theme="obsidian"] .sk-btn {
 }
 
 .sk-hero-art {
-  margin: 0;
-  transform: rotate(2deg);
+  display: flex;
+  justify-content: flex-end;
 }
 
-.sk-hero-art img {
-  display: block;
+/* Hero picture: an explanation as a chain of steps, with the duck catching the gap */
+.sk-chain-figure {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  max-width: 560px;
-  height: auto;
-  margin-left: auto;
+  max-width: 470px;
+  margin: 0;
+  padding-top: 92px;
+}
+
+.sk-chain {
+  display: grid;
+  justify-items: stretch;
+  padding: 0;
+  list-style: none;
+}
+
+.sk-step {
+  position: relative;
+  padding: 14px 18px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 14px;
+  background: var(--fd-surface);
+  color: var(--fd-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: var(--sk-shadow);
+}
+
+html[data-theme="obsidian"] .sk-step {
+  border-color: var(--fd-border);
+}
+
+.sk-chain-link {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  color: var(--sk-orange);
+}
+
+.sk-arrow-down {
+  width: 18px;
+  height: 36px;
+}
+
+.sk-arrow-down path {
+  stroke-width: 2.4px;
+}
+
+.sk-step.is-gap {
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  border-style: dashed;
+  border-color: var(--sk-orange);
+  background: var(--sk-paper);
+  box-shadow: none;
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+.sk-step.is-gap .sk-circle {
+  top: -8px;
+  left: -12px;
+  width: calc(100% + 24px);
+  height: calc(100% + 16px);
+}
+
+.sk-step-q,
+.sk-step-fix {
+  grid-area: 1 / 1;
+  transition: opacity 0.35s ease, transform 0.35s var(--sk-spring);
+}
+
+.sk-step-q {
+  color: var(--sk-orange);
+  font-family: var(--sk-display);
+  font-size: 26px;
+  font-weight: 800;
+  animation: sk-dot 1.2s ease-in-out infinite;
+}
+
+.sk-step-fix {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.sk-chain-figure.is-fixed .sk-step.is-gap {
+  border-style: solid;
+  border-color: #1b1a17;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+}
+
+.sk-chain-figure.is-fixed .sk-step-q {
+  opacity: 0;
+  animation: none;
+}
+
+.sk-chain-figure.is-fixed .sk-step-fix {
+  opacity: 1;
+  transform: none;
+}
+
+.sk-chain-figure.is-fixed .sk-step.is-gap .sk-circle {
+  opacity: 0;
+}
+
+.sk-chain-duck {
+  position: relative;
+  display: grid;
+  justify-items: center;
+}
+
+.sk-chain-bubble {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 56px;
+  width: 260px;
+  padding: 12px 14px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 3px 0 #1b1a17;
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
+  transform-origin: bottom right;
+  white-space: normal;
+  transition: opacity 0.3s ease, transform 0.35s var(--sk-spring);
+}
+
+.sk-chain-figure.is-asking .sk-chain-bubble {
+  opacity: 1;
+  transform: none;
+}
+
+.sk-chain-score {
+  position: absolute;
+  right: 0;
+  bottom: -40px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 999px;
+  background: var(--fd-surface);
+  color: var(--fd-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sk-chain-score b {
+  font-family: var(--sk-display);
+  font-size: 22px;
+  font-weight: 800;
+  transition: color 0.3s ease;
+}
+
+.sk-chain-figure.is-fixed .sk-chain-score b {
+  color: #2f7a42;
+}
+
+html[data-theme="obsidian"] .sk-chain-figure.is-fixed .sk-chain-score b {
+  color: #7fd394;
 }
 
 /* ---------- Try it ---------- */
@@ -1790,9 +1957,9 @@ html[data-theme="obsidian"] .sk-panel.is-ink > .lp-wrap {
     padding: 48px 16px 40px;
   }
 
-  .sk-hero-art img {
-    max-width: 420px;
-    margin: 0 auto;
+  .sk-hero-art {
+    justify-content: center;
+    padding-bottom: 40px;
   }
 
   .sk-try {
@@ -1801,6 +1968,10 @@ html[data-theme="obsidian"] .sk-panel.is-ink > .lp-wrap {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sk-step-q {
+    animation: none !important;
+  }
+
   .sk-cloud,
   .sk-run-title i {
     animation: none !important;
