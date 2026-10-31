@@ -15,30 +15,35 @@ import {
 // How it works, from the student's side: what you do, and what you get from it.
 export const steps = [
   {
+    tab: "Your notes",
     title: "Drop in your notes",
     copy: "Lecture slides, PDFs, readings or a pasted page. Feynduck reads them first.",
     gain: "Feedback based on what your course teaches, not the whole internet.",
     icon: FileText,
   },
   {
+    tab: "Explain",
     title: "Explain a topic in your own words",
     copy: "Out loud or typed, as if you were teaching a friend. No multiple choice, no hints.",
     gain: "A real test of whether you understand it, not whether you recognise it.",
     icon: MessageCircleMore,
   },
   {
+    tab: "Find the gap",
     title: "See the step you skipped",
     copy: "Feynduck checks your explanation against your notes and points to the missing link that matters most.",
     gain: "Your exact gap, instead of a page of generic feedback.",
     icon: TriangleAlert,
   },
   {
+    tab: "One question",
     title: "Answer one question",
     copy: "The duck asks one targeted question about that gap, so you work out the missing step yourself.",
     gain: "Understanding you built, which is the kind that holds up in an exam.",
     icon: Library,
   },
   {
+    tab: "Explain again",
     title: "Explain it again",
     copy: "Give the whole explanation another go. Your Clarity Score shows whether it got clearer.",
     gain: "Proof you've improved, plus quizzes and flashcards built from your own gaps.",
