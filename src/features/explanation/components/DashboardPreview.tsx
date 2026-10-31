@@ -3,20 +3,16 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowUp,
-  Check,
   ChevronLeft,
   ChevronRight,
   FileText,
   Lightbulb,
   Link2,
-  Loader2,
   Mic,
   Type,
   Upload,
-  X,
 } from "lucide-react";
 import { Duck } from "./Duck";
-import { demoQuestion, formatRecordingTime, useVoiceDemo } from "./useVoiceDemo";
 
 type DashboardPreviewProps = {
   activeStep?: number;
@@ -63,29 +59,14 @@ const studyToolTabs: { id: StudyToolTab; label: string }[] = [
 
 export function DashboardPreview({ activeStep = 0, compact = false }: DashboardPreviewProps) {
   const [activeToolTab, setActiveToolTab] = useState<StudyToolTab>(activeStep === 5 ? "quiz" : "insights");
-  const {
-    voiceStatus,
-    voiceError,
-    voiceDraft,
-    setVoiceDraft,
-    recordingSeconds,
-    waveformBars,
-    demoTranscript,
-    demoEvaluation,
-    isDemoEvaluating,
-    startRecording,
-    confirmRecording,
-    cancelRecording,
-    evaluateDemoAnswer,
-  } = useVoiceDemo({ onEvaluated: () => setActiveToolTab("insights") });
   const status = statusLabels[activeStep] ?? statusLabels[0];
   const showFeedback = activeStep >= 2;
-  const hasVoiceDemo = Boolean(demoTranscript || demoEvaluation || voiceStatus !== "idle");
 
   useEffect(() => {
     setActiveToolTab(activeStep === 5 ? "quiz" : "insights");
   }, [activeStep]);
 
+  // A picture of the app's composer: the landing page makes no AI calls, so nothing here is interactive.
   const renderComposer = ({
     placeholder,
     micLabel = "Explain by voice",
@@ -96,111 +77,22 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     micLabel?: string;
     disabled?: boolean;
     helper?: string;
-  }) => {
-    const isBusy = voiceStatus === "transcribing" || isDemoEvaluating;
-    const isRecording = voiceStatus === "recording";
-    const isReadyToEdit = voiceStatus === "ready_to_edit" && Boolean(voiceDraft.trim());
-    const isVoiceActive = isRecording || voiceStatus === "transcribing";
-    const voiceStatusLabel = voiceStatus === "transcribing" ? "Transcribing" : "Listening";
-    const helperText = voiceError ||
-      (isReadyToEdit
-        ? "Transcript ready. Edit it, add another voice note, or check it."
-        : helper);
-
-    return (
-      <div
-        className={[
-          "fd-composer",
-          disabled ? "is-disabled" : "",
-          isVoiceActive && !disabled ? "is-recording" : "",
-          isReadyToEdit && !disabled ? "is-ready" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <textarea
-          key={isVoiceActive ? "voice" : "idle"}
-          aria-label={placeholder}
-          disabled={disabled || isVoiceActive || isDemoEvaluating}
-          value={voiceDraft}
-          onChange={(event) => setVoiceDraft(event.target.value)}
-          placeholder={
-            isRecording && !disabled
-              ? "Listening..."
-              : voiceStatus === "transcribing" && !disabled
-                ? "Transcribing your explanation..."
-                : isDemoEvaluating && !disabled
-                  ? "Feynduck is checking the missing link..."
-                  : placeholder
-          }
-          rows={2}
-        />
-        <div className="fd-composer-foot">
-          {isVoiceActive ? (
-            <div aria-live="polite">
-              <span className={`fd-rec ${voiceStatus === "transcribing" ? "is-muted" : ""}`}>
-                <span />
-                {voiceStatusLabel} · {formatRecordingTime(recordingSeconds)}
-              </span>
-              <span className="lp-wave" aria-hidden="true">
-                {waveformBars.slice(0, 14).map((level, index) => (
-                  <span key={index} style={{ transform: `scaleY(${0.2 + level * 0.8})` }} />
-                ))}
-              </span>
-            </div>
-          ) : (
-            <span className="fd-hint-text">{helperText}</span>
-          )}
-          <div>
-            {isVoiceActive ? (
-              <>
-                <button
-                  className="fd-icon-btn fd-icon-btn-sm"
-                  type="button"
-                  aria-label="Cancel voice explanation"
-                  disabled={isBusy}
-                  onClick={cancelRecording}
-                >
-                  <X size={14} />
-                </button>
-                <button
-                  className="fd-btn fd-btn-dark fd-btn-sm"
-                  type="button"
-                  aria-label="Use this voice explanation"
-                  disabled={!isRecording || isBusy}
-                  onClick={confirmRecording}
-                >
-                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Check size={14} />}
-                  Done
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="fd-icon-btn fd-icon-btn-sm"
-                  type="button"
-                  aria-label={micLabel}
-                  disabled={disabled || isBusy}
-                  onClick={startRecording}
-                >
-                  {isBusy ? <Loader2 className="lp-spin" size={14} /> : <Mic size={14} />}
-                </button>
-                <button
-                  className="fd-btn fd-btn-accent fd-btn-sm"
-                  type="button"
-                  aria-label="Send explanation"
-                  disabled={disabled || isDemoEvaluating || !voiceDraft.trim()}
-                  onClick={evaluateDemoAnswer}
-                >
-                  {isDemoEvaluating ? <Loader2 className="lp-spin" size={14} /> : isReadyToEdit ? "Check" : <ArrowUp size={14} />}
-                </button>
-              </>
-            )}
-          </div>
+  }) => (
+    <div className={["fd-composer", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")} inert>
+      <textarea aria-label={placeholder} placeholder={placeholder} rows={2} readOnly />
+      <div className="fd-composer-foot">
+        <span className="fd-hint-text">{helper}</span>
+        <div>
+          <span className="fd-icon-btn fd-icon-btn-sm" aria-label={micLabel}>
+            <Mic size={14} />
+          </span>
+          <span className="fd-btn fd-btn-accent fd-btn-sm">
+            <ArrowUp size={14} />
+          </span>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderClarity = (score: number | null, label = "Clarity") => (
     <div className="lp-clarity">
@@ -222,39 +114,6 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
   );
 
   const renderInsightsPanel = () => {
-    if (hasVoiceDemo) {
-      const isPending = voiceStatus === "recording" || voiceStatus === "transcribing" || isDemoEvaluating;
-
-      return (
-        <>
-          {renderInsight(
-            "Skipped step",
-            demoEvaluation?.missingLink ||
-              (voiceStatus === "recording"
-                ? "Record your explanation, then Feynduck will look for the step you skipped."
-                : voiceStatus === "ready_to_edit"
-                  ? "Review the transcript, edit it if needed, then send it to Feynduck."
-                  : "Looking for how NADH, the electron transport chain, and NAD+ regeneration connect."),
-            "is-gap",
-            isPending,
-          )}
-          {renderInsight(
-            "What's unclear",
-            demoEvaluation?.summary || "Feynduck is checking whether your explanation connects oxygen to why the Krebs cycle stops.",
-            "",
-            isPending,
-          )}
-          {renderInsight(
-            "Follow-up question",
-            demoEvaluation?.followUpQuestion || "One targeted question will appear here after analysis.",
-            "is-question",
-            isPending,
-          )}
-          {renderClarity(demoEvaluation?.clarityScore ?? null, demoEvaluation?.scoreLabel || "Clarity")}
-        </>
-      );
-    }
-
     if (activeStep === 0) {
       return (
         <>
@@ -333,41 +192,7 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     </div>
   );
 
-  const renderVoiceDemoConversation = () => (
-    <div className="lp-chat">
-      <div className="lp-chat-scroll" aria-live="polite">
-        {duckMessage(demoQuestion)}
-        {voiceStatus === "recording" ? (
-          <span className="fd-pill is-danger">Recording... speak your explanation, then confirm.</span>
-        ) : null}
-        {voiceStatus === "ready_to_edit" && voiceDraft.trim() ? (
-          <span className="fd-pill is-amber">Transcript ready. You can edit it or add another sentence.</span>
-        ) : null}
-        {demoTranscript ? studentMessage(demoTranscript, true) : null}
-        {voiceStatus === "transcribing" || isDemoEvaluating
-          ? duckMessage(voiceStatus === "transcribing" ? "Turning your voice into text..." : "Looking for the step you skipped...")
-          : null}
-        {demoEvaluation
-          ? duckMessage(
-              <div className="lp-msg-stack">
-                <p>{demoEvaluation.summary}</p>
-                {tryThis(demoEvaluation.followUpQuestion)}
-              </div>,
-            )
-          : null}
-        {voiceError ? <span className="fd-pill is-danger">{voiceError}</span> : null}
-      </div>
-      {renderComposer({
-        placeholder: "Explain why the Krebs cycle needs oxygen...",
-        micLabel: "Explain out loud",
-        helper: voiceError || "Use your voice to try the Krebs cycle demo.",
-      })}
-    </div>
-  );
-
   const renderConversation = () => {
-    if (hasVoiceDemo) return renderVoiceDemoConversation();
-
     if (activeStep === 0) {
       return (
         <div className="lp-chat">
@@ -502,17 +327,6 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
   );
 
   const renderSources = () => {
-    if (hasVoiceDemo) {
-      return (
-        <div className="lp-notes">
-          <span className="fd-eyebrow">Source notes</span>
-          <p>Oxygen is not directly consumed in the Krebs cycle.</p>
-          <p>NADH delivers electrons to the electron transport chain, where oxygen acts as the final electron acceptor.</p>
-          <p>Without oxygen, NADH cannot unload electrons, so NAD+ is not regenerated and the Krebs cycle cannot continue.</p>
-        </div>
-      );
-    }
-
     if (activeStep === 0) {
       return (
         <>
@@ -600,36 +414,23 @@ export function DashboardPreview({ activeStep = 0, compact = false }: DashboardP
     </>
   );
 
-  const headerStatus =
-    voiceStatus === "recording"
-      ? "Recording"
-      : voiceStatus === "transcribing"
-        ? "Transcribing"
-        : isDemoEvaluating
-          ? "Analysing"
-          : voiceStatus === "ready_to_edit"
-            ? "Transcript ready"
-            : demoEvaluation
-              ? "Skipped step found"
-              : status;
+  const headerStatus = status;
   const statusTone =
-    voiceStatus === "recording"
-      ? "is-danger"
-      : headerStatus === "Skipped step found" || headerStatus === "Re-explain the gap"
-        ? "is-amber"
-        : headerStatus === "Clarity tracked" || headerStatus === "Built from your gap"
-          ? "is-success"
-          : "";
+    headerStatus === "Skipped step found" || headerStatus === "Re-explain the gap"
+      ? "is-amber"
+      : headerStatus === "Clarity tracked" || headerStatus === "Built from your gap"
+        ? "is-success"
+        : "";
 
   return (
-    <div className={`lp-app ${compact ? "is-compact" : ""} ${hasVoiceDemo ? "has-voice" : ""}`}>
+    <div className={`lp-app ${compact ? "is-compact" : ""}`}>
       <div className="lp-app-header">
         <div>
           <img src="/feynduckhead.png" alt="" width={22} height={22} />
           <nav className="fd-crumbs" aria-label="Mock breadcrumb">
-            <span>{hasVoiceDemo ? "Biology" : "Asthma"}</span>
+            <span>{"Asthma"}</span>
             <span aria-hidden="true">/</span>
-            <b>{hasVoiceDemo ? "Krebs cycle" : "Role of eosinophils"}</b>
+            <b>{"Role of eosinophils"}</b>
           </nav>
         </div>
         <span className={`fd-pill ${statusTone}`}>{headerStatus}</span>

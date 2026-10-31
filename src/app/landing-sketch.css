@@ -293,21 +293,6 @@ html[data-theme="obsidian"] .sk-duck {
 
 /* ---------- Voice demo ---------- */
 
-.sk-btn.is-small {
-  min-height: 44px;
-  gap: 8px;
-  padding: 0 18px;
-  font-size: 15px;
-  box-shadow: 0 2px 0 #1b1a17;
-}
-
-.sk-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
 .sk-type-link {
   display: inline-flex;
   align-items: center;
@@ -380,19 +365,6 @@ html[data-theme="obsidian"] .sk-duck {
   box-shadow: 0 1px 0 #1b1a17;
 }
 
-.sk-note.is-mic {
-  top: 46px;
-  left: calc(100% + 44px);
-}
-
-.sk-demo-live {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 0 4px;
-}
-
 .sk-wave {
   display: flex;
   align-items: center;
@@ -409,33 +381,38 @@ html[data-theme="obsidian"] .sk-duck {
   transition: transform 0.08s linear;
 }
 
-.sk-demo-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 44px;
-}
-
-.sk-demo-composer textarea {
-  width: 100%;
-  padding: 4px 18px 10px;
-  border: 0;
-  background: none;
+.sk-demo-answer p {
+  min-height: 3.1em;
+  padding: 4px 18px 14px;
   color: var(--fd-ink);
-  font: inherit;
   font-size: 16px;
   line-height: 1.55;
-  resize: vertical;
 }
 
-.sk-demo-composer textarea:focus {
-  outline: none;
+.sk-demo-answer .sk-wave {
+  height: 32px;
+  padding: 0 18px 14px;
 }
 
-.sk-demo-error {
-  color: var(--fd-danger);
+.sk-wave.is-auto > span {
+  animation: sk-wave 0.8s ease-in-out infinite alternate;
+}
+
+.sk-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 3px;
+  background: var(--fd-ink);
+  vertical-align: text-bottom;
+  animation: sk-dot 1s steps(1) infinite;
+}
+
+.sk-demo-checking {
+  color: var(--fd-ink-3);
   font-size: 15px;
   text-align: center;
+  animation: sk-dot 1.4s ease-in-out infinite;
 }
 
 .sk-score {
@@ -1450,6 +1427,12 @@ html[data-theme="obsidian"] .sk-panel.is-ink > .lp-wrap {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sk-wave.is-auto > span,
+  .sk-caret,
+  .sk-demo-checking {
+    animation: none !important;
+  }
+
   .sk-mascot-body,
   .sk-mascot-lid,
   .sk-mascot-ring,
