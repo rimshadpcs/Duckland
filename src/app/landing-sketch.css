@@ -275,20 +275,19 @@ html[data-theme="obsidian"] .sk-try-head p {
   transform: translateY(-50%) rotate(2deg);
 }
 
-/* Duck cropped from the third panel of the wide banner until standalone drawings exist. */
-.sk-duck {
+/* The animated mascot sits beside the example card, and reacts to it */
+.sk-try-mascot {
   position: absolute;
-  bottom: -28px;
-  left: -168px;
-  width: 150px;
-  height: 138px;
-  background: url("/wide_banner.webp") no-repeat -702px -180px / 1003px auto;
-  transform: rotate(-6deg);
+  bottom: -18px;
+  left: -178px;
 }
 
-html[data-theme="obsidian"] .sk-duck {
-  background-image: url("/wide_banner_dark.webp");
-  background-position: -696px -138px;
+.sk-try .sk-mascot-ring {
+  border-color: #1b1a17;
+}
+
+html[data-theme="obsidian"] .sk-try .sk-mascot-ring {
+  border-color: var(--sk-yellow);
 }
 
 /* ---------- Voice demo ---------- */
@@ -766,10 +765,8 @@ html[data-theme="obsidian"] .fd-landing .lp-cta > div:first-child > p {
   background: var(--sk-paper);
 }
 
-.sk-duck.is-cta {
-  position: static;
-  display: block;
-  margin-bottom: 8px;
+.sk-cta-mascot {
+  margin: 0 0 4px -14px;
 }
 
 /* Colour panels: big rounded blocks in tints of the drawings' ink colours */
@@ -1348,9 +1345,15 @@ html[data-theme="obsidian"] .sk-panel.is-ink > .lp-wrap {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1180px) {
-  .sk-note,
-  .sk-duck:not(.is-cta) {
+  .sk-note {
     display: none;
+  }
+
+  .sk-try-mascot {
+    position: static;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 4px;
   }
 }
 

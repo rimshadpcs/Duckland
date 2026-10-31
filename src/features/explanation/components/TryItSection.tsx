@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Lightbulb, Play, RotateCcw } from "lucide-react";
 import { trackEvent } from "@src/lib/analytics";
+import { DuckMascot, type DuckMood } from "./DuckMascot";
 import { HandCircle } from "./HandMarks";
 
 type Phase = "ready" | "speaking" | "checking" | "result";
@@ -18,6 +19,14 @@ const feedback = {
   label: "Getting there",
   gap: "Oxygen is the final electron acceptor in the electron transport chain. Without it, NADH can't unload its electrons, so NAD+ isn't regenerated, and the Krebs cycle can't keep running.",
   question: "What does the Krebs cycle need from NAD+, and what happens to NADH when oxygen is unavailable?",
+};
+
+// The mascot reacts to the example as it plays.
+const moodByPhase: Record<Phase, DuckMood> = {
+  ready: "idle",
+  speaking: "listening",
+  checking: "thinking",
+  result: "asking",
 };
 
 const WORD_MS = 140;
@@ -90,7 +99,9 @@ export function TryItSection() {
         </div>
 
         <div className="sk-try-stage lp-reveal" ref={stageRef}>
-          <div className="sk-duck" role="img" aria-label="Feynduck, a yellow rubber duck wearing glasses" />
+          <div className="sk-try-mascot">
+            <DuckMascot mood={moodByPhase[phase]} size={160} />
+          </div>
 
           <div className="lp-sandbox sk-demo">
             <div className="lp-sandbox-head">
