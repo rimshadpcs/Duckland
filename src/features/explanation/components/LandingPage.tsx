@@ -9,11 +9,13 @@ import { HeroSection } from "./HeroSection";
 import { HowItWorksSection } from "./HowItWorksSection";
 import { MethodSection } from "./MethodSection";
 import { Navbar } from "./Navbar";
-import { PricingSection } from "./PricingSection";
 import { ProductPreview } from "./ProductPreview";
 import { QualityProofSection } from "./QualityProofSection";
 import { UniversityMarquee } from "./UniversityMarquee";
 import { AiComparisonSection } from "./AiComparisonSection";
+import { sketchDisplay, sketchHand } from "./sketchFonts";
+import { TryItSection } from "./TryItSection";
+import { LiveModeSection } from "./LiveModeSection";
 
 export function LandingPage() {
   useEffect(() => {
@@ -44,17 +46,18 @@ export function LandingPage() {
   const studyHref = "#waitlist";
 
   return (
-    <main className="fd fd-landing">
+    <main className={`fd fd-landing ${sketchDisplay.variable} ${sketchHand.variable}`}>
       <Navbar studyHref={studyHref} />
       <HeroSection studyHref={studyHref} />
+      <TryItSection />
       <UniversityMarquee />
       <AiComparisonSection />
       <QualityProofSection />
       <HowItWorksSection />
       <ProductPreview />
+      <LiveModeSection />
       <MethodSection />
       <AudienceSection />
-      <PricingSection />
       <FAQSection />
       <FinalCTASection />
       <Footer studyHref={studyHref} />

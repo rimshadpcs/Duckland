@@ -1,0 +1,1446 @@
+/* Sketchbook landing redesign (v0: hero + "Try it" section).
+   Ink line, duck yellow and handwritten notes, taken from the Feynduck illustrations. */
+
+.fd-landing {
+  --sk-paper: #fffdf7;
+  --sk-cream: #fbf3e4;
+  --sk-yellow: #f2c94c;
+  --sk-blue: #2b4c9b;
+  --sk-orange: #e2622d;
+  --sk-shadow: 0 4px 12px rgba(36, 28, 21, 0.1);
+  --sk-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --sk-display: var(--font-sketch-display), var(--fd-sans);
+  --sk-hand: var(--font-sketch-hand), cursive;
+
+  background: var(--sk-paper);
+}
+
+html[data-theme="obsidian"] .fd-landing {
+  --sk-paper: #151412;
+  --sk-cream: #1d1c19;
+  --sk-blue: #9db4f0;
+  --sk-orange: #f08a5d;
+  --sk-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- Hand-drawn strokes ---------- */
+
+.sk-draw {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.sk-draw path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+/* Only hide a stroke once JS has armed the reveal, so it never goes missing without JS. */
+.fd-landing.is-reveal-ready .lp-reveal:not(.is-visible) .sk-draw path,
+.fd-landing .lp-sandbox-result:not(.is-visible) .sk-draw path {
+  stroke-dashoffset: 1;
+}
+
+.fd-landing .lp-reveal.is-visible .sk-draw path,
+.fd-landing .lp-sandbox-result.is-visible .sk-draw path {
+  transition: stroke-dashoffset 0.6s ease-out 0.35s;
+}
+
+/* ---------- Buttons and links ---------- */
+
+.sk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 26px;
+  border: 2px solid #1b1a17;
+  border-radius: 999px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  font-size: 17px;
+  font-weight: 600;
+  box-shadow: 0 3px 0 #1b1a17;
+  transition:
+    transform 0.22s var(--sk-spring),
+    box-shadow 0.22s var(--sk-spring);
+}
+
+.sk-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 #1b1a17;
+}
+
+.sk-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #1b1a17;
+}
+
+.sk-btn:focus-visible,
+.sk-link:focus-visible {
+  outline: 3px solid var(--sk-blue);
+  outline-offset: 3px;
+}
+
+html[data-theme="obsidian"] .sk-btn {
+  border-color: var(--sk-yellow);
+  box-shadow: 0 3px 0 #000;
+}
+
+.sk-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--fd-ink);
+  font-size: 17px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--sk-blue);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+/* ---------- Hero ---------- */
+
+.sk-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  align-items: center;
+  gap: 40px;
+  padding: 72px 24px 64px;
+}
+
+.sk-hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.sk-hero h1 {
+  color: var(--fd-ink);
+  font-family: var(--sk-display);
+  font-size: clamp(44px, 5vw, 70px);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.sk-mark {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  white-space: nowrap;
+}
+
+.sk-underline {
+  position: absolute;
+  z-index: -1;
+  bottom: -0.02em;
+  left: -3%;
+  width: 106%;
+  height: 0.34em;
+  color: var(--sk-yellow);
+}
+
+.sk-underline path {
+  stroke-width: 9px;
+}
+
+.sk-hero-copy > p {
+  max-width: 34ch;
+  color: var(--fd-ink-3);
+  font-size: 19px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.sk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 28px;
+  margin-top: 4px;
+}
+
+.sk-hero-art {
+  margin: 0;
+  transform: rotate(2deg);
+}
+
+.sk-hero-art img {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin-left: auto;
+}
+
+/* ---------- Try it ---------- */
+
+.sk-try {
+  padding: 88px 0 104px;
+  border-block: 2px solid #1b1a17;
+  background: var(--sk-yellow);
+}
+
+html[data-theme="obsidian"] .sk-try {
+  border-color: var(--sk-yellow);
+  background: var(--sk-cream);
+}
+
+.sk-try-head {
+  max-width: 640px;
+  margin: 0 auto 48px;
+  text-align: center;
+}
+
+.sk-try-head h2 {
+  color: #1b1a17;
+  font-family: var(--sk-display);
+  font-size: clamp(34px, 4.6vw, 56px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.sk-try-head p {
+  margin-top: 14px;
+  color: #2e2c28;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+html[data-theme="obsidian"] .sk-try-head h2,
+html[data-theme="obsidian"] .sk-try-head p {
+  color: var(--fd-ink);
+}
+
+.sk-try-stage {
+  position: relative;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.sk-try .lp-sandbox {
+  overflow: visible;
+  border: 1.5px solid #1b1a17;
+  border-radius: 16px;
+  box-shadow: var(--sk-shadow);
+}
+
+.sk-try .lp-sandbox-result.is-visible {
+  overflow: visible;
+}
+
+.sk-try .lp-result-row {
+  position: relative;
+}
+
+.sk-circle {
+  position: absolute;
+  top: -10px;
+  left: -14px;
+  width: calc(100% + 28px);
+  height: calc(100% + 20px);
+  color: var(--sk-orange);
+}
+
+.sk-circle path {
+  stroke: var(--sk-orange);
+  stroke-width: 2.2px;
+}
+
+.sk-note {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 44px);
+  color: var(--sk-blue);
+  font-family: var(--sk-hand);
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%) rotate(-3deg);
+}
+
+.sk-note.is-next {
+  left: calc(100% + 32px);
+  transform: translateY(-50%) rotate(2deg);
+}
+
+/* Duck cropped from the third panel of the wide banner until standalone drawings exist. */
+.sk-duck {
+  position: absolute;
+  bottom: -28px;
+  left: -168px;
+  width: 150px;
+  height: 138px;
+  background: url("/wide_banner.webp") no-repeat -702px -180px / 1003px auto;
+  transform: rotate(-6deg);
+}
+
+html[data-theme="obsidian"] .sk-duck {
+  background-image: url("/wide_banner_dark.webp");
+  background-position: -696px -138px;
+}
+
+/* ---------- Voice demo ---------- */
+
+.sk-btn.is-small {
+  min-height: 44px;
+  gap: 8px;
+  padding: 0 18px;
+  font-size: 15px;
+  box-shadow: 0 2px 0 #1b1a17;
+}
+
+.sk-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.sk-type-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--fd-ink-3);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sk-type-link:hover:not(:disabled) {
+  color: var(--fd-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sk-blue);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.sk-type-link:focus-visible,
+.sk-mic:focus-visible {
+  outline: 3px solid var(--sk-blue);
+  outline-offset: 3px;
+}
+
+.sk-demo .lp-sandbox-result {
+  max-height: none;
+}
+
+.sk-demo-start {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 6px;
+}
+
+.sk-mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 0 30px 0 24px;
+  border: 2px solid #1b1a17;
+  border-radius: 999px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #1b1a17;
+  transition:
+    transform 0.22s var(--sk-spring),
+    box-shadow 0.22s var(--sk-spring);
+}
+
+.sk-mic:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #1b1a17;
+}
+
+.sk-mic:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #1b1a17;
+}
+
+.sk-note.is-mic {
+  top: 46px;
+  left: calc(100% + 44px);
+}
+
+.sk-demo-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0 4px;
+}
+
+.sk-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 48px;
+}
+
+.sk-wave > span {
+  width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fd-ink);
+  transform-origin: center;
+  transition: transform 0.08s linear;
+}
+
+.sk-demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+}
+
+.sk-demo-composer textarea {
+  width: 100%;
+  padding: 4px 18px 10px;
+  border: 0;
+  background: none;
+  color: var(--fd-ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.sk-demo-composer textarea:focus {
+  outline: none;
+}
+
+.sk-demo-error {
+  color: var(--fd-danger);
+  font-size: 15px;
+  text-align: center;
+}
+
+.sk-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sk-score strong {
+  font-family: var(--sk-display);
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.sk-score span {
+  color: var(--fd-ink-3);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sk-again {
+  justify-self: start;
+}
+
+.sk-live-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 620px;
+  margin: 32px auto 0;
+  color: #2e2c28;
+  font-size: 16px;
+  text-align: center;
+}
+
+html[data-theme="obsidian"] .sk-live-note {
+  color: var(--fd-ink-2);
+}
+
+.sk-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------- Rest of the page ---------- */
+
+/* Section rhythm: paper, with cream bands instead of white-on-white */
+.fd-landing .lp-section.is-band {
+  border-color: var(--fd-border-soft);
+  background: var(--sk-cream);
+}
+
+.fd-landing .lp-head h2 {
+  font-family: var(--sk-display);
+  font-size: clamp(34px, 4.6vw, 56px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.fd-landing .lp-head p {
+  color: var(--fd-ink-3);
+  font-size: 18px;
+}
+
+/* The two remaining section labels become handwritten notes */
+.fd-landing .lp-head .fd-eyebrow {
+  color: var(--sk-blue);
+  font-family: var(--sk-hand);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  transform: rotate(-2deg);
+  transform-origin: left center;
+}
+
+/* Cards: one radius, an ink outline, one soft shadow */
+.fd-landing .lp-card,
+.fd-landing .lp-diff,
+.fd-landing .lp-preview {
+  border: 1.5px solid #1b1a17;
+  border-radius: 16px;
+  background: var(--fd-surface);
+  box-shadow: var(--sk-shadow);
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-card,
+html[data-theme="obsidian"] .fd-landing .lp-diff,
+html[data-theme="obsidian"] .fd-landing .lp-preview {
+  border-color: var(--fd-border);
+}
+
+.fd-landing .lp-card h3 {
+  font-family: var(--sk-display);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.fd-landing .fd-icon-tile {
+  border: 1.5px solid #1b1a17;
+  border-radius: 999px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+}
+
+/* ChatGPT comparison: the general-AI column is plain text, Feynduck's is the card */
+.fd-landing .lp-grid-2 > .lp-card:not(.is-strong) {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+.fd-landing .lp-card.is-strong {
+  border-width: 2px;
+  background: var(--sk-paper);
+  box-shadow: 0 4px 0 #1b1a17;
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-card.is-strong {
+  border-color: var(--sk-yellow);
+  box-shadow: none;
+}
+
+.fd-landing .lp-card.is-strong .lp-list li > svg {
+  color: var(--sk-orange);
+}
+
+/* Before / after: a marked-up sheet */
+.fd-landing .lp-diff {
+  background: var(--sk-paper);
+}
+
+.fd-landing .lp-diff mark {
+  background: linear-gradient(transparent 55%, var(--sk-yellow) 55%);
+  color: inherit;
+}
+
+.fd-landing .lp-diff-score {
+  font-family: var(--sk-display);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+/* How it works: the banner, then a numbered path */
+.sk-banner {
+  margin: 8px 0 48px;
+}
+
+.sk-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.fd-landing .lp-steps {
+  gap: 28px;
+}
+
+.fd-landing .lp-step {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.fd-landing .lp-step .fd-icon-tile {
+  display: none;
+}
+
+.fd-landing .lp-step .fd-kicker {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid #1b1a17;
+  border-radius: 999px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  font-family: var(--sk-display);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.fd-landing .lp-step.is-core .fd-kicker {
+  background: var(--sk-orange);
+  color: #fff;
+}
+
+.fd-landing .lp-step.is-core .fd-eyebrow {
+  color: var(--sk-orange);
+  font-family: var(--sk-hand);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Low-information labels left over from the old design */
+.fd-landing .lp-value .fd-eyebrow,
+.fd-landing .lp-audience-grid .fd-kicker {
+  display: none;
+}
+
+.fd-landing .lp-step h3 {
+  font-family: var(--sk-display);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* Method: dictionary entries as index cards */
+.fd-landing .lp-define {
+  border-radius: 6px;
+  background: var(--sk-paper);
+  transform: rotate(-1deg);
+}
+
+.fd-landing .lp-define:nth-child(2) {
+  transform: rotate(0.8deg);
+}
+
+.fd-landing .lp-define.is-feynduck {
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  transform: rotate(-0.4deg);
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-define.is-feynduck * {
+  color: #1b1a17;
+}
+
+.fd-landing .lp-define h3 {
+  font-size: 26px;
+}
+
+/* Who it's for: a list, not cards */
+.fd-landing .lp-audience-grid .lp-card {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.fd-landing .lp-audience > aside {
+  border: 0;
+  background: none;
+}
+
+.fd-landing .lp-audience > aside p {
+  color: var(--fd-ink-2);
+  font-family: var(--sk-display);
+  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Pricing: pill buttons, the featured plan on yellow */
+.fd-landing .lp-price-card.is-strong {
+  background: var(--sk-yellow);
+  color: #1b1a17;
+}
+
+.fd-landing .lp-price-card.is-strong p,
+.fd-landing .lp-price-card.is-strong li {
+  color: #2e2c28;
+}
+
+.fd-landing .lp-price {
+  font-family: var(--sk-display);
+  font-weight: 800;
+}
+
+.fd-landing #pricing .fd-btn {
+  min-height: 48px;
+  border: 2px solid #1b1a17;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.fd-landing #pricing .fd-btn-accent {
+  background: #fff;
+  color: #1b1a17;
+  box-shadow: 0 3px 0 #1b1a17;
+}
+
+html[data-theme="obsidian"] .fd-landing #pricing .fd-btn {
+  border-color: var(--sk-yellow);
+}
+
+/* FAQ: hairline rows, display-font questions */
+.fd-landing .lp-faq article {
+  border-radius: 0;
+  border-width: 0 0 1.5px;
+  border-color: var(--fd-border);
+  background: none;
+  box-shadow: none;
+}
+
+.fd-landing .lp-faq button span {
+  font-family: var(--sk-display);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Final CTA: a yellow page with the duck */
+.fd-landing .lp-cta {
+  border: 2px solid #1b1a17;
+  border-radius: 24px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  box-shadow: 0 6px 0 #1b1a17;
+}
+
+.fd-landing .lp-cta h2 {
+  color: #1b1a17;
+  font-family: var(--sk-display);
+  font-weight: 800;
+}
+
+.fd-landing .lp-cta > div:first-child > p {
+  color: #2e2c28;
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-cta {
+  border-color: var(--sk-yellow);
+  background: var(--sk-cream);
+  box-shadow: none;
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-cta h2 {
+  color: var(--fd-ink);
+}
+
+html[data-theme="obsidian"] .fd-landing .lp-cta > div:first-child > p {
+  color: var(--fd-ink-2);
+}
+
+.fd-landing .lp-waitlist {
+  border: 1.5px solid #1b1a17;
+  border-radius: 16px;
+  background: var(--sk-paper);
+}
+
+.sk-duck.is-cta {
+  position: static;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* Colour panels: big rounded blocks in tints of the drawings' ink colours */
+.fd-landing {
+  --sk-blue-tint: #e6ecf8;
+  --sk-orange-tint: #fbe6da;
+  --sk-yellow-tint: #fcf0c8;
+}
+
+html[data-theme="obsidian"] .fd-landing {
+  --sk-blue-tint: rgba(157, 180, 240, 0.12);
+  --sk-orange-tint: rgba(240, 138, 93, 0.12);
+  --sk-yellow-tint: rgba(242, 201, 76, 0.1);
+}
+
+.fd-landing .lp-section.sk-panel {
+  padding: 40px 0;
+  border: 0;
+  background: none;
+}
+
+.sk-panel > .lp-wrap {
+  max-width: 1168px;
+  padding: 72px 48px;
+  border-radius: 32px;
+}
+
+.sk-panel.is-blue > .lp-wrap {
+  background: var(--sk-blue-tint);
+}
+
+.sk-panel.is-orange > .lp-wrap {
+  background: var(--sk-orange-tint);
+}
+
+.sk-panel.is-yellow > .lp-wrap {
+  background: var(--sk-yellow-tint);
+}
+
+/* ---------- Duck mascot ---------- */
+
+.sk-mascot {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.sk-mascot-body {
+  position: relative;
+  z-index: 1;
+  width: 78%;
+  aspect-ratio: 1;
+  animation: sk-breathe 3.2s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+.sk-mascot-body img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 18px rgba(36, 28, 21, 0.25));
+}
+
+/* Eyelids in the duck's own yellow, closing over the eye whites */
+.sk-mascot-lid {
+  position: absolute;
+  top: 47.5%;
+  width: 15%;
+  height: 17.5%;
+  border-radius: 50%;
+  background: #fdc904;
+  transform: scaleY(0);
+  transform-origin: top;
+  animation: sk-blink 4.6s infinite;
+}
+
+.sk-mascot-lid.is-left {
+  left: 22.3%;
+}
+
+.sk-mascot-lid.is-right {
+  left: 62.8%;
+}
+
+.sk-mascot-ring {
+  position: absolute;
+  inset: 11%;
+  border: 2px solid var(--sk-yellow);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.sk-mascot-dots {
+  position: absolute;
+  z-index: 2;
+  top: 4%;
+  right: 2%;
+  display: flex;
+  gap: 5px;
+  padding: 9px 12px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.25s, transform 0.25s var(--sk-spring);
+}
+
+.sk-mascot-dots > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1b1a17;
+  animation: sk-dot 1s ease-in-out infinite;
+}
+
+.sk-mascot-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.sk-mascot-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.sk-mascot.is-listening .sk-mascot-body {
+  animation: sk-listen 2.4s ease-in-out infinite;
+}
+
+.sk-mascot.is-listening .sk-mascot-ring {
+  animation: sk-ring 2s ease-out infinite;
+}
+
+.sk-mascot.is-listening .sk-mascot-ring.is-late {
+  animation-delay: 1s;
+}
+
+.sk-mascot.is-thinking .sk-mascot-dots {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sk-mascot.is-thinking .sk-mascot-body {
+  animation: sk-think 1.6s ease-in-out infinite;
+}
+
+.sk-mascot.is-asking .sk-mascot-body {
+  animation: sk-talk 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes sk-breathe {
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes sk-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(0);
+  }
+  95% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sk-listen {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(-6deg) translateY(-2px);
+  }
+}
+
+@keyframes sk-think {
+  0%,
+  100% {
+    transform: rotate(3deg);
+  }
+  50% {
+    transform: rotate(5deg) translateY(-3px);
+  }
+}
+
+@keyframes sk-talk {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(-4px) scale(1.02);
+  }
+}
+
+@keyframes sk-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes sk-dot {
+  50% {
+    transform: translateY(-3px);
+    opacity: 0.4;
+  }
+}
+
+/* ---------- Live mode ---------- */
+
+.sk-panel.is-ink > .lp-wrap {
+  background: #1b1a17;
+  color: #f3f1ec;
+}
+
+html[data-theme="obsidian"] .sk-panel.is-ink > .lp-wrap {
+  border: 1.5px solid var(--sk-yellow);
+  background: var(--sk-cream);
+}
+
+.sk-live {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 48px;
+}
+
+.sk-live-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.sk-live-copy .sk-pill {
+  color: var(--sk-yellow);
+}
+
+.sk-live-copy h2 {
+  color: #f3f1ec;
+  font-family: var(--sk-display);
+  font-size: clamp(34px, 4.2vw, 52px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.sk-live-copy p {
+  color: #cbc7be;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.sk-live-copy ul {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.sk-live-copy li {
+  padding-left: 22px;
+  color: #cbc7be;
+  font-size: 16px;
+  line-height: 1.5;
+  background: radial-gradient(circle at 5px 0.7em, var(--sk-yellow) 4px, transparent 5px) no-repeat;
+}
+
+.sk-live-copy li strong {
+  color: #f3f1ec;
+}
+
+.sk-live-app {
+  overflow: hidden;
+  border: 1.5px solid #1b1a17;
+  border-radius: 20px;
+  background: #fffdf7;
+  color: #1b1a17;
+  box-shadow: 0 0 0 6px rgba(242, 201, 76, 0.18), 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.sk-live-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #ece6d6;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sk-live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fde8e0;
+  color: #b4441a;
+}
+
+.sk-live-dot::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  animation: sk-dot 1.4s ease-in-out infinite;
+}
+
+.sk-live-time {
+  margin-left: auto;
+  color: #6b6862;
+  font-variant-numeric: tabular-nums;
+}
+
+.sk-live-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+}
+
+.sk-live-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-height: 360px;
+  padding: 24px 20px;
+  background: radial-gradient(circle at 50% 38%, #fff3c4 0%, #fffdf7 62%);
+}
+
+.sk-live-status {
+  padding: 4px 12px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sk-live-caption {
+  max-width: 34ch;
+  min-height: 4.8em;
+  color: #2e2c28;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+  animation: sk-caption 0.45s ease-out;
+}
+
+.sk-live-caption b {
+  display: block;
+  margin-bottom: 2px;
+  color: #6b6862;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sk-live-caption.is-duck {
+  padding: 12px 16px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 18px 18px 18px 4px;
+  background: var(--sk-yellow);
+  color: #1b1a17;
+  font-weight: 600;
+}
+
+.sk-live-caption.is-duck b {
+  color: #44423d;
+}
+
+@keyframes sk-caption {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.sk-live-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-left: 1px solid #ece6d6;
+  background: #fbf3e4;
+}
+
+.sk-live-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e6dcc4;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.sk-live-card > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6b6862;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sk-live-card p {
+  color: #2e2c28;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.sk-live-score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.sk-live-score strong {
+  font-family: var(--sk-display);
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sk-live-score small {
+  color: #6b6862;
+  font-size: 14px;
+}
+
+.sk-live-meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f1ead7;
+}
+
+.sk-live-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sk-yellow);
+  transition: width 0.8s var(--fd-ease-out);
+}
+
+.sk-live-card.is-gap {
+  border-color: #f2c2aa;
+  background: #fdf0e9;
+}
+
+.sk-live-card.is-gap > span {
+  color: #b4441a;
+}
+
+.sk-live-card.is-gap.is-pending {
+  border-color: #e6dcc4;
+  background: #fff;
+}
+
+.sk-live-card.is-gap.is-pending > span {
+  color: #6b6862;
+}
+
+.sk-live-card.is-gap.is-fixed {
+  border-color: #b9dcc0;
+  background: #eef7ef;
+}
+
+.sk-live-card.is-gap.is-fixed > span {
+  color: #2f7a42;
+}
+
+.sk-live-concepts {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.sk-live-concepts li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sk-live-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid #ece6d6;
+}
+
+.sk-live-wave {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+}
+
+.sk-live-wave > span {
+  flex: 1;
+  max-width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: #1b1a17;
+  transform: scaleY(0.3);
+  animation: sk-wave 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes sk-wave {
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.sk-live-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid #1b1a17;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.sk-live-btn.is-mic {
+  width: 52px;
+  height: 52px;
+  background: var(--sk-yellow);
+  box-shadow: 0 3px 0 #1b1a17;
+}
+
+.sk-live-caveat {
+  padding: 0 18px 14px;
+  color: #6b6862;
+  font-size: 12px;
+}
+
+.sk-live-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .sk-note,
+  .sk-duck:not(.is-cta) {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .sk-panel > .lp-wrap {
+    margin-inline: 12px;
+    padding: 48px 18px;
+    border-radius: 24px;
+  }
+
+  .fd-landing .fd-header .fd-btn,
+  .fd-landing .fd-icon-btn,
+  .fd-landing .fd-segmented button,
+  .lp-footer .fd-btn {
+    min-height: 44px;
+  }
+
+  .fd-landing .fd-icon-btn {
+    min-width: 44px;
+  }
+
+  .lp-footer nav {
+    gap: 0;
+  }
+
+  .lp-footer nav .fd-text-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .fd-landing .lp-define,
+  .fd-landing .lp-define:nth-child(2),
+  .fd-landing .lp-define.is-feynduck {
+    transform: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .sk-live,
+  .sk-live-body {
+    grid-template-columns: 1fr;
+  }
+
+  .sk-live-rail {
+    border-top: 1px solid #ece6d6;
+    border-left: 0;
+  }
+
+  .sk-live-stage {
+    min-height: 320px;
+  }
+
+  .sk-hero {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 48px 16px 40px;
+  }
+
+  .sk-hero-art img {
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
+  .sk-try {
+    padding: 64px 0 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-mascot-body,
+  .sk-mascot-lid,
+  .sk-mascot-ring,
+  .sk-mascot-dots > span,
+  .sk-live-wave > span,
+  .sk-live-dot::before,
+  .sk-live-caption {
+    animation: none !important;
+  }
+
+  .sk-btn,
+  .fd-landing .lp-reveal.is-visible .sk-draw path,
+  .fd-landing .lp-sandbox-result.is-visible .sk-draw path {
+    transition: none;
+  }
+
+  .sk-btn:hover {
+    transform: none;
+  }
+}

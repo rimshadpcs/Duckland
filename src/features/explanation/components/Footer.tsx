@@ -21,14 +21,12 @@ export function Footer({ studyHref = "/start" }: { studyHref?: string }) {
           <span className="fd-eyebrow">Product</span>
           <a className="fd-text-link" href="#how">How it works</a>
           <a className="fd-text-link" href="#preview">Preview</a>
-          <a className="fd-text-link" href="#pricing">Pricing</a>
-          <a className="fd-text-link" href="#waitlist">Waitlist</a>
           <a
             className="fd-text-link"
             href={studyHref}
             onClick={() => trackEvent("cta_clicked", { location: "footer", href: studyHref })}
           >
-            Start studying
+            Join the waitlist
           </a>
         </nav>
 

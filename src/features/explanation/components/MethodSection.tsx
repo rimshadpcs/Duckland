@@ -1,6 +1,3 @@
-"use client";
-
-import { useThemeMode } from "@src/lib/useThemeMode";
 import { SectionHeader } from "./SectionHeader";
 
 const definitions = [
@@ -34,11 +31,8 @@ const definitions = [
 ];
 
 export function MethodSection() {
-  const { themeMode, mounted } = useThemeMode();
-  const isDark = mounted && themeMode === "obsidian";
-
   return (
-    <section className="lp-section is-band" id="method">
+    <section className="lp-section sk-panel is-yellow" id="method">
       <div className="lp-wrap">
         <SectionHeader
           title="Why Feynduck works."
@@ -64,12 +58,6 @@ export function MethodSection() {
             </article>
           ))}
         </div>
-        <figure className="lp-banner lp-reveal">
-          <img
-            src={isDark ? "/wide_banner_dark.png" : "/wide_banner.png"}
-            alt="Feynduck workflow diagram"
-          />
-        </figure>
       </div>
     </section>
   );
