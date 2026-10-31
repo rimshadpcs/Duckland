@@ -162,7 +162,7 @@ export function LiveModeSection() {
 
           <div className="sk-live-body">
             <div className="sk-live-stage">
-              <DuckMascot mood={beat.mood} size={200} />
+              <DuckMascot mood={beat.mood} size={150} variant="full" />
               <span className="sk-live-status" aria-live="polite">
                 {beat.status}
               </span>

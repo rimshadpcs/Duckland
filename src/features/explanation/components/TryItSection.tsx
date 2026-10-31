@@ -100,7 +100,7 @@ export function TryItSection() {
 
         <div className="sk-try-stage lp-reveal" ref={stageRef}>
           <div className="sk-try-mascot">
-            <DuckMascot mood={moodByPhase[phase]} size={160} />
+            <DuckMascot mood={moodByPhase[phase]} size={140} variant="full" />
           </div>
 
           <div className="lp-sandbox sk-demo">

@@ -278,8 +278,8 @@ html[data-theme="obsidian"] .sk-try-head p {
 /* The animated mascot sits beside the example card, and reacts to it */
 .sk-try-mascot {
   position: absolute;
-  bottom: -18px;
-  left: -178px;
+  bottom: -24px;
+  left: -170px;
 }
 
 .sk-try .sk-mascot-ring {
@@ -914,6 +914,43 @@ html[data-theme="obsidian"] .fd-landing {
 
 .sk-mascot.is-asking .sk-mascot-body {
   animation: sk-talk 0.5s ease-in-out infinite alternate;
+}
+
+/* Full-body duck: rings and the thinking bubble sit around its head, and it
+   breathes and sways from its feet. Eye boxes measured on feynduck-mascot.webp. */
+.sk-mascot.is-full .sk-mascot-body {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  transform-origin: 50% 98%;
+}
+
+.sk-mascot.is-full {
+  place-items: start center;
+}
+
+.sk-mascot.is-full .sk-mascot-ring {
+  inset: 2% 4% auto;
+  aspect-ratio: 1;
+}
+
+.sk-mascot.is-full .sk-mascot-dots {
+  top: 2%;
+  right: -6%;
+}
+
+.sk-mascot.is-full .sk-mascot-lid {
+  top: 25.6%;
+  width: 15.6%;
+  height: 11.4%;
+  background: #fddb06;
+}
+
+.sk-mascot.is-full .sk-mascot-lid.is-left {
+  left: 25.8%;
+}
+
+.sk-mascot.is-full .sk-mascot-lid.is-right {
+  left: 63.4%;
 }
 
 @keyframes sk-breathe {
