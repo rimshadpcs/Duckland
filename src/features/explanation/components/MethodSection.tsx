@@ -41,7 +41,6 @@ export function MethodSection() {
     <section className="lp-section is-band" id="method">
       <div className="lp-wrap">
         <SectionHeader
-          label="the method"
           title="Why Feynduck works."
           copy="Feynman Technique helps you explain. Rubber ducking helps you hear the gap. Feynduck helps you find the step you skipped."
         />

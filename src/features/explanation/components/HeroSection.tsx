@@ -25,7 +25,7 @@ export function HeroSection({ studyHref = "/start" }: { studyHref?: string }) {
             href={studyHref}
             onClick={() => trackEvent("cta_clicked", { location: "hero_primary", href: studyHref })}
           >
-            Test my understanding
+            Join the waitlist
             <ArrowRight className="fd-arrow" size={16} strokeWidth={2} />
           </a>
           <a
@@ -33,7 +33,7 @@ export function HeroSection({ studyHref = "/start" }: { studyHref?: string }) {
             href="#how"
             onClick={() => trackEvent("cta_clicked", { location: "hero_secondary", href: "#how" })}
           >
-            Watch the study loop
+            See how it works
           </a>
         </div>
       </div>

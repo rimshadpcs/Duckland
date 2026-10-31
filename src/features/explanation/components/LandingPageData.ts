@@ -179,7 +179,7 @@ export const faqs = [
   {
     question: "Is Feynduck just another study material app?",
     answer:
-      "No. ChatGPT and NotebookLM can explain a subject to you. Feynduck checks whether you can explain it yourself.",
+      "No. Most study apps give you more to read: summaries, notes, generated flashcards. Feynduck asks you to explain the idea, then shows you the step you skipped.",
   },
   {
     question: "Do I need to add my materials to use Feynduck?",
@@ -213,7 +213,8 @@ export const pricingTiers = [
     monthlyNote: "One session. No card. See what you actually understand.",
     annualNote: "One session. No card. See what you actually understand.",
     intro: "Try one real Feynduck session",
-    cta: "Start studying free",
+    cta: "Join the waitlist",
+    ctaHref: "#waitlist",
     items: [
       "One full explanation session with the duck",
       "Add notes, PDFs, slides, transcripts, readings, or links",
@@ -233,8 +234,9 @@ export const pricingTiers = [
     monthlyNote: "or $96/year — that's $8/month",
     annualNote: "Save 33% with annual billing",
     intro: "For students who study regularly",
-    cta: "Start Student",
-    badge: "✦ Most popular",
+    cta: "Join the waitlist",
+    ctaHref: "#waitlist",
+    badge: "Recommended",
     featured: true,
     items: [
       "Unlimited explanation sessions — no daily caps",
@@ -256,8 +258,8 @@ export const pricingTiers = [
     monthlyNote: "or $180/year — that's $15/month",
     annualNote: "Save 25% with annual billing",
     intro: "For med school, law, and research-heavy degrees",
-    cta: "Start Scholar",
-    badge: "✦ Best value",
+    cta: "Join the waitlist",
+    ctaHref: "#waitlist",
     items: [
       "Everything in Student",
       "Unlimited PDFs, up to 300 pages each — upload full textbooks and case bundles",
@@ -279,7 +281,7 @@ export const pricingTiers = [
     intro: "Bring Feynduck to a whole cohort",
     cta: "Book a call",
     ctaHref: "mailto:hello@feynduck.ai?subject=Institution%20plan",
-    badge: "✦ Teams & campuses",
+    badge: "Teams & campuses",
     items: [
       "Cohort workspaces for classes, modules, and exam groups",
       "Admin controls for seats, subjects, and access",

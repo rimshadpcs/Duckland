@@ -12,7 +12,6 @@ export function FAQSection() {
     <section className="lp-section" id="faq">
       <div className="lp-wrap">
         <SectionHeader
-          label="faq"
           title="Questions students usually ask."
           copy="Feynduck is built around explaining, not passive rereading. Here's how it works."
         />

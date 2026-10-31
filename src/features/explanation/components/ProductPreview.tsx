@@ -63,7 +63,6 @@ export function ProductPreview() {
     <section className="lp-section" id="preview">
       <div className="lp-wrap">
         <SectionHeader
-          label="product preview"
           title="See how Feynduck tests your understanding."
           copy="Watch Feynduck move from your materials to the step you skipped, a clearer explanation, and a simple view of what you can explain."
         />

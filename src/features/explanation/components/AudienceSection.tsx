@@ -6,13 +6,10 @@ export function AudienceSection() {
     <section className="lp-section">
       <div className="lp-wrap">
         <SectionHeader
-          label="who it's for"
           title="For subjects where how and why really matter."
-          copy="Built for medicine, science, engineering, law—and anyone studying ideas they need to truly understand."
         />
         <div className="lp-audience lp-reveal">
           <aside>
-            <span className="fd-eyebrow">Field notes</span>
             <p>
               The common thread is not subject or degree. It is the moment when recognising an answer
               stops being enough and you need to explain how the ideas connect.

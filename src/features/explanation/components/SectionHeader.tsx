@@ -3,13 +3,13 @@ export function SectionHeader({
   title,
   copy,
 }: {
-  label: string;
+  label?: string;
   title: string;
   copy?: string;
 }) {
   return (
     <div className="lp-head lp-reveal">
-      <p className="fd-eyebrow is-amber">{label}</p>
+      {label ? <p className="fd-eyebrow is-amber">{label}</p> : null}
       <h2>{title}</h2>
       {copy ? <p>{copy}</p> : null}
     </div>

@@ -27,7 +27,6 @@ export function AiComparisonSection() {
     <section className="lp-section">
       <div className="lp-wrap">
         <SectionHeader
-          label="why not ChatGPT or NotebookLM?"
           title="ChatGPT and NotebookLM can explain a subject to you."
           copy="Feynduck checks whether you can explain it yourself."
         />
