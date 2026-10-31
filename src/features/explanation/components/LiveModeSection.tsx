@@ -1,61 +1,100 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Mic, Pause, Square } from "lucide-react";
+import { Mic, Pause, Square } from "lucide-react";
 import { DuckMascot, type DuckMood } from "./DuckMascot";
 
 type Beat = {
   mood: DuckMood;
   status: string;
-  caption: string;
   speaker: "student" | "duck";
-  score: number;
-  gap: "pending" | "found" | "fixed";
+  caption: string;
+  score: number | null;
+  notes: number;
 };
 
-// One scripted Live mode exchange, looped. This is a concept of the planned 2027 feature.
+// Sarah's session from the Live mode overview, looped. Live mode is in development, so this is a concept.
 const beats: Beat[] = [
   {
     mood: "listening",
     status: "Listening",
     speaker: "student",
-    caption: "So cardiac output is heart rate times stroke volume, and when you exercise both of them go up…",
-    score: 54,
-    gap: "pending",
-  },
-  {
-    mood: "thinking",
-    status: "Finding the gap",
-    speaker: "student",
-    caption: "…so the heart pumps more blood each minute.",
-    score: 54,
-    gap: "pending",
+    caption: "The heart is a muscle, and it pumps blood around the body. The blood goes to the lungs through the aorta…",
+    score: null,
+    notes: 0,
   },
   {
     mood: "asking",
-    status: "Asking",
+    status: "Wrong fact · straight away",
     speaker: "duck",
-    caption: "Good. But why does stroke volume go up during exercise?",
-    score: 62,
-    gap: "found",
+    caption: "Quick check! Your notes name a different tube going to the lungs. Which one is it?",
+    score: null,
+    notes: 1,
   },
   {
     mood: "listening",
     status: "Listening",
     speaker: "student",
-    caption: "More blood comes back to the heart, so it stretches more and contracts harder.",
-    score: 78,
-    gap: "fixed",
+    caption: "Oh, the pulmonary artery. And the heart uses its electrical system to beat…",
+    score: null,
+    notes: 1,
+  },
+  {
+    mood: "asking",
+    status: "Fancy word · tiny nudge",
+    speaker: "duck",
+    caption: "What do you mean by ‘electrical system’?",
+    score: null,
+    notes: 2,
+  },
+  {
+    mood: "listening",
+    status: "Listening · noting quietly",
+    speaker: "student",
+    caption: "…the blood gets oxygen in the lungs, and then it goes to the body.",
+    score: null,
+    notes: 3,
+  },
+  {
+    mood: "thinking",
+    status: "Finding the biggest gap",
+    speaker: "student",
+    caption: "That's it, I'm done.",
+    score: 54,
+    notes: 3,
+  },
+  {
+    mood: "asking",
+    status: "One question",
+    speaker: "duck",
+    caption: "So the blood leaves the lungs full of oxygen. How does it get from there to your toes?",
+    score: 54,
+    notes: 3,
+  },
+  {
+    mood: "listening",
+    status: "Listening",
+    speaker: "student",
+    caption: "Oh! It has to go back into the heart first, to be pumped out again.",
+    score: 81,
+    notes: 4,
   },
 ];
 
 const BEAT_MS = 3800;
 
-const concepts = [
-  { label: "Cardiac output", status: "clear" },
-  { label: "Stroke volume", status: "improving" },
-  { label: "Preload", status: "gap_found" },
-  { label: "Afterload", status: "not_started" },
+const duckNotes = [
+  { label: "Wrong fact: “through the aorta”", when: "asked straight away" },
+  { label: "Fancy word: “electrical system”", when: "tiny nudge" },
+  { label: "Skipped: blood goes back to the heart", when: "saved for the end" },
+  { label: "She found the gap herself", when: "Clarity 54 → 81" },
+];
+
+const rules = [
+  { hears: "A wrong fact, against your own notes", example: "“Through the aorta”", when: "Straight away", now: true },
+  { hears: "A fancy word hiding a gap", example: "“Electrical system”", when: "Straight away, with a tiny nudge", now: true },
+  { hears: "A missing step", example: "Skipping the return to the heart", when: "After you finish", now: false },
+  { hears: "Too simple overall", example: "“The heart pumps blood”", when: "After you finish", now: false },
 ];
 
 export function LiveModeSection() {
@@ -67,7 +106,7 @@ export function LiveModeSection() {
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setBeatIndex(2);
+      setBeatIndex(6);
       return;
     }
 
@@ -89,31 +128,36 @@ export function LiveModeSection() {
     <section className="lp-section sk-panel is-ink" id="live">
       <div className="lp-wrap sk-live">
         <div className="sk-live-copy lp-reveal">
-          <span className="sk-pill">Coming 2027</span>
+          <span className="sk-pill">Coming soon</span>
           <h2>Live mode. Just talk it through.</h2>
           <p>
-            Open a concept from your notes and explain it out loud, for as long as you need. The duck waits
-            for you to pause, then asks one question about the biggest gap, out loud. Your score and the gap
-            stay on screen while you talk.
+            Explain a concept out loud and the duck listens, checking every word against your own notes. When
+            it speaks up depends on what it hears.
           </p>
-          <ul>
-            <li>
-              <strong>No buttons.</strong> It hears when you start and when you stop.
-            </li>
-            <li>
-              <strong>Grounded in your notes.</strong> The same engine that checks typed explanations.
-            </li>
-            <li>
-              <strong>Practise how you&apos;re examined.</strong> Vivas and OSCE stations are spoken, so this is too.
-            </li>
-          </ul>
+          <div className="sk-rules" role="table" aria-label="When the duck speaks">
+            {rules.map((rule) => (
+              <div className="sk-rule" role="row" key={rule.hears}>
+                <div role="cell">
+                  <strong>{rule.hears}</strong>
+                  <span>{rule.example}</span>
+                </div>
+                <span role="cell" className={`sk-rule-when ${rule.now ? "is-now" : ""}`}>
+                  {rule.when}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="sk-live-why">
+            Missing steps wait until the end on purpose. If the duck told you straight away, you&apos;d just copy
+            the answer. Finding the gap yourself is when it sticks.
+          </p>
         </div>
 
         <div className="sk-live-app lp-reveal" ref={stageRef}>
           <div className="sk-live-bar">
             <span className="sk-live-dot">Live</span>
-            <span>Cardiology · Cardiac output</span>
-            <span className="sk-live-time">04:12</span>
+            <span>Cardiology · How the heart pumps blood</span>
+            <span className="sk-live-time">03:48</span>
           </div>
 
           <div className="sk-live-body">
@@ -123,7 +167,7 @@ export function LiveModeSection() {
                 {beat.status}
               </span>
               <p className={`sk-live-caption is-${beat.speaker}`} key={beatIndex}>
-                <b>{beat.speaker === "duck" ? "Feynduck" : "You"}</b>
+                <b>{beat.speaker === "duck" ? "Feynduck" : "Sarah"}</b>
                 {beat.caption}
               </p>
             </div>
@@ -131,37 +175,27 @@ export function LiveModeSection() {
             <aside className="sk-live-rail">
               <div className="sk-live-card">
                 <span>Clarity</span>
-                <div className="sk-live-score">
-                  <strong>{beat.score}</strong>
-                  <small>/100</small>
-                </div>
-                <div className="sk-live-meter">
-                  <span style={{ width: `${beat.score}%` }} />
-                </div>
-              </div>
-              <div className={`sk-live-card is-gap is-${beat.gap}`}>
-                <span>
-                  <AlertTriangle size={14} strokeWidth={2} />
-                  {beat.gap === "pending" ? "Listening for gaps" : beat.gap === "fixed" ? "Gap closed" : "Gap found"}
-                </span>
-                <p>
-                  {beat.gap === "pending"
-                    ? "The duck waits until you pause."
-                    : "Why stroke volume rises: more venous return stretches the heart (preload)."}
-                </p>
+                {beat.score === null ? (
+                  <p>Scored when you finish.</p>
+                ) : (
+                  <>
+                    <div className="sk-live-score">
+                      <strong>{beat.score}</strong>
+                      <small>/100</small>
+                    </div>
+                    <div className="sk-live-meter">
+                      <span style={{ width: `${beat.score}%` }} />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="sk-live-card">
-                <span>This session</span>
-                <ul className="sk-live-concepts">
-                  {concepts.map((concept) => (
-                    <li key={concept.label}>
-                      <span
-                        className="fd-dot is-sm"
-                        data-status={
-                          concept.label === "Preload" && beat.gap === "fixed" ? "improving" : concept.status
-                        }
-                      />
-                      {concept.label}
+                <span>The duck&apos;s notes</span>
+                <ul className="sk-live-notes">
+                  {duckNotes.map((note, index) => (
+                    <li key={note.label} className={index < beat.notes ? "is-in" : ""}>
+                      {note.label}
+                      <small>{note.when}</small>
                     </li>
                   ))}
                 </ul>

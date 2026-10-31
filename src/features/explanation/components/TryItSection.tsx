@@ -190,7 +190,7 @@ export function TryItSection() {
         </div>
 
         <p className="sk-live-note lp-reveal">
-          <span className="sk-pill">Coming 2027</span>
+          <span className="sk-pill">Coming soon</span>
           <a href="#live">Live mode: talk it through hands-free, and the duck asks back out loud.</a>
         </p>
       </div>
